@@ -77,6 +77,11 @@ added incrementally.
   into focused work packages.
 - [Cycle 2 verification record](docs/cycle-2/VERIFICATION.md) separates
   implementation evidence from the remaining Windows manual checks.
+- [Cycle 3 Pi implementation PRD](docs/cycle-3-pi-implementation/PRD.md)
+  defines the Pi kernel boundary, Aside context model, and session policy.
+- [Cycle 3 implementation plans](docs/cycle-3-pi-implementation/PLANS.md)
+  and [issues log](docs/cycle-3-pi-implementation/ISSUES.md) track delivery
+  and unexpected implementation decisions.
 
 ## Development prerequisites
 

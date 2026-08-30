@@ -121,6 +121,22 @@ The runtime exposes an Aside-facing protocol. It may use
 `@earendil-works/pi-agent-core` and `@earendil-works/pi-ai` internally, but
 features and React must not depend on those package details.
 
+Cycle 3 formalizes the runtime boundary into three layers:
+
+- a durable Aside session transcript containing conversation messages;
+- an Aside-owned flow and turn-context envelope containing bounded, explicit
+  text or JSON reference data;
+- a provider projection that combines the durable transcript with the active
+  envelope at Pi's context transformation boundary.
+
+The turn-context envelope is run-scoped and is not persisted by default. This
+is intentional: domain snapshots and desktop state can become stale and must
+not silently become conversation memory. The runtime reuses Pi's `Agent` and
+agent-loop semantics directly. Pi's current coding-agent-oriented
+`AgentHarness` is not a product dependency until its required operation paths
+and context assumptions fit this boundary. Aside does not copy Pi's loop,
+provider, or session implementation.
+
 Aside does not build a second general-purpose harness. If Pi's core changes,
 the adapter absorbs the change where practical.
 

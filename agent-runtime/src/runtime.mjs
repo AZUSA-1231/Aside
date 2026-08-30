@@ -1,6 +1,11 @@
 import { Agent } from "@earendil-works/pi-agent-core";
 import { createModels } from "@earendil-works/pi-ai";
 
+export const MAX_REQUEST_ID_LENGTH = 128;
+export const MAX_PROMPT_LENGTH = 20_000;
+export const DEFAULT_SYSTEM_PROMPT =
+  "You are Aside, a concise and thoughtful desktop assistant. Answer directly and keep short requests practical.";
+
 const providerFactories = {
   anthropic: async () =>
     (await import("@earendil-works/pi-ai/providers/anthropic")).anthropicProvider(),
@@ -15,12 +20,67 @@ const providerFactories = {
 export function sanitizeError(error) {
   const message = error instanceof Error ? error.message : String(error);
   return message
-    .replace(/(?:sk|key|token|secret)[-_][A-Za-z0-9._-]+/gi, "[redacted]")
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
+    .replace(
+      /\b(api[-_ ]?key|token|secret|password|authorization)\s*[:=]\s*[^\s,;]+/gi,
+      "$1=[redacted]",
+    )
+    .replace(/\b(?:sk|pk|rk)-[A-Za-z0-9._-]{8,}/gi, "[redacted]")
+    .replace(/(?:key|token|secret)[-_][A-Za-z0-9._-]{8,}/gi, "[redacted]")
     .replace(/https?:\/\/[^\s]+/gi, "[provider endpoint]")
     .slice(0, 280);
 }
 
-async function createConfiguredAgent() {
+export function isUnsuccessfulAssistantMessage(message) {
+  return (
+    message?.role === "assistant" &&
+    (message.stopReason === "error" ||
+      message.stopReason === "aborted" ||
+      message.stopReason === "deferred" ||
+      Boolean(message.errorMessage))
+  );
+}
+
+function removeUnsuccessfulAssistantMessages(agent) {
+  const messages = agent?.state?.messages;
+  if (!Array.isArray(messages)) return;
+  agent.state.messages = messages.filter(
+    (message) => !isUnsuccessfulAssistantMessage(message),
+  );
+}
+
+function describeAgent(agent) {
+  const model = agent?.state?.model;
+  return {
+    agent,
+    provider: typeof model?.provider === "string" ? model.provider : "unknown",
+    model: typeof model?.id === "string" ? model.id : "unknown",
+  };
+}
+
+function validatePromptInput(requestId, text) {
+  if (
+    typeof requestId !== "string" ||
+    requestId.length === 0 ||
+    requestId.length > MAX_REQUEST_ID_LENGTH
+  ) {
+    return "The conversation request could not be identified.";
+  }
+  if (
+    typeof text !== "string" ||
+    text.trim().length === 0 ||
+    text.length > MAX_PROMPT_LENGTH
+  ) {
+    return "The message could not be sent because its input was invalid.";
+  }
+  return null;
+}
+
+export async function createConfiguredAgent({
+  initialMessages = [],
+  transformContext,
+  sessionId,
+} = {}) {
   const providerId = (process.env.ASIDE_PROVIDER ?? "openai").trim().toLowerCase();
   const factory = providerFactories[providerId];
   if (!factory) {
@@ -44,12 +104,15 @@ async function createConfiguredAgent() {
 
   const agent = new Agent({
     initialState: {
-      systemPrompt:
-        "You are Aside, a concise and thoughtful desktop assistant. Answer directly and keep short requests practical.",
+      systemPrompt: DEFAULT_SYSTEM_PROMPT,
       model,
       thinkingLevel: "off",
+      tools: [],
+      messages: initialMessages,
     },
     streamFn: models.streamSimple.bind(models),
+    transformContext,
+    sessionId,
     convertToLlm: (messages) =>
       messages.filter(
         (message) =>
@@ -61,17 +124,72 @@ async function createConfiguredAgent() {
   return { agent, provider: providerId, model: model.id };
 }
 
-export async function createConversationRuntime({ emit, agent } = {}) {
+export async function createConversationRuntime({
+  emit,
+  agent,
+  onRunSettled,
+} = {}) {
   const send = emit ?? (() => undefined);
   const configured = agent
-    ? { agent, provider: agent.state.model.provider, model: agent.state.model.id }
+    ? describeAgent(agent)
     : await createConfiguredAgent();
   const conversationAgent = configured.agent;
   let active = null;
+  let disposed = false;
 
-  conversationAgent.subscribe((event) => {
+  async function notifyRunSettled(run, status) {
+    if (!onRunSettled) return;
+    try {
+      const result = await onRunSettled({
+        request_id: run.request_id,
+        status,
+        messages: Array.isArray(conversationAgent?.state?.messages)
+          ? conversationAgent.state.messages.slice()
+          : [],
+      });
+      if (result?.warning) {
+        send({
+          type: "session_warning",
+          request_id: run.request_id,
+          message: sanitizeError(result.warning),
+        });
+      }
+    } catch (error) {
+      send({
+        type: "session_warning",
+        request_id: run.request_id,
+        message: sanitizeError(error),
+      });
+    }
+  }
+
+  async function settle(run, status, failure) {
+    if (run.settled || active !== run || disposed) return;
+    run.settled = true;
+
+    if (status !== "completed") {
+      removeUnsuccessfulAssistantMessages(conversationAgent);
+    }
+
+    if (status === "cancelled") {
+      send({ type: "cancelled", request_id: run.request_id });
+    } else if (status === "failed") {
+      send({
+        type: "failed",
+        request_id: run.request_id,
+        message: sanitizeError(failure?.errorMessage ?? failure),
+        retryable: true,
+      });
+    } else {
+      send({ type: "completed", request_id: run.request_id });
+    }
+
+    await notifyRunSettled(run, status);
+  }
+
+  const unsubscribe = conversationAgent.subscribe(async (event) => {
     const run = active;
-    if (!run) return;
+    if (!run || run.settled || disposed) return;
 
     if (
       event.type === "message_update" &&
@@ -85,23 +203,13 @@ export async function createConversationRuntime({ emit, agent } = {}) {
     }
 
     if (event.type === "agent_end") {
-      const failure = event.messages.find(
-        (message) => message.role === "assistant" && message.errorMessage,
-      );
-      if (run.cancel_requested || failure?.stopReason === "aborted") {
-        run.settled = true;
-        send({ type: "cancelled", request_id: run.request_id });
+      const failure = event.messages.find(isUnsuccessfulAssistantMessage);
+      if (failure?.stopReason === "aborted") {
+        await settle(run, "cancelled", failure);
       } else if (failure) {
-        run.settled = true;
-        send({
-          type: "failed",
-          request_id: run.request_id,
-          message: sanitizeError(failure.errorMessage),
-          retryable: true,
-        });
+        await settle(run, "failed", failure);
       } else {
-        run.settled = true;
-        send({ type: "completed", request_id: run.request_id });
+        await settle(run, "completed");
       }
     }
   });
@@ -109,6 +217,17 @@ export async function createConversationRuntime({ emit, agent } = {}) {
   send({ type: "ready", provider: configured.provider, model: configured.model });
 
   async function prompt(requestId, text) {
+    const validationError = validatePromptInput(requestId, text);
+    if (validationError) {
+      send({
+        type: "failed",
+        request_id: typeof requestId === "string" ? requestId : "invalid",
+        message: validationError,
+        retryable: true,
+      });
+      return;
+    }
+
     if (active) {
       send({
         type: "failed",
@@ -128,19 +247,16 @@ export async function createConversationRuntime({ emit, agent } = {}) {
     send({ type: "run_started", request_id: requestId });
     try {
       await conversationAgent.prompt(text);
-      if (!run.settled) {
-        run.settled = true;
-        send({ type: "completed", request_id: requestId });
+      if (!run.settled && active === run) {
+        await settle(run, "completed");
       }
     } catch (error) {
-      if (!run.settled) {
-        run.settled = true;
-        send({
-          type: "failed",
-          request_id: requestId,
-          message: sanitizeError(error),
-          retryable: true,
-        });
+      if (!run.settled && active === run) {
+        if (run.cancel_requested) {
+          await settle(run, "cancelled", error);
+        } else {
+          await settle(run, "failed", error);
+        }
       }
     } finally {
       if (active === run) active = null;
@@ -153,5 +269,11 @@ export async function createConversationRuntime({ emit, agent } = {}) {
     conversationAgent.abort();
   }
 
-  return { prompt, cancel };
+  function dispose() {
+    disposed = true;
+    unsubscribe?.();
+    active = null;
+  }
+
+  return { prompt, cancel, dispose, agent: conversationAgent };
 }
