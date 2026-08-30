@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "test": "node --test test/runtime.test.mjs test/session.test.mjs test/protocol.test.mjs"
+    "test": "node --test test/runtime.test.mjs test/session.test.mjs test/protocol.test.mjs test/config.test.mjs"
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "0.84.4",

@@ -1,6 +1,6 @@
 # P1 - Aside Context Model and Provider Projection
 
-Status: planning  
+Status: implemented
 Depends on: P0 - Pi Kernel Boundary and Runtime Contracts  
 Unblocks: P2 and P3
 
@@ -34,6 +34,10 @@ context assumptions.
 9. Record any conflict between Pi's context assumptions and an Aside flow in
    [ISSUES.md](../ISSUES.md).
 
+10. Load provider defaults from `.env.local` without mutating `process.env`,
+    inject credentials through Pi's `AuthContext`, and apply an optional
+    `ASIDE_API_URL` to the selected model at the provider boundary.
+
 ## Deliverables
 
 - Aside flow and turn-context contract.
@@ -42,6 +46,7 @@ context assumptions.
 - One canonical reference-message serialization and insertion rule.
 - Standard-message conversion/filtering policy.
 - Context isolation and projection tests.
+- Automatic project and packaged provider configuration loading.
 
 ## Exit Criteria
 
@@ -53,6 +58,8 @@ context assumptions.
   changing its block type.
 - The projection works for conversation-shaped and future domain-shaped flows
   without a coding-agent-specific branch.
+- A local provider configuration can be loaded without a per-command shell
+  setup, while Pi remains the owner of provider authentication and requests.
 
 ## Checks
 

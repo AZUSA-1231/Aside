@@ -325,6 +325,7 @@ export async function createAsideConversationRuntime({
   environment,
   cwd,
   fileSystem,
+  configCwd,
 } = {}) {
   const send = emit ?? (() => undefined);
   const opened = await openAsideSession({
@@ -354,6 +355,8 @@ export async function createAsideConversationRuntime({
     emit: send,
     agent: conversationAgent,
     onRunSettled: persistRun,
+    environment,
+    configCwd,
   });
   return {
     ...runtime,

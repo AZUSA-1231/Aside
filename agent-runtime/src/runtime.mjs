@@ -1,10 +1,15 @@
 import { Agent } from "@earendil-works/pi-agent-core/aside";
-import { createModels } from "@earendil-works/pi-ai";
+import { createModels, defaultProviderAuthContext } from "@earendil-works/pi-ai";
 import {
   projectAsideContext,
   toProviderMessages,
   validateTurnContext,
 } from "./context.mjs";
+import {
+  getAsideConfigValue,
+  loadAsideConfig,
+  normalizeAsideApiUrl,
+} from "./config.mjs";
 
 export const MAX_REQUEST_ID_LENGTH = 128;
 export const MAX_PROMPT_LENGTH = 20_000;
@@ -46,6 +51,19 @@ export function isUnsuccessfulAssistantMessage(message) {
   );
 }
 
+function createConfiguredAuthContext(values) {
+  const baseContext = defaultProviderAuthContext();
+  return {
+    env: async (name) => {
+      const value = values[name];
+      return typeof value === "string" && value.trim().length > 0
+        ? value
+        : undefined;
+    },
+    fileExists: baseContext.fileExists,
+  };
+}
+
 function removeUnsuccessfulAssistantMessages(agent) {
   const messages = agent?.state?.messages;
   if (!Array.isArray(messages)) return;
@@ -85,8 +103,15 @@ export async function createConfiguredAgent({
   initialMessages = [],
   transformContext,
   sessionId,
+  environment = process.env,
+  configCwd = process.cwd(),
 } = {}) {
-  const providerId = (process.env.ASIDE_PROVIDER ?? "openai").trim().toLowerCase();
+  const configuration = await loadAsideConfig({
+    cwd: configCwd,
+    environment,
+  });
+  const values = configuration.values;
+  const providerId = (getAsideConfigValue(values, "ASIDE_PROVIDER") ?? "openai").toLowerCase();
   const factory = providerFactories[providerId];
   if (!factory) {
     throw new Error(
@@ -95,17 +120,21 @@ export async function createConfiguredAgent({
   }
 
   const provider = await factory();
-  const models = createModels();
+  const models = createModels({
+    authContext: createConfiguredAuthContext(values),
+  });
   models.setProvider(provider);
-  const requestedModel = process.env.ASIDE_MODEL?.trim();
-  const model = requestedModel
+  const requestedModel = getAsideConfigValue(values, "ASIDE_MODEL");
+  const configuredModel = requestedModel
     ? models.getModel(providerId, requestedModel)
     : models.getModels(providerId)[0];
-  if (!model) {
+  if (!configuredModel) {
     throw new Error(
       `Model "${requestedModel ?? "default"}" is not available for ${providerId}. Set ASIDE_MODEL to a supported model.`,
     );
   }
+  const apiUrl = normalizeAsideApiUrl(getAsideConfigValue(values, "ASIDE_API_URL"));
+  const model = apiUrl ? { ...configuredModel, baseUrl: apiUrl } : configuredModel;
 
   const agent = new Agent({
     initialState: {
@@ -133,11 +162,13 @@ export async function createConversationRuntime({
   emit,
   agent,
   onRunSettled,
+  environment = process.env,
+  configCwd = process.cwd(),
 } = {}) {
   const send = emit ?? (() => undefined);
   const configured = agent
     ? describeAgent(agent)
-    : await createConfiguredAgent();
+    : await createConfiguredAgent({ environment, configCwd });
   const conversationAgent = configured.agent;
   let active = null;
   let disposed = false;

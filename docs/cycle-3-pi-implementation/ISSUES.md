@@ -343,6 +343,76 @@ refresh the source snapshot and catalog together.
 Run `npm.cmd run pi:build` when updating the vendored Pi snapshot and verify
 that the runtime still resolves models without a registry-installed Pi package.
 
+## C3-I011 - Add a Runtime-Owned Local Configuration File
+
+Status: accepted
+Discovered: 2026-08-30
+Affected: P1
+Requirements: FR-3.2, FR-3.7, FR-3.10
+
+### Fact
+
+The first Pi-backed runtime read `ASIDE_PROVIDER`, `ASIDE_MODEL`, and provider
+credentials directly from `process.env`. That required a developer or
+launcher to set the same values in every runtime-starting shell, and there
+was intentionally no UI configuration surface in this cycle.
+
+### Impact
+
+Manual shell setup is easy to omit and would make the desktop launch path
+different from the development path. Mutating `process.env` from a dotenv
+loader would also make the credential lifetime wider than necessary.
+
+### Decision
+
+Aside now finds the nearest project `.env.local` and uses it as a default
+configuration source. Existing environment values retain precedence for
+launchers and tests. Packaged builds may use
+`%LOCALAPPDATA%\\Aside\\config.env` when no project file is available. The
+resolved values remain inside the runtime and are injected into Pi's auth
+context without changing `process.env`.
+
+### Follow-up
+
+Keep `.env.local` and packaged config files outside source control, add a
+secure packaged configuration UX in a later cycle, and never expose resolved
+values through protocol events, session entries, or diagnostics.
+
+## C3-I012 - Override the Selected Model URL at the Pi Boundary
+
+Status: accepted
+Discovered: 2026-08-30
+Affected: P1
+Requirements: FR-3.1, FR-3.2
+
+### Fact
+
+Pi provider factories define their normal endpoints and Pi's `Models` layer
+already accepts a request model with an explicit `baseUrl`. Changing each
+provider factory to understand an Aside-specific setting would couple the
+vendored Pi source to product configuration and would not by itself update
+the selected catalog model.
+
+### Impact
+
+Aside still needs a single endpoint entry for compatible gateways and local
+servers, while provider authentication, request formatting, and retry
+behavior must continue to come from Pi.
+
+### Decision
+
+`ASIDE_API_URL` is validated by Aside and applied by cloning only the selected
+Pi model with a new `baseUrl`. Pi's provider and `Models.streamSimple` then
+perform the request as usual. The setting is intentionally runtime-only and
+is not copied into the UI, session, or event protocol.
+
+### Follow-up
+
+Add provider-specific endpoint and model controls only when a later product
+requirement needs them. Keep the current setting documented as an endpoint
+override, not as a guarantee that every provider-compatible gateway supports
+every Pi API variant.
+
 ## Entry Template
 
 Copy this template for a newly discovered issue:

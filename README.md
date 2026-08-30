@@ -51,6 +51,24 @@ The current repository contains the MVP shell, window behavior, workspace
 behavior, and initial agent runtime implementation. Further work will be
 added incrementally.
 
+## Provider configuration
+
+The runtime provider is configured through a local `.env.local` file in the
+project root. Copy [.env.example](.env.example) to `.env.local` and fill in the
+provider credential. Aside loads this file automatically when the runtime
+starts; there is no need to set variables in each terminal command.
+
+```text
+ASIDE_PROVIDER=openai
+ASIDE_MODEL=gpt-4o-mini
+ASIDE_API_URL=https://api.openai.com/v1
+OPENAI_API_KEY=your-key
+```
+
+The API URL is optional and is useful for an OpenAI-compatible gateway or local
+server. `.env.local` is ignored by Git. Packaged builds also look for
+`%LOCALAPPDATA%\Aside\config.env`.
+
 ## Explicit non-goals for the first version
 
 - Windows Desktop Shell or Explorer integration.
