@@ -4,13 +4,15 @@
   "version": "0.1.0",
   "type": "module",
   "workspaces": [
-    "agent-runtime"
+    "agent-runtime",
+    "vendor/pi/packages/*"
   ],
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "runtime:test": "node --test agent-runtime/test/runtime.test.mjs agent-runtime/test/session.test.mjs agent-runtime/test/protocol.test.mjs",
+    "pi:build": "npm run build --workspace=@earendil-works/pi-telemetry && npm run build --workspace=@earendil-works/pi-ai && npm run build --workspace=@earendil-works/pi-agent-core",
     "tauri": "tauri",
     "typecheck": "tsc --noEmit"
   },

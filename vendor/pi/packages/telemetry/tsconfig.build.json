@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./build",
+    "rootDir": "./src",
+    "declarationMap": false,
+    "sourceMap": false,
+    "inlineSources": false
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "build", "**/*.d.ts", "src/**/*.d.ts"]
+}

@@ -33,6 +33,7 @@ boundary.
 | C3-I007 | accepted | Context | Context limits and one canonical reference-message projection are explicit. | P1 |
 | C3-I008 | accepted | Tooling | Node's Windows test runner does not discover a directory passed to `--test`; scripts list test files explicitly. | P2 |
 | C3-I009 | accepted | Session | Pi session serialization rejects explicit `undefined` optional message fields; the Aside adapter normalizes them before append. | P2 |
+| C3-I010 | accepted | Vendor | Pi's provider model catalog is generated during its package build and is absent from the source snapshot; the catalog is vendored with the source. | P0 |
 
 ## C3-I001 - AgentHarness Is Not the Cycle 3 Runtime
 
@@ -309,6 +310,38 @@ so a later write can continue at the first missing message.
 
 Keep provider-message persistence tests using optional fields and verify that a
 restart restores the normalized message without a duplicate user entry.
+
+## C3-I010 - Vendor the Generated Provider Catalog
+
+Status: accepted
+Discovered: 2026-08-30
+Affected: P0
+Requirements: FR-3.1, FR-3.2
+
+### Fact
+
+The Pi 0.84.4 `pi-ai` source imports generated JSON files from
+`src/providers/data`. Those files are produced by Pi's model-catalog build
+step and are not present in the neighboring repository source snapshot, while
+the installed package contains them only in its built output.
+
+### Impact
+
+Simply copying Pi's TypeScript source into Aside did not make the local
+provider package independently buildable. Without the catalog, model lookup
+and provider imports fail at compile time.
+
+### Decision
+
+Aside vendors the generated provider catalog alongside the pinned Pi source and
+checks in the resulting JavaScript build output. The catalog is data used for
+provider model selection, not coding-agent behavior. Future Pi updates must
+refresh the source snapshot and catalog together.
+
+### Follow-up
+
+Run `npm.cmd run pi:build` when updating the vendored Pi snapshot and verify
+that the runtime still resolves models without a registry-installed Pi package.
 
 ## Entry Template
 

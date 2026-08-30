@@ -1,0 +1,63 @@
+{
+  "name": "@earendil-works/pi-ai",
+  "version": "0.84.4",
+  "description": "Vendored Pi provider and model layer used by Aside",
+  "license": "MIT",
+  "type": "module",
+  "main": "./build/index.js",
+  "types": "./build/index.d.ts",
+  "sideEffects": [
+    "./build/compat.js",
+    "./build/images.js",
+    "./build/providers/images/register-builtins.js"
+  ],
+  "exports": {
+    ".": {
+      "types": "./build/index.d.ts",
+      "import": "./build/index.js"
+    },
+    "./compat": {
+      "types": "./build/compat.d.ts",
+      "import": "./build/compat.js"
+    },
+    "./providers/*": {
+      "types": "./build/providers/*.d.ts",
+      "import": "./build/providers/*.js"
+    },
+    "./api/*": {
+      "types": "./build/api/*.d.ts",
+      "import": "./build/api/*.js"
+    },
+    "./oauth": {
+      "types": "./build/oauth.d.ts",
+      "import": "./build/oauth.js"
+    },
+    "./bedrock-provider": {
+      "types": "./build/bedrock-provider.d.ts",
+      "import": "./build/bedrock-provider.js"
+    },
+    "./bun-oauth": {
+      "types": "./build/bun-oauth.d.ts",
+      "import": "./build/bun-oauth.js"
+    }
+  },
+  "files": ["build", "src", "README.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.91.1",
+    "@aws-sdk/client-bedrock-runtime": "3.1048.0",
+    "@google/genai": "1.52.0",
+    "@smithy/node-http-handler": "4.7.3",
+    "http-proxy-agent": "7.0.2",
+    "https-proxy-agent": "7.0.6",
+    "openai": "6.40.0",
+    "partial-json": "0.1.7",
+    "typebox": "1.3.7",
+    "@earendil-works/pi-telemetry": "0.84.4"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  }
+}

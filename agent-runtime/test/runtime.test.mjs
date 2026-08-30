@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { Agent } from "@earendil-works/pi-agent-core";
+import { Agent } from "@earendil-works/pi-agent-core/aside";
 import { createModels } from "@earendil-works/pi-ai";
 import {
   fauxAssistantMessage,

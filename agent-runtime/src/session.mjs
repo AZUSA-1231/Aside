@@ -5,7 +5,7 @@ import {
   InMemorySessionStorage,
   JsonlSessionRepo,
   Session,
-} from "@earendil-works/pi-agent-core";
+} from "@earendil-works/pi-agent-core/aside";
 import {
   createConfiguredAgent,
   createConversationRuntime,

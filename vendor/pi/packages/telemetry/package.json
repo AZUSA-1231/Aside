@@ -1,0 +1,26 @@
+{
+  "name": "@earendil-works/pi-telemetry",
+  "version": "0.84.4",
+  "description": "Vendored Pi telemetry contracts used by Aside",
+  "license": "MIT",
+  "type": "module",
+  "main": "./build/index.js",
+  "types": "./build/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./build/index.d.ts",
+      "import": "./build/index.js"
+    },
+    "./testing": {
+      "types": "./build/testing/index.d.ts",
+      "import": "./build/testing/index.js"
+    }
+  },
+  "files": ["build", "src", "README.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  }
+}

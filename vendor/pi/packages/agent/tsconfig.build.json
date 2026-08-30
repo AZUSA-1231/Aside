@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./build",
+    "rootDir": "./src",
+    "declarationMap": false,
+    "sourceMap": false,
+    "inlineSources": false,
+    "paths": {
+      "@earendil-works/pi-telemetry": ["../telemetry/build/index.d.ts"],
+      "@earendil-works/pi-ai": ["../ai/build/index.d.ts"],
+      "@earendil-works/pi-ai/*": ["../ai/build/*.d.ts", "../ai/build/providers/*.d.ts"]
+    }
+  },
+  "include": ["src/aside.ts"],
+  "exclude": ["node_modules", "build", "**/*.d.ts", "src/**/*.d.ts"]
+}

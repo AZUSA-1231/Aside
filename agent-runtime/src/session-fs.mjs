@@ -11,7 +11,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { basename, isAbsolute, join, resolve } from "node:path";
-import { err, FileError, ok } from "@earendil-works/pi-agent-core";
+import { err, FileError, ok } from "@earendil-works/pi-agent-core/aside";
 
 function toFileError(error, path) {
   if (error instanceof FileError) return error;
