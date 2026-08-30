@@ -31,6 +31,8 @@ boundary.
 | C3-I005 | accepted | Session | Default local session root and override policy chosen; P2 must verify it in packaged and test runs. | P2 |
 | C3-I006 | accepted | Protocol | Cycle 3 keeps only prompt/cancel; retry is a fresh prompt after a failed run. | P0, P3 |
 | C3-I007 | accepted | Context | Context limits and one canonical reference-message projection are explicit. | P1 |
+| C3-I008 | accepted | Tooling | Node's Windows test runner does not discover a directory passed to `--test`; scripts list test files explicitly. | P2 |
+| C3-I009 | accepted | Session | Pi session serialization rejects explicit `undefined` optional message fields; the Aside adapter normalizes them before append. | P2 |
 
 ## C3-I001 - AgentHarness Is Not the Cycle 3 Runtime
 
@@ -246,6 +248,67 @@ raised per flow.
 P1 tests must assert the limits, insertion position, and absence of a duplicate
 projection on repeated provider turns. Any limit increase requires a later
 scope decision.
+
+## C3-I008 - Explicit Runtime Test Files on Windows
+
+Status: accepted  
+Discovered: 2026-08-30  
+Affected: P2, P3  
+Requirements: FR-3.7, FR-3.8
+
+### Fact
+
+On Node 22.23.2 under Windows, `node --test agent-runtime/test` resolves the
+directory as a module path and fails with `MODULE_NOT_FOUND` instead of
+discovering the test files in that directory.
+
+### Impact
+
+The Cycle 3 runtime test command could report a test-runner failure or skip the
+new session test depending on how the command was invoked.
+
+### Decision
+
+Keep the runtime scripts explicit: list each `*.test.mjs` file in the root and
+`agent-runtime` package test commands. Adding a runtime test requires updating
+both command lists.
+
+### Follow-up
+
+P3 keeps the explicit file list in the final quality gate. Revisit only if the
+project standardizes on a cross-platform test discovery command.
+
+## C3-I009 - Normalize Undefined Optional Message Fields
+
+Status: accepted  
+Discovered: 2026-08-30  
+Affected: P2  
+Requirements: FR-3.4
+
+### Fact
+
+Pi 0.84.4's `Session.appendMessage` validates the complete payload with
+`assertJsonSerializable`. A provider message such as the faux provider's
+assistant result can contain explicit `undefined` values for optional fields,
+which Pi rejects even though ordinary JSON serialization would omit them.
+
+### Impact
+
+Appending an otherwise valid finalized assistant message could fail after its
+user message had already been written, producing a partial session and a
+misleading persistence failure if the adapter passed the message through.
+
+### Decision
+
+The Aside session adapter removes undefined object fields at the durable
+message boundary, rejects undefined array items, and lets Pi perform its own
+serializability validation afterward. Partial append progress remains tracked
+so a later write can continue at the first missing message.
+
+### Follow-up
+
+Keep provider-message persistence tests using optional fields and verify that a
+restart restores the normalized message without a duplicate user entry.
 
 ## Entry Template
 

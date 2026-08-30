@@ -31,6 +31,14 @@ export interface AsideTurnContext {
   blocks: AsideContextBlock[];
 }
 
+export interface RuntimeHistoryMessage {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+  status: "complete";
+  timestamp: number;
+}
+
 export type RuntimeRequest =
   | {
       type: "prompt";
@@ -54,5 +62,6 @@ export type RuntimeEvent =
       message: string;
       retryable: boolean;
     }
-  | { type: "session_warning"; request_id: string; message: string }
+  | { type: "session_warning"; request_id?: string; message: string }
+  | { type: "history_restored"; messages: RuntimeHistoryMessage[] }
   | { type: "runtime_unavailable"; message: string };
