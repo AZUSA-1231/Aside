@@ -1,5 +1,10 @@
 import { Agent } from "@earendil-works/pi-agent-core";
 import { createModels } from "@earendil-works/pi-ai";
+import {
+  projectAsideContext,
+  toProviderMessages,
+  validateTurnContext,
+} from "./context.mjs";
 
 export const MAX_REQUEST_ID_LENGTH = 128;
 export const MAX_PROMPT_LENGTH = 20_000;
@@ -137,6 +142,18 @@ export async function createConversationRuntime({
   let active = null;
   let disposed = false;
 
+  const baseTransformContext = conversationAgent.transformContext;
+  const baseConvertToLlm = conversationAgent.convertToLlm;
+  conversationAgent.transformContext = async (messages, signal) => {
+    const transformed = baseTransformContext
+      ? await baseTransformContext(messages, signal)
+      : messages;
+    const run = active;
+    return projectAsideContext(transformed, run?.context, run?.text);
+  };
+  conversationAgent.convertToLlm = async (messages) =>
+    baseConvertToLlm(toProviderMessages(messages));
+
   async function notifyRunSettled(run, status) {
     if (!onRunSettled) return;
     try {
@@ -216,13 +233,26 @@ export async function createConversationRuntime({
 
   send({ type: "ready", provider: configured.provider, model: configured.model });
 
-  async function prompt(requestId, text) {
+  async function prompt(requestId, text, context) {
     const validationError = validatePromptInput(requestId, text);
     if (validationError) {
       send({
         type: "failed",
         request_id: typeof requestId === "string" ? requestId : "invalid",
         message: validationError,
+        retryable: true,
+      });
+      return;
+    }
+
+    let normalizedContext;
+    try {
+      normalizedContext = validateTurnContext(context);
+    } catch (error) {
+      send({
+        type: "failed",
+        request_id: requestId,
+        message: sanitizeError(error),
         retryable: true,
       });
       return;
@@ -240,6 +270,8 @@ export async function createConversationRuntime({
 
     const run = {
       request_id: requestId,
+      text,
+      context: normalizedContext,
       cancel_requested: false,
       settled: false,
     };

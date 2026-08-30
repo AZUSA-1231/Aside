@@ -1,8 +1,43 @@
 export const RUNTIME_MAX_REQUEST_ID_LENGTH = 128;
 export const RUNTIME_MAX_PROMPT_LENGTH = 20_000;
+export const MAX_CONTEXT_BLOCKS = 8;
+export const MAX_CONTEXT_TEXT_BYTES = 8 * 1024;
+export const MAX_CONTEXT_JSON_BYTES = 16 * 1024;
+export const MAX_CONTEXT_TOTAL_BYTES = 24 * 1024;
+export const MAX_CONTEXT_JSON_DEPTH = 4;
+
+export interface AsideFlow {
+  id: string;
+  kind: string;
+  label?: string;
+}
+
+export interface AsideTextContextBlock {
+  type: "text";
+  label?: string;
+  text: string;
+}
+
+export interface AsideJsonContextBlock {
+  type: "json";
+  label?: string;
+  data: unknown;
+}
+
+export type AsideContextBlock = AsideTextContextBlock | AsideJsonContextBlock;
+
+export interface AsideTurnContext {
+  flow: AsideFlow;
+  blocks: AsideContextBlock[];
+}
 
 export type RuntimeRequest =
-  | { type: "prompt"; request_id: string; text: string }
+  | {
+      type: "prompt";
+      request_id: string;
+      text: string;
+      context?: AsideTurnContext;
+    }
   | { type: "cancel"; request_id: string };
 
 export type RuntimeTerminalStatus = "completed" | "cancelled" | "failed";
