@@ -12,8 +12,53 @@ pub const RUNTIME_EVENT: &str = "runtime://event";
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum RuntimeRequest {
-    Prompt { request_id: String, text: String },
-    Cancel { request_id: String },
+    Prompt {
+        request_id: String,
+        text: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        context: Option<AsideTurnContext>,
+    },
+    Cancel {
+        request_id: String,
+    },
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AsideFlow {
+    pub id: String,
+    pub kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum AsideContextBlock {
+    Text {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        label: Option<String>,
+        text: String,
+    },
+    Json {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        label: Option<String>,
+        data: serde_json::Value,
+    },
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AsideTurnContext {
+    pub flow: AsideFlow,
+    pub blocks: Vec<AsideContextBlock>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RuntimeHistoryMessage {
+    pub id: String,
+    pub role: String,
+    pub text: String,
+    pub status: String,
+    pub timestamp: i64,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -40,6 +85,13 @@ pub enum RuntimeEvent {
         request_id: String,
         message: String,
         retryable: bool,
+    },
+    SessionWarning {
+        request_id: Option<String>,
+        message: String,
+    },
+    HistoryRestored {
+        messages: Vec<RuntimeHistoryMessage>,
     },
     RuntimeUnavailable {
         message: String,

@@ -19,7 +19,12 @@ import {
   Square,
   X,
 } from "lucide-react";
-import type { AgentState, NativeError, RuntimeEvent } from "./lib/contracts";
+import type {
+  AgentState,
+  NativeError,
+  RuntimeEvent,
+  RuntimeHistoryMessage,
+} from "./lib/contracts";
 import { isDesktopRuntime, nativeClient, toNativeError } from "./lib/ipc";
 import "./App.css";
 
@@ -36,8 +41,10 @@ interface ChatMessage {
 
 interface ActiveRun {
   requestId: string;
+  userId: string;
   assistantId: string;
   prompt: string;
+  isRetry: boolean;
   cancelRequested: boolean;
 }
 
@@ -64,6 +71,15 @@ function runtimeError(message: string): NativeError {
   return { operation: "conversation", recoverable: true, message };
 }
 
+function toChatMessage(message: RuntimeHistoryMessage): ChatMessage {
+  return {
+    id: message.id,
+    role: message.role,
+    text: message.text,
+    status: "complete",
+  };
+}
+
 function App() {
   const [agentState, setAgentState] = useState<AgentState>(initialAgentState);
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
@@ -72,6 +88,7 @@ function App() {
   const [activeRun, setActiveRun] = useState<ActiveRun | null>(null);
   const [runtimeReady, setRuntimeReady] = useState(false);
   const activeRunRef = useRef<ActiveRun | null>(null);
+  const historyHydratedRef = useRef(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const setCurrentRun = useCallback((run: ActiveRun | null) => {
@@ -102,12 +119,68 @@ function App() {
     [setCurrentRun, updateAssistant],
   );
 
+  const hydrateHistory = useCallback((history: RuntimeHistoryMessage[]) => {
+    const restored = history.map(toChatMessage);
+    const currentRun = activeRunRef.current;
+    if (!currentRun) {
+      setMessages(restored.length > 0 ? restored : initialMessages);
+      return;
+    }
+
+    setMessages((current) => {
+      const assistant = current.find(
+        (message) => message.id === currentRun.assistantId,
+      );
+      const currentUser = current.find(
+        (message) => message.id === currentRun.userId,
+      );
+      const restoredHasUser = restored.some(
+        (message) =>
+          message.role === "user" && message.text === currentRun.prompt,
+      );
+      const pendingUser =
+        currentUser ?? {
+          id: currentRun.userId,
+          role: "user" as const,
+          text: currentRun.prompt,
+          status: "complete" as const,
+        };
+      const pendingAssistant: ChatMessage = {
+        id: currentRun.assistantId,
+        role: "assistant",
+        text: assistant?.text ?? "",
+        status: "streaming",
+        prompt: currentRun.prompt,
+      };
+      return [
+        ...restored,
+        ...(currentRun.isRetry && restoredHasUser
+          ? []
+          : [pendingUser]),
+        assistant ? { ...pendingAssistant, ...assistant } : pendingAssistant,
+      ];
+    });
+  }, []);
+
   const startRun = useCallback(
     async (prompt: string, assistantId?: string): Promise<void> => {
       const trimmed = prompt.trim();
       if (!trimmed || activeRunRef.current) return;
 
-      const userId = makeId("user");
+      const retryAssistantIndex = assistantId
+        ? messages.findIndex((message) => message.id === assistantId)
+        : -1;
+      const retryUserId =
+        retryAssistantIndex >= 0
+          ? [...messages]
+              .slice(0, retryAssistantIndex)
+              .reverse()
+              .find(
+                (message) =>
+                  message.role === "user" && message.text === trimmed,
+              )?.id
+          : undefined;
+      const userId = retryUserId ?? makeId("user");
       const responseId = assistantId ?? makeId("assistant");
       if (assistantId) {
         updateAssistant(responseId, (assistant) => ({
@@ -133,8 +206,10 @@ function App() {
 
       const run: ActiveRun = {
         requestId: makeId("request"),
+        userId,
         assistantId: responseId,
         prompt: trimmed,
+        isRetry: Boolean(assistantId),
         cancelRequested: false,
       };
       setCurrentRun(run);
@@ -147,7 +222,7 @@ function App() {
         setNativeError(normalized);
       }
     },
-    [failRun, setCurrentRun, updateAssistant],
+    [failRun, messages, setCurrentRun, updateAssistant],
   );
 
   useEffect(() => {
@@ -180,11 +255,22 @@ function App() {
       });
     void nativeClient
       .onRuntimeEvent((event: RuntimeEvent) => {
+        if (event.type === "history_restored") {
+          if (historyHydratedRef.current) return;
+          historyHydratedRef.current = true;
+          hydrateHistory(event.messages);
+          return;
+        }
         if (event.type === "ready") {
           setRuntimeReady(true);
           return;
         }
+        if (event.type === "session_warning") {
+          setNativeError(runtimeError(event.message));
+          return;
+        }
         if (event.type === "runtime_unavailable") {
+          historyHydratedRef.current = false;
           setRuntimeReady(false);
           const current = activeRunRef.current;
           if (current) failRun(current, event.message);
@@ -238,7 +324,7 @@ function App() {
       errorUnlisten?.();
       runtimeUnlisten?.();
     };
-  }, [failRun, setCurrentRun, updateAssistant]);
+  }, [failRun, hydrateHistory, setCurrentRun, updateAssistant]);
 
   useEffect(() => {
     if (agentState.visibility === "visible") {

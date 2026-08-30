@@ -29,6 +29,39 @@ export interface WindowContext {
   workArea: Rect;
 }
 
+export interface AsideFlow {
+  id: string;
+  kind: string;
+  label?: string;
+}
+
+export interface AsideTextContextBlock {
+  type: "text";
+  label?: string;
+  text: string;
+}
+
+export interface AsideJsonContextBlock {
+  type: "json";
+  label?: string;
+  data: unknown;
+}
+
+export type AsideContextBlock = AsideTextContextBlock | AsideJsonContextBlock;
+
+export interface AsideTurnContext {
+  flow: AsideFlow;
+  blocks: AsideContextBlock[];
+}
+
+export interface RuntimeHistoryMessage {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+  status: "complete";
+  timestamp: number;
+}
+
 export type RuntimeEvent =
   | { type: "ready"; provider: string; model: string }
   | { type: "run_started"; request_id: string }
@@ -41,4 +74,6 @@ export type RuntimeEvent =
       message: string;
       retryable: boolean;
     }
+  | { type: "session_warning"; request_id?: string; message: string }
+  | { type: "history_restored"; messages: RuntimeHistoryMessage[] }
   | { type: "runtime_unavailable"; message: string };

@@ -1,7 +1,12 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { listen as tauriListen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import type { AgentState, NativeError, RuntimeEvent } from "./contracts";
+import type {
+  AgentState,
+  AsideTurnContext,
+  NativeError,
+  RuntimeEvent,
+} from "./contracts";
 
 const initialPreviewState: AgentState = {
   visibility: "visible",
@@ -126,13 +131,22 @@ export const nativeClient = {
     if (isDesktopRuntime()) await getCurrentWindow().startDragging();
   },
 
-  runtimePrompt: async (requestId: string, text: string): Promise<void> => {
+  runtimePrompt: async (
+    requestId: string,
+    text: string,
+    context?: AsideTurnContext,
+  ): Promise<void> => {
     if (isDesktopRuntime()) {
-      await command<void>("runtime_prompt", { requestId, text });
+      await command<void>("runtime_prompt", {
+        requestId,
+        text,
+        ...(context === undefined ? {} : { context }),
+      });
       return;
     }
 
     previewRuntimeRequest = requestId;
+    emitPreviewRuntime({ type: "history_restored", messages: [] });
     emitPreviewRuntime({ type: "run_started", request_id: requestId });
     const response =
       "Preview mode is ready. Start the desktop app with a configured provider to use a live Pi conversation.";

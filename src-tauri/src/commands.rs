@@ -4,7 +4,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State, WebviewWindow};
 
 use crate::platform::{self, Rect, TargetWindow};
-use crate::runtime::{RuntimeManager, RuntimeRequest};
+use crate::runtime::{AsideTurnContext, RuntimeManager, RuntimeRequest};
 use crate::workspace::{self, WorkspaceSnapshot};
 
 pub const AGENT_STATE_EVENT: &str = "agent://state-changed";
@@ -511,6 +511,7 @@ pub fn runtime_prompt(
     state: State<'_, AppState>,
     request_id: String,
     text: String,
+    context: Option<AsideTurnContext>,
 ) -> Result<(), NativeError> {
     if request_id.is_empty()
         || request_id.len() > 128
@@ -525,7 +526,14 @@ pub fn runtime_prompt(
     }
     state
         .runtime
-        .send(&app, RuntimeRequest::Prompt { request_id, text })
+        .send(
+            &app,
+            RuntimeRequest::Prompt {
+                request_id,
+                text,
+                context,
+            },
+        )
         .map_err(|message| native_error("conversation", message, true))
 }
 
