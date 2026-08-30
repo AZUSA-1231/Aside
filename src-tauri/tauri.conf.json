@@ -23,7 +23,10 @@
         "decorations": false,
         "transparent": true,
         "resizable": true,
-        "shadow": true
+        "shadow": true,
+        "windowEffects": {
+          "effects": ["acrylic"]
+        }
       }
     ],
     "security": {

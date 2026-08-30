@@ -5,7 +5,7 @@ import type { AgentState, NativeError, RuntimeEvent } from "./contracts";
 
 const initialPreviewState: AgentState = {
   visibility: "visible",
-  surface: "floating",
+  surface: "side",
   pinned: false,
 };
 
@@ -107,7 +107,7 @@ export const nativeClient = {
 
   exitWorkspace: async (): Promise<AgentState> => {
     if (!isDesktopRuntime()) {
-      return previewCommand((state) => ({ ...state, surface: "floating" }));
+      return previewCommand((state) => ({ ...state, surface: "side" }));
     }
     return command<AgentState>("exit_workspace");
   },

@@ -52,7 +52,7 @@ const initialMessages: ChatMessage[] = [
 
 const initialAgentState: AgentState = {
   visibility: isDesktopRuntime() ? "hidden" : "visible",
-  surface: "floating",
+  surface: "side",
   pinned: false,
 };
 
@@ -292,11 +292,11 @@ function App() {
     });
   }, [setCurrentRun]);
 
-  const modeLabel = agentState.surface === "workspace" ? "Workspace" : "Floating";
-  const shortcutLabel = isDesktopRuntime() ? "Ctrl + Space" : "Desktop app shortcut";
+  const modeLabel = agentState.surface === "workspace" ? "Workspace" : "Side";
+  const shortcutLabel = isDesktopRuntime() ? "Ctrl + Alt + A" : "Desktop app shortcut";
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell ${agentState.surface}-surface`}>
       <header
         className="app-header"
         data-tauri-drag-region

@@ -13,8 +13,8 @@ pub fn run() {
         .manage(AppState::default())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_shortcut("CommandOrControl+Space")
-                .expect("invalid Ctrl + Space shortcut")
+                .with_shortcut("CommandOrControl+Alt+A")
+                .expect("invalid Ctrl + Alt + A shortcut")
                 .with_handler(|app, _shortcut, event| {
                     if event.state != ShortcutState::Pressed {
                         return;
@@ -24,7 +24,7 @@ pub fn run() {
                     if let Err(error) = app.run_on_main_thread(move || {
                         commands::toggle_agent_from_shortcut(&app_handle);
                     }) {
-                        eprintln!("Aside could not dispatch Ctrl + Space: {error}");
+                        eprintln!("Aside could not dispatch Ctrl + Alt + A: {error}");
                     }
                 })
                 .build(),

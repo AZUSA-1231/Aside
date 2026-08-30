@@ -22,7 +22,7 @@ pub enum Visibility {
 #[serde(rename_all = "lowercase")]
 pub enum Surface {
     #[default]
-    Floating,
+    Side,
     Workspace,
 }
 
@@ -147,6 +147,54 @@ fn set_agent_bounds(window: &WebviewWindow, bounds: Rect) -> Result<(), NativeEr
     Ok(())
 }
 
+#[cfg(target_os = "windows")]
+fn agent_native_handle(window: &WebviewWindow) -> Result<isize, NativeError> {
+    window
+        .hwnd()
+        .map(|handle| handle.0 as isize)
+        .map_err(|_| native_error("window", "The Aside panel handle is unavailable.", true))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn agent_native_handle(_: &WebviewWindow) -> Result<isize, NativeError> {
+    Err(native_error(
+        "window",
+        "Native window placement is only available on Windows.",
+        true,
+    ))
+}
+
+fn set_agent_native_bounds(window: &WebviewWindow, bounds: Rect) -> Result<(), NativeError> {
+    #[cfg(target_os = "windows")]
+    {
+        let handle = agent_native_handle(window)?;
+        return platform::set_window_rect(handle, bounds)
+            .map_err(|error| native_error("window_bounds", error.to_string(), true));
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        set_agent_bounds(window, bounds)
+    }
+}
+
+fn set_side_bounds(window: &WebviewWindow, work_area: Rect) -> Result<(), NativeError> {
+    let side_bounds = workspace::side_layout(work_area).agent;
+    match set_agent_native_bounds(window, side_bounds) {
+        Ok(()) => Ok(()),
+        Err(native_failure) => set_agent_bounds(window, side_bounds).map_err(|fallback_error| {
+            native_error(
+                "side",
+                format!(
+                    "Aside could not occupy the full-height Side rail: {} ({})",
+                    native_failure.message, fallback_error.message
+                ),
+                true,
+            )
+        }),
+    }
+}
+
 fn work_area_from_tauri(window: &WebviewWindow) -> Result<Rect, NativeError> {
     if let Some(work_area) = platform::cursor_work_area() {
         return Ok(work_area);
@@ -204,16 +252,23 @@ fn show_agent_locked(app: &AppHandle, state: &AppState) -> Result<AgentState, Na
         .as_ref()
         .map(|target| target.work_area)
         .unwrap_or(work_area_from_tauri(&window)?);
-    let mut surface = Surface::Floating;
+    let mut surface = Surface::Side;
     let mut snapshot = None;
 
     if let Some(target) = foreground.filter(TargetWindow::is_workspace_candidate) {
-        let layout = workspace::workspace_layout(target.work_area);
+        let layout = workspace::side_layout(target.work_area);
         let candidate_snapshot = WorkspaceSnapshot::new(target.clone());
-        let mut workspace_ready = platform::tile_target(&target, layout.target).is_ok();
+        let workspace_result = agent_native_handle(&window).and_then(|agent_handle| {
+            platform::tile_target_with_agent(&target, layout.target, agent_handle, layout.agent)
+                .map_err(|error| native_error("workspace", error.to_string(), true))
+        });
+        let workspace_ready = workspace_result.is_ok();
 
         if workspace_ready {
-            if let Err(error) = set_agent_bounds(&window, layout.agent) {
+            surface = Surface::Workspace;
+            snapshot = Some(candidate_snapshot);
+        } else {
+            if let Err(error) = workspace_result {
                 let _ = platform::restore_target(&target);
                 emit_error(
                     app,
@@ -223,32 +278,11 @@ fn show_agent_locked(app: &AppHandle, state: &AppState) -> Result<AgentState, Na
                         true,
                     ),
                 );
-                workspace_ready = false;
             }
-        } else {
-            emit_error(
-                app,
-                native_error(
-                    "workspace",
-                    "The foreground application could not be resized safely.",
-                    true,
-                ),
-            );
-        }
-
-        if workspace_ready {
-            surface = Surface::Workspace;
-            snapshot = Some(candidate_snapshot);
-        } else if let Err(error) = set_agent_bounds(&window, workspace::floating_layout(work_area))
-        {
-            return Err(native_error(
-                "show_agent",
-                format!("Aside could not open: {}", error.message),
-                true,
-            ));
+            set_side_bounds(&window, work_area)?;
         }
     } else {
-        set_agent_bounds(&window, workspace::floating_layout(work_area))?;
+        set_side_bounds(&window, work_area)?;
     }
 
     let pinned = lock_native(state)?.pinned;
@@ -303,14 +337,18 @@ pub(crate) fn hide_agent_locked(
         }
         let mut native = lock_native(state)?;
         native.workspace = None;
-        native.surface = Surface::Floating;
+        native.surface = Surface::Side;
     }
 
     let window = agent_window(app)?;
     window
         .hide()
         .map_err(|_| native_error("hide_agent", "Aside could not be hidden.", true))?;
-    lock_native(state)?.visibility = Visibility::Hidden;
+    {
+        let mut native = lock_native(state)?;
+        native.visibility = Visibility::Hidden;
+        native.surface = Surface::Side;
+    }
     emit_state(app, state)
 }
 
@@ -397,6 +435,7 @@ pub fn exit_workspace_mode(
 ) -> Result<AgentState, NativeError> {
     let _operation = lock_operation(&state)?;
     let snapshot = lock_native(&state)?.workspace.clone();
+    let side_work_area = snapshot.as_ref().map(|snapshot| snapshot.target.work_area);
     if let Some(snapshot) = snapshot {
         if let Err(error) = platform::restore_target(&snapshot.target) {
             emit_error(
@@ -408,12 +447,13 @@ pub fn exit_workspace_mode(
     }
     if matches!(lock_native(&state)?.visibility, Visibility::Visible) {
         let window = agent_window(&app)?;
-        set_agent_bounds(
-            &window,
-            workspace::floating_layout(work_area_from_tauri(&window)?),
-        )?;
+        let work_area = match side_work_area {
+            Some(work_area) => work_area,
+            None => work_area_from_tauri(&window)?,
+        };
+        set_side_bounds(&window, work_area)?;
     }
-    lock_native(&state)?.surface = Surface::Floating;
+    lock_native(&state)?.surface = Surface::Side;
     emit_state(&app, &state)
 }
 

@@ -23,8 +23,9 @@ Aside is not:
 - an application-inspection or surveillance layer.
 
 The product should feel present in the user's workspace without taking over
-the workspace. The default surface is an independent agent window. More
-powerful desktop behavior must remain optional, explicit, and explainable.
+the workspace. The visible surface is an independent right-hand Side rail, with
+a temporary Workspace arrangement available for eligible maximized windows.
+More powerful desktop behavior must remain optional, explicit, and explainable.
 
 ## 2. Architectural Principles
 
@@ -147,13 +148,12 @@ The core state has independent dimensions:
 
 ```text
 visibility: hidden | visible
-surface:    floating | workspace
+surface:    side | workspace
 pinned:     boolean
 ```
 
-This produces the user-facing modes `HIDDEN`, `FLOATING`, `WORKSPACE`, and
-`PINNED`. Pin is a property of a visible surface, not a replacement for
-Floating or Workspace.
+This produces the user-facing modes `HIDDEN`, `SIDE`, and `WORKSPACE`. Pin is a
+property of a visible surface, not a replacement for Side or Workspace.
 
 ### Command contract
 
@@ -201,9 +201,9 @@ the frontend and must be able to handle skipped or repeated events.
 
 The agent window is a normal Tauri window with product-oriented behavior:
 
-- frameless and visually rounded;
+- frameless and using the Windows-native corner treatment;
 - positionable near the right edge of the active display;
-- movable and resizable;
+- full-height when visible in Side or Workspace mode;
 - focusable on summon;
 - optionally always-on-top;
 - hidden without terminating the background application.
@@ -219,8 +219,14 @@ must follow these rules:
 5. Place the target on the left and Aside on the right.
 6. Restore only the captured target, never whichever window happens to be
    foreground later.
-7. Fall back to Floating Mode when the target is unsupported or cannot be
-   safely changed.
+7. Fall back to Side when the target is unsupported or cannot be safely
+   changed.
+
+Side is the full-height right rail used whenever Aside is visible without an
+active Workspace snapshot. It uses the foreground target's monitor work area
+when a target is available, or the cursor display work area for the desktop.
+An ordinary foreground window is left unchanged; Aside does not resize or
+replace it. Side and Workspace use the same rail geometry.
 
 There is one active workspace snapshot per session. Clear it only after a
 successful restore or an explicit unrecoverable failure decision. Recovery

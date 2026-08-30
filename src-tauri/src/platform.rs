@@ -66,6 +66,7 @@ impl fmt::Display for PlatformError {
 mod windows {
     use super::{PlatformError, Rect, TargetWindow};
     use std::collections::hash_map::DefaultHasher;
+    use std::ffi::c_void;
     use std::hash::{Hash, Hasher};
     use std::mem::size_of;
 
@@ -75,6 +76,8 @@ mod windows {
     const MONITOR_DEFAULTTONEAREST: u32 = 2;
     const SW_RESTORE: i32 = 9;
     const SW_MAXIMIZE: i32 = 3;
+    const DWMWA_EXTENDED_FRAME_BOUNDS: u32 = 9;
+    const SWP_ASYNCWINDOWPOS: u32 = 0x4000;
     const SWP_NOACTIVATE: u32 = 0x0010;
     const SWP_NOZORDER: u32 = 0x0004;
 
@@ -114,6 +117,18 @@ mod windows {
         fn IsZoomed(hwnd: Hwnd) -> i32;
         fn MonitorFromPoint(point: Point, flags: u32) -> Hmonitor;
         fn MonitorFromWindow(hwnd: Hwnd, flags: u32) -> Hmonitor;
+        fn BeginDeferWindowPos(number_of_windows: i32) -> isize;
+        fn DeferWindowPos(
+            defer_handle: isize,
+            hwnd: Hwnd,
+            insert_after: Hwnd,
+            x: i32,
+            y: i32,
+            width: i32,
+            height: i32,
+            flags: u32,
+        ) -> isize;
+        fn EndDeferWindowPos(defer_handle: isize) -> i32;
         fn SetWindowPos(
             hwnd: Hwnd,
             insert_after: Hwnd,
@@ -124,6 +139,16 @@ mod windows {
             flags: u32,
         ) -> i32;
         fn ShowWindow(hwnd: Hwnd, command: i32) -> i32;
+    }
+
+    #[link(name = "dwmapi")]
+    extern "system" {
+        fn DwmGetWindowAttribute(
+            hwnd: Hwnd,
+            attribute: u32,
+            value: *mut c_void,
+            value_size: u32,
+        ) -> i32;
     }
 
     #[link(name = "kernel32")]
@@ -262,8 +287,67 @@ mod windows {
         Ok(())
     }
 
+    fn extended_frame_bounds(hwnd: Hwnd) -> Option<Rect> {
+        let mut native_bounds = NativeRect {
+            left: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+        };
+        let result = unsafe {
+            DwmGetWindowAttribute(
+                hwnd,
+                DWMWA_EXTENDED_FRAME_BOUNDS,
+                (&mut native_bounds as *mut NativeRect).cast::<c_void>(),
+                size_of::<NativeRect>() as u32,
+            )
+        };
+        if result != 0 {
+            return None;
+        }
+        rect_from_native(native_bounds)
+    }
+
+    fn visible_to_outer_rect(outer: Rect, visible: Rect, frame: Rect) -> Option<Rect> {
+        let left_inset = i64::from(frame.x) - i64::from(outer.x);
+        let top_inset = i64::from(frame.y) - i64::from(outer.y);
+        let right_inset = i64::from(outer.right()) - i64::from(frame.right());
+        let bottom_inset = i64::from(outer.bottom()) - i64::from(frame.bottom());
+        let x = i64::from(visible.x) - left_inset;
+        let y = i64::from(visible.y) - top_inset;
+        let width = i64::from(visible.width) + left_inset + right_inset;
+        let height = i64::from(visible.height) + top_inset + bottom_inset;
+
+        Some(Rect::new(
+            i32::try_from(x).ok()?,
+            i32::try_from(y).ok()?,
+            i32::try_from(width).ok()?,
+            i32::try_from(height).ok()?,
+        ))
+        .filter(|rect| rect.width > 0 && rect.height > 0)
+    }
+
+    fn outer_rect_for_visible_rect(hwnd: Hwnd, visible: Rect) -> Rect {
+        let mut native_bounds = NativeRect {
+            left: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+        };
+        if unsafe { GetWindowRect(hwnd, &mut native_bounds) } == 0 {
+            return visible;
+        }
+        let Some(outer) = rect_from_native(native_bounds) else {
+            return visible;
+        };
+        let Some(frame) = extended_frame_bounds(hwnd) else {
+            return visible;
+        };
+        visible_to_outer_rect(outer, visible, frame).unwrap_or(visible)
+    }
+
     fn set_rect(hwnd: Hwnd, rect: Rect) -> Result<(), PlatformError> {
-        if rect.width <= 0 || rect.height <= 0 {
+        if hwnd == 0 || rect.width <= 0 || rect.height <= 0 {
             return Err(PlatformError(
                 "The requested window bounds are invalid.".into(),
             ));
@@ -276,7 +360,7 @@ mod windows {
                 rect.y,
                 rect.width,
                 rect.height,
-                SWP_NOACTIVATE | SWP_NOZORDER,
+                SWP_ASYNCWINDOWPOS | SWP_NOACTIVATE | SWP_NOZORDER,
             )
         };
         if result == 0 {
@@ -287,12 +371,73 @@ mod windows {
         Ok(())
     }
 
-    pub fn tile_target(target: &TargetWindow, bounds: Rect) -> Result<(), PlatformError> {
+    fn set_rects(rects: &[(Hwnd, Rect)]) -> Result<(), PlatformError> {
+        if rects.is_empty() {
+            return Ok(());
+        }
+        if rects
+            .iter()
+            .any(|(hwnd, rect)| *hwnd == 0 || rect.width <= 0 || rect.height <= 0)
+        {
+            return Err(PlatformError(
+                "The requested window bounds are invalid.".into(),
+            ));
+        }
+
+        let defer_handle = unsafe { BeginDeferWindowPos(rects.len() as i32) };
+        if defer_handle != 0 {
+            let mut current = defer_handle;
+            for (hwnd, rect) in rects {
+                let next = unsafe {
+                    DeferWindowPos(
+                        current,
+                        *hwnd,
+                        0,
+                        rect.x,
+                        rect.y,
+                        rect.width,
+                        rect.height,
+                        SWP_ASYNCWINDOWPOS | SWP_NOACTIVATE | SWP_NOZORDER,
+                    )
+                };
+                if next == 0 {
+                    current = 0;
+                    break;
+                }
+                current = next;
+            }
+            if current != 0 && unsafe { EndDeferWindowPos(current) } != 0 {
+                return Ok(());
+            }
+        }
+
+        for (hwnd, rect) in rects {
+            set_rect(*hwnd, *rect)?;
+        }
+        Ok(())
+    }
+
+    pub fn set_window_rect(hwnd: isize, bounds: Rect) -> Result<(), PlatformError> {
+        set_rect(hwnd, bounds)
+    }
+
+    pub fn tile_target_with_agent(
+        target: &TargetWindow,
+        visible_target_bounds: Rect,
+        agent_handle: isize,
+        agent_bounds: Rect,
+    ) -> Result<(), PlatformError> {
         ensure_target(target)?;
+        if agent_handle == 0 {
+            return Err(PlatformError(
+                "The Aside panel handle is unavailable.".into(),
+            ));
+        }
         unsafe {
             ShowWindow(target.handle, SW_RESTORE);
         }
-        set_rect(target.handle, bounds)
+        let target_bounds = outer_rect_for_visible_rect(target.handle, visible_target_bounds);
+        set_rects(&[(target.handle, target_bounds), (agent_handle, agent_bounds)])
     }
 
     pub fn restore_target(target: &TargetWindow) -> Result<(), PlatformError> {
@@ -311,7 +456,9 @@ mod windows {
 }
 
 #[cfg(target_os = "windows")]
-pub use windows::{cursor_work_area, foreground_target, restore_target, tile_target};
+pub use windows::{
+    cursor_work_area, foreground_target, restore_target, set_window_rect, tile_target_with_agent,
+};
 
 #[cfg(not(target_os = "windows"))]
 mod unsupported {
@@ -325,7 +472,18 @@ mod unsupported {
         None
     }
 
-    pub fn tile_target(_: &TargetWindow, _: Rect) -> Result<(), PlatformError> {
+    pub fn set_window_rect(_: isize, _: Rect) -> Result<(), PlatformError> {
+        Err(PlatformError(
+            "Native window placement is only available on Windows.".into(),
+        ))
+    }
+
+    pub fn tile_target_with_agent(
+        _: &TargetWindow,
+        _: Rect,
+        _: isize,
+        _: Rect,
+    ) -> Result<(), PlatformError> {
         Err(PlatformError(
             "Workspace Mode is only available on Windows.".into(),
         ))
@@ -339,4 +497,6 @@ mod unsupported {
 }
 
 #[cfg(not(target_os = "windows"))]
-pub use unsupported::{cursor_work_area, foreground_target, restore_target, tile_target};
+pub use unsupported::{
+    cursor_work_area, foreground_target, restore_target, set_window_rect, tile_target_with_agent,
+};

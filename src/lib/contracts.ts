@@ -1,5 +1,5 @@
 export type Visibility = "hidden" | "visible";
-export type Surface = "floating" | "workspace";
+export type Surface = "side" | "workspace";
 
 export interface AgentState {
   visibility: Visibility;
