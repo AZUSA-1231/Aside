@@ -1,7 +1,7 @@
 # Aside Architecture
 
 Status: living document  
-Last reviewed: 2026-08-29  
+Last reviewed: 2026-08-30
 Platform: Windows  
 Repository policy: Cycle 1 MVP development stays on `main`
 
@@ -11,61 +11,79 @@ relevant product requirements document.
 
 ## 1. Product Identity
 
-Aside is a persistent desktop agent for everyday tasks. It is a lightweight
-companion that can be summoned at any time, help with short conversations and
-small actions, and remain pleasant to keep nearby.
+Aside is a persistent contextual sidecar for the applications where the user
+already works. It is a lightweight companion that can be summoned from the
+current foreground application, capture an explicit and bounded view of that
+work, and provide help or small actions without making the user switch to a
+separate application.
+
+Aside's primary unit of context is the user's current host task, not an
+OS-wide activity profile. Foreground-window inspection is a routing and
+targeting primitive: it lets Aside identify the host application and capture
+the right context before the Aside window takes focus. It does not authorize
+unbounded inspection of the desktop.
 
 Aside is not:
 
-- a Windows Widget or Desktop Shell integration;
-- a coding-focused agent;
-- a full office-assistant suite;
-- an application-inspection or surveillance layer.
+- a separate full-size application that requires the user to leave their host;
+- a coding-only agent, even though it may assist inside an editor;
+- a Windows Widget, Desktop Shell replacement, or general computer-use layer;
+- an OS-wide activity-monitoring or surveillance product.
 
-The product should feel present in the user's workspace without taking over
-the workspace. The visible surface is an independent right-hand Side rail, with
-a temporary Workspace arrangement available for eligible maximized windows.
-More powerful desktop behavior must remain optional, explicit, and explainable.
+The product should feel attached to the user's current work without taking
+over that work. The visible surface is an independent right-hand Side rail,
+with a temporary Workspace arrangement available for eligible maximized
+windows. Host context capture and host actions must be fast, bounded, visible,
+and explainable.
 
 ## 2. Architectural Principles
 
-1. **Presence without occupation**: the agent is easy to find and summon, but
-   does not permanently cover the user's work.
-2. **Small useful moments**: prioritize everyday tasks, suggestions, reminders,
-   and short conversations over a large catalogue of workflows.
-3. **Explicit control**: visibility, Pin mode, workspace resizing, file access,
-   and future automation capabilities require clear user control.
-4. **Local-first privacy**: do not inspect or retain other-application content
-   unless a separately approved feature establishes that need.
-5. **Thin native boundary**: use Tauri APIs first, mature plugins second, and
+1. **Contextual presence**: Aside appears beside the user's current work and
+   does not require a context switch to a separate application.
+2. **One-gesture handoff**: the summon path captures the foreground target
+   before Aside takes focus and stages eligible host context with minimal delay.
+3. **Host adapter over generic inspection**: each supported host exposes only a
+   typed capability set; Aside does not guess application content from pixels.
+4. **Explicit and staged capture**: captured context is visible, removable,
+   bounded, short-lived, and sent to a provider only as part of a user prompt.
+5. **Reversible actions**: model-proposed changes are typed, target-bound,
+   previewable, and confirmed before a host is modified.
+6. **Thin native boundary**: use Tauri APIs first, mature plugins second, and
    the smallest necessary Rust/Windows adapter last.
-6. **Stable application contracts**: React and product features depend on
+7. **Stable application contracts**: React and product features depend on
    Aside-owned types and commands, not raw platform APIs or Pi internals.
-7. **Reuse the agent core**: Pi supplies the agent foundation; Aside supplies
-   the desktop experience, product protocol, and domain tools.
-8. **Quiet by default**: background behavior must be predictable, cheap, and
-   easy to disable.
-9. **Purposeful playfulness**: companion and visual features may create warmth,
-   but must not add focus stealing, surveillance, or unnecessary complexity.
+8. **Reuse the agent core**: Pi supplies the agent foundation; Aside supplies
+   the contextual sidecar experience, product protocol, and host capabilities.
+9. **Local-first privacy**: host content is not inspected or retained unless
+   an approved adapter and an explicit product action establish that need.
+10. **Quiet background behavior**: optional usage insights are aggregated,
+    local, cheap, easy to pause, and outside the prompt tool loop.
 
 ## 3. System Shape
 
 ```text
-React UI
-  | typed Tauri invoke/listen calls
+User's current host application
+  | browser/VSCode companion or native host integration, when available
   v
 Tauri application layer
-  | window orchestration, commands, lifecycle
-  +--> official global-shortcut plugin
-  +--> Tauri window and monitor APIs
-  +--> minimal Windows foreground-window adapter
+  | typed focus, capture, action, and window commands
+  +--> Focus and host router
+  +--> Host integration adapters
+  +--> Side/Workspace window orchestration
+  +--> Optional local Insight subsystem
   v
 Aside application protocol
   v
 agent-runtime workspace
-  | Pi adapter, sessions, streaming, tools
+  | Aside context projection, Pi adapter, sessions, streaming, tools
   v
 pi-agent-core + pi-ai
+
+React UI
+  | typed Tauri invoke/listen calls
+  +--> current host and one-shot capture results
+  +--> staged context and action previews
+  +--> conversation surface
 ```
 
 ### Frontend
@@ -74,11 +92,15 @@ React and TypeScript own presentation and interaction:
 
 - layout, visual states, animation, and input;
 - chat rendering and runtime event presentation;
+- current host identity, capture results, context chips, and action previews;
+- explicit removal, confirmation, cancellation, and recovery interactions;
 - local UI state and user feedback;
 - calls to stable Tauri commands and event listeners.
 
-The frontend must not import Windows APIs, native handles, or Pi agent
-classes. It should remain testable with mocked command and event interfaces.
+The frontend must not identify windows itself or import Windows APIs, native
+handles, host SDKs, or Pi agent classes. It renders the host and capability
+state received from Tauri and remains testable with mocked command and event
+interfaces.
 
 ### Tauri application layer
 
@@ -89,10 +111,16 @@ The Rust application layer owns desktop orchestration:
 - always-on-top state;
 - foreground-window and monitor queries;
 - workspace snapshot capture, resizing, restoration, and errors;
+- the pre-focus target snapshot and host application classification;
+- routing capture and action requests to the matching host adapter;
+- permission, target identity, timeout, and stale-target checks at the native
+  boundary;
 - translation between native failures and typed application errors.
 
 Tauri commands are orchestration entry points, not a place to put all native
-logic. Keep policy and platform operations in their respective modules.
+logic. Keep host policy, capture policy, action policy, and platform operations
+in their respective modules. Tauri does not construct Pi messages or provider
+requests.
 
 ### Windows platform adapter
 
@@ -105,7 +133,30 @@ the minimum data needed by the product:
 - safe position and size operations.
 
 Raw `HWND` values and Windows-specific structs must not cross the Tauri IPC
-boundary. Return sanitized, serializable application data instead.
+The adapter may also provide native primitives required by an approved host
+integration, but those primitives remain behind a host-specific interface.
+Raw `HWND` values, process handles, and Windows-specific structs must not cross
+the Tauri IPC or runtime boundaries. Return sanitized, serializable
+application data or an opaque target capability instead.
+
+### Host application adapters
+
+A host adapter translates one application family into a stable Aside-owned
+contract. It owns:
+
+- matching a captured foreground target to the correct host instance;
+- declaring capabilities such as identify, capture, or action;
+- obtaining bounded context through the host's supported integration;
+- returning source, timestamp, expiry, sensitivity, and capability metadata;
+- preparing and applying typed actions against the captured target.
+
+Browser and VSCode content integrations may require an installed companion
+extension. Explorer and PDF integrations may use native or reader-specific
+interfaces. The transport is an implementation detail; all adapters expose
+the same typed capture and action boundary. An unsupported host reports its
+capabilities honestly and falls back to ordinary conversation. Aside never
+uses screen scraping, OCR, or generic accessibility traversal as an automatic
+adapter fallback.
 
 ### Agent Runtime
 
@@ -140,6 +191,23 @@ provider, or session implementation.
 Aside does not build a second general-purpose harness. If Pi's core changes,
 the adapter absorbs the change where practical.
 
+For host-assisted work, `agent-runtime` receives an Aside-owned captured
+context envelope and projects it into Pi's provider context. It does not poll
+Windows, inspect the foreground window, or call host SDKs directly. Host action
+requests use Aside-defined typed tools or action messages; the Tauri/native
+boundary remains authoritative for permissions, target identity, and
+execution.
+
+### Background insights
+
+Application inventory, foreground duration, and similar signals are an
+optional background Insight subsystem, separate from contextual assistance.
+They are not Pi tools, are not placed in the default prompt context, and do
+not run on the summon-to-response critical path. If enabled, the subsystem
+stores only documented local aggregates with an explicit pause, deletion, and
+retention policy. Raw window-switch or input-event streams must not be passed
+to the agent as a shortcut for understanding the user.
+
 ### Domain tools and data
 
 Domain modules own everyday-task capabilities such as reminders, schedules,
@@ -153,6 +221,10 @@ notes, and explicitly approved file actions. They are responsible for:
 
 UI buttons and agent tools must call the same domain operations so they cannot
 create divergent business rules or data models.
+
+Host actions follow the same rule. A model may request a typed action proposal,
+but only the host adapter can validate and apply it. The UI and the agent must
+share the same preview, confirmation, cancellation, and failure semantics.
 
 ## 4. State and IPC Rules
 
@@ -192,6 +264,11 @@ get_active_window_state()
 enter_workspace_mode()
 exit_workspace_mode()
 get_workspace_state()
+get_active_host()
+capture_active_host_context()
+prepare_host_action()
+confirm_host_action()
+cancel_host_action()
 ```
 
 Names may change as implementation begins, but each command needs a documented
@@ -207,6 +284,11 @@ agent://pin-changed
 workspace://entered
 workspace://exited
 workspace://restore-failed
+host://detected
+host://context-staged
+host://capture-failed
+host://action-preview
+host://action-completed
 runtime://event
 ```
 
@@ -249,6 +331,24 @@ successful restore or an explicit unrecoverable failure decision. Recovery
 behavior must be considered for normal hide, application exit, target closure,
 display changes, and interrupted process shutdown.
 
+### Contextual sidecar rules
+
+The foreground target is captured before Aside receives focus. The target
+snapshot binds host capture and later actions to the window the user actually
+invoked Aside from; a later foreground window must not silently replace it.
+
+Host identity and capability status may be detected automatically. Host content
+is staged only through an approved adapter and the summon/capture interaction.
+The panel opens immediately around a one-shot adapter call. A captured block is
+visible to the user, can be removed before submission, has a bounded lifetime,
+and is not written to the durable conversation by default.
+
+An action must carry an opaque target capability issued by the native layer.
+The model cannot invent a path, handle, process id, or target identity. Before
+execution, the adapter revalidates the target and returns a preview when the
+operation changes host state. Closed, changed, or ambiguous targets fail safe
+and leave the host untouched.
+
 ## 6. Windows Capability Boundary
 
 Allowed for the core product:
@@ -256,22 +356,30 @@ Allowed for the core product:
 - Tauri window and monitor APIs;
 - the official Tauri global-shortcut plugin;
 - native always-on-top, focus, position, and size operations;
-- minimal foreground-window and maximized-state inspection;
-- explicit, narrowly scoped local file access for an enabled domain tool.
+- minimal foreground-window, process identity, and maximized-state inspection;
+- explicitly invoked, bounded context capture through an approved host adapter;
+- typed, target-bound host actions with preview and confirmation where needed;
+- explicit, narrowly scoped local file access for an enabled domain or host
+  adapter;
+- optional local aggregate insights with a separate setting and retention
+  policy.
 
 Prohibited by default:
 
-- reading the contents of another application;
+- invisible or continuous capture of another application's content;
 - keyboard or mouse logging;
-- screen capture, OCR, or screen understanding;
-- Accessibility tree traversal;
-- browser/editor injection;
+- generic screen capture, OCR, or screen understanding;
+- generic Accessibility tree traversal as a content adapter;
+- browser cookies, credentials, passwords, or form contents;
+- arbitrary browser/editor injection or unreviewed code execution;
 - Desktop Shell or Explorer replacement;
-- arbitrary process control or shell command execution.
+- arbitrary process control or shell command execution;
+- raw foreground, input, or window-switch event streams in the agent context.
 
 Any feature that expands this boundary requires a scope review, a privacy
-review, and an explicit architecture update. The React layer never gains
-direct access to the expanded capability.
+review, an explicit architecture update, and a host-specific capability
+decision. The React layer and the Pi runtime never gain direct access to the
+expanded capability.
 
 ## 7. Security and Privacy Rules
 
@@ -280,12 +388,18 @@ direct access to the expanded capability.
 - Provider credentials are separate from product identity and must not enter
   source control, frontend state, or logs.
 - Tauri capabilities must be no broader than enabled features require.
-- Tool arguments are untrusted input and are validated at the tool boundary.
-- File, schedule, window, or external actions require clear confirmation when
-  they are destructive, ambiguous, or difficult to reverse.
+- Host context and tool arguments are untrusted input and are validated at
+  their respective adapter boundaries.
+- A context attachment must identify its source, capture time, expiry, and
+  sensitivity before it can be projected to a provider.
+- Host changes require a clear preview and confirmation when they are
+  destructive, ambiguous, or difficult to reverse.
+- Captured host content is ephemeral by default and must not enter session
+  history or background insights without a separate product decision.
 - Diagnostics must redact prompts, provider output, secrets, and sensitive
   local paths.
-- Background behavior needs an explicit settings surface and exit path.
+- Background insight behavior needs an explicit settings surface, pause action,
+  deletion path, and retention policy.
 - New sync, telemetry, or remote-tool behavior requires a documented data-flow
   decision before implementation.
 
@@ -295,12 +409,14 @@ direct access to the expanded capability.
 2. Add a dependency only for a concrete capability or meaningful reduction in
    complexity.
 3. Keep Windows-only crates behind `src-tauri` platform modules.
-4. Keep Pi dependencies inside `agent-runtime`.
-5. Avoid introducing a global event bus or state-management abstraction until a
+4. Keep host adapters behind the Tauri/native or approved companion-integration
+   boundary; do not call Windows APIs from React or `agent-runtime`.
+5. Keep Pi dependencies inside `agent-runtime`.
+6. Avoid introducing a global event bus or state-management abstraction until a
    real cross-feature need exists.
-6. Use stable ownership boundaries instead of creating empty folders or
+7. Use stable ownership boundaries instead of creating empty folders or
    speculative interfaces.
-7. Keep comments short and explain only non-obvious decisions.
+8. Keep comments short and explain only non-obvious decisions.
 
 The intended shape is:
 
@@ -328,10 +444,11 @@ aside/
   agent-runtime/
   src-tauri/
     src/
-      commands/
-      window/
-      workspace/
-      platform/
+      commands.rs
+      context.rs       # one-shot capture boundary
+      platform.rs
+      runtime.rs
+      workspace.rs
 ```
 
 ## 9. Repository Workflow
@@ -350,11 +467,14 @@ Aside may grow into a richer companion or a focused desktop utility, but every
 new capability must preserve the product identity:
 
 1. State the recurring user problem.
-2. Define the smallest required OS and data access.
-3. Keep the feature behind a typed product boundary.
-4. Define permission, confirmation, disable, and failure behavior.
-5. Update the architecture and the cycle-specific PRD before implementation.
+2. Define whether it is host context, a host action, or a background insight.
+3. Define the smallest required host and OS access, with a capability matrix.
+4. Keep the feature behind a typed product boundary and target identity.
+5. Define capture consent, action confirmation, expiry, retention, disable, and
+   failure behavior.
+6. Update the architecture and the cycle-specific PRD before implementation.
 
 Features that require broad inspection, surveillance, Shell integration, or
 arbitrary computer control are separate product decisions, not routine
-extensions of this architecture.
+extensions of this architecture. The Cycle 4 contextual sidecar boundary is
+specified in [its PRD](./cycle-4-contextual-sidecar/PRD.md).

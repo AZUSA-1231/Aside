@@ -1,4 +1,5 @@
 export const MAX_CONTEXT_BLOCKS = 8;
+export const MAX_CONTEXT_ATTACHMENTS = 8;
 export const MAX_CONTEXT_TEXT_BYTES = 8 * 1024;
 export const MAX_CONTEXT_JSON_BYTES = 16 * 1024;
 export const MAX_CONTEXT_TOTAL_BYTES = 24 * 1024;
@@ -7,6 +8,9 @@ export const MAX_FLOW_ID_LENGTH = 128;
 export const MAX_FLOW_KIND_LENGTH = 48;
 export const MAX_FLOW_LABEL_LENGTH = 160;
 export const MAX_BLOCK_LABEL_LENGTH = 160;
+export const MAX_ATTACHMENT_SOURCE_LENGTH = 160;
+export const MAX_ATTACHMENT_SUMMARY_LENGTH = 240;
+export const MAX_ATTACHMENT_ID_LENGTH = 128;
 
 export const ASIDE_CONTEXT_MESSAGE_ROLE = "aside_context";
 export const ASIDE_CONTEXT_START = "[Aside reference context]";
@@ -15,6 +19,13 @@ export const ASIDE_CONTEXT_END = "[/Aside reference context]";
 const textEncoder = new TextEncoder();
 const identifierPattern = /^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/;
 const kindPattern = /^[a-z][a-z0-9_-]*$/;
+const hostKinds = new Set(["browser", "explorer", "vscode", "pdf_reader"]);
+const sensitivityKinds = new Set([
+  "public",
+  "local_metadata",
+  "local_content",
+  "restricted",
+]);
 
 export class ContextValidationError extends Error {
   constructor(message) {
@@ -176,26 +187,121 @@ function validateBlock(block, index) {
   invalid(`${field}.type`);
 }
 
-function serializeProjection(flow, blocks) {
+function validateTimestamp(value, field) {
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value < 0
+  ) {
+    invalid(field);
+  }
+  return value;
+}
+
+function validateAttachment(attachment, index, now) {
+  const field = `attachments[${index}]`;
+  assertObject(attachment, field);
+  assertKeys(
+    attachment,
+    new Set([
+      "id",
+      "host",
+      "source",
+      "capturedAt",
+      "expiresAt",
+      "sensitivity",
+      "summary",
+      "blocks",
+    ]),
+    field,
+  );
+  if (
+    typeof attachment.id !== "string" ||
+    attachment.id.length === 0 ||
+    attachment.id.length > MAX_ATTACHMENT_ID_LENGTH ||
+    !identifierPattern.test(attachment.id)
+  ) {
+    invalid(`${field}.id`);
+  }
+  if (typeof attachment.host !== "string" || !hostKinds.has(attachment.host)) {
+    invalid(`${field}.host`);
+  }
+  if (typeof attachment.source !== "string") invalid(`${field}.source`);
+  assertLabel(
+    attachment.source,
+    `${field}.source`,
+    MAX_ATTACHMENT_SOURCE_LENGTH,
+  );
+  if (typeof attachment.summary !== "string") invalid(`${field}.summary`);
+  assertLabel(
+    attachment.summary,
+    `${field}.summary`,
+    MAX_ATTACHMENT_SUMMARY_LENGTH,
+  );
+  const capturedAt = validateTimestamp(attachment.capturedAt, `${field}.capturedAt`);
+  const expiresAt = validateTimestamp(attachment.expiresAt, `${field}.expiresAt`);
+  if (expiresAt <= capturedAt) invalid(`${field}.expiresAt`);
+  if (
+    typeof attachment.sensitivity !== "string" ||
+    !sensitivityKinds.has(attachment.sensitivity)
+  ) {
+    invalid(`${field}.sensitivity`);
+  }
+  if (!Array.isArray(attachment.blocks) || attachment.blocks.length === 0) {
+    invalid(`${field}.blocks`);
+  }
+
+  const blocks = attachment.blocks.map((block, blockIndex) =>
+    validateBlock(block, `${index}.${blockIndex}`),
+  );
+  if (expiresAt <= now) return undefined;
+  return {
+    id: attachment.id,
+    host: attachment.host,
+    source: attachment.source,
+    capturedAt,
+    expiresAt,
+    sensitivity: attachment.sensitivity,
+    summary: attachment.summary,
+    blocks,
+  };
+}
+
+function serializeBlock(block) {
+  return block.type === "text"
+    ? {
+        type: "text",
+        ...(block.label === undefined ? {} : { label: block.label }),
+        text: block.text,
+      }
+    : {
+        type: "json",
+        ...(block.label === undefined ? {} : { label: block.label }),
+        data: block.data,
+      };
+}
+
+function serializeProjection(flow, blocks, attachments) {
   const payload = {
     flow: {
       id: flow.id,
       kind: flow.kind,
       ...(flow.label === undefined ? {} : { label: flow.label }),
     },
-    blocks: blocks.map((block) =>
-      block.type === "text"
-        ? {
-            type: "text",
-            ...(block.label === undefined ? {} : { label: block.label }),
-            text: block.text,
-          }
-        : {
-            type: "json",
-            ...(block.label === undefined ? {} : { label: block.label }),
-            data: block.data,
-          },
-    ),
+    blocks: blocks.map(serializeBlock),
+    ...(attachments.length === 0
+      ? {}
+      : {
+          attachments: attachments.map((attachment) => ({
+            host: attachment.host,
+            source: attachment.source,
+            capturedAt: attachment.capturedAt,
+            expiresAt: attachment.expiresAt,
+            sensitivity: attachment.sensitivity,
+            summary: attachment.summary,
+            blocks: attachment.blocks.map(serializeBlock),
+          })),
+        }),
   };
   const serializedPayload = JSON.stringify(payload);
   const projection = [
@@ -210,21 +316,43 @@ function serializeProjection(flow, blocks) {
   return projection;
 }
 
-export function validateTurnContext(input) {
+export function validateTurnContext(input, now = Date.now()) {
   if (input === undefined) return undefined;
   assertObject(input, "context");
-  assertKeys(input, new Set(["flow", "blocks"]), "context");
+  assertKeys(input, new Set(["flow", "blocks", "attachments"]), "context");
   if (!Array.isArray(input.blocks) || input.blocks.length > MAX_CONTEXT_BLOCKS) {
     invalid("context.blocks");
   }
 
   const flow = validateFlow(input.flow);
   const blocks = input.blocks.map(validateBlock);
+  if (
+    input.attachments !== undefined &&
+    (!Array.isArray(input.attachments) ||
+      input.attachments.length > MAX_CONTEXT_ATTACHMENTS)
+  ) {
+    invalid("context.attachments");
+  }
+  const attachmentIds = new Set();
+  const attachments = (input.attachments ?? [])
+    .map((attachment, index) => {
+      const normalized = validateAttachment(attachment, index, now);
+      if (attachmentIds.has(attachment.id)) {
+        invalid(`context.attachments[${index}].id`);
+      }
+      attachmentIds.add(attachment.id);
+      return normalized;
+    })
+    .filter((attachment) => attachment !== undefined);
+  const totalBlockCount =
+    blocks.length + attachments.reduce((total, attachment) => total + attachment.blocks.length, 0);
+  if (totalBlockCount > MAX_CONTEXT_BLOCKS) invalid("context.blocks");
   const normalized = {
     flow,
     blocks,
+    attachments,
   };
-  normalized.projectionText = serializeProjection(flow, blocks);
+  normalized.projectionText = serializeProjection(flow, blocks, attachments);
   return deepFreeze(normalized);
 }
 
@@ -245,7 +373,13 @@ export function projectAsideContext(messages, context, promptText) {
   const withoutOldProjection = messages.filter(
     (message) => !isInternalContextMessage(message),
   );
-  if (!context || context.blocks.length === 0) return withoutOldProjection;
+  const attachments = context?.attachments ?? [];
+  if (
+    !context ||
+    (context.blocks.length === 0 && attachments.length === 0)
+  ) {
+    return withoutOldProjection;
+  }
 
   let promptIndex = -1;
   for (let index = withoutOldProjection.length - 1; index >= 0; index -= 1) {

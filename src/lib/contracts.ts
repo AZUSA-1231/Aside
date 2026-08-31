@@ -22,6 +22,7 @@ export interface Rect {
 
 export interface WindowContext {
   targetId: string;
+  applicationId?: string;
   monitorId: string;
   bounds: Rect;
   maximized: boolean;
@@ -49,9 +50,79 @@ export interface AsideJsonContextBlock {
 
 export type AsideContextBlock = AsideTextContextBlock | AsideJsonContextBlock;
 
+export type AsideHostKind =
+  | "browser"
+  | "explorer"
+  | "vscode"
+  | "pdf_reader";
+export type AsideHostAvailability =
+  | "available"
+  | "unsupported"
+  | "ambiguous"
+  | "unavailable";
+export type AsideHostCapability =
+  | "identify"
+  | "capture_context"
+  | "browser_url_title"
+  | "explorer_metadata"
+  | "vscode_workspace"
+  | "pdf_document";
+export type AsideContextSensitivity =
+  | "public"
+  | "local_metadata"
+  | "local_content"
+  | "restricted";
+
+export interface AsideHostAttachment {
+  id: string;
+  host: AsideHostKind;
+  source: string;
+  capturedAt: number;
+  expiresAt: number;
+  sensitivity: AsideContextSensitivity;
+  summary: string;
+  blocks: AsideContextBlock[];
+}
+
+export interface HostView {
+  targetId?: string;
+  applicationId?: string;
+  kind: AsideHostKind | "unsupported";
+  availability: AsideHostAvailability;
+  capabilities: AsideHostCapability[];
+}
+
+export type HostCaptureErrorCode =
+  | "no_foreground_target"
+  | "ambiguous_target"
+  | "unsupported_capability"
+  | "permission_denied"
+  | "unavailable"
+  | "timeout"
+  | "cancelled"
+  | "malformed"
+  | "oversized"
+  | "expired"
+  | "stale_target"
+  | "capture_failed";
+
+export interface HostCaptureError {
+  code: HostCaptureErrorCode;
+  message: string;
+  recoverable: boolean;
+}
+
+export interface HostCaptureResult {
+  captureId: string;
+  host: HostView;
+  attachment?: AsideHostAttachment;
+  error?: HostCaptureError;
+}
+
 export interface AsideTurnContext {
   flow: AsideFlow;
   blocks: AsideContextBlock[];
+  attachments?: AsideHostAttachment[];
 }
 
 export interface RuntimeHistoryMessage {

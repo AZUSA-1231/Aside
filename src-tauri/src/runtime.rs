@@ -7,6 +7,8 @@ use std::thread;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
+pub use crate::context::AsideTurnContext;
+
 pub const RUNTIME_EVENT: &str = "runtime://event";
 
 #[derive(Debug, Serialize)]
@@ -21,35 +23,6 @@ pub enum RuntimeRequest {
     Cancel {
         request_id: String,
     },
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct AsideFlow {
-    pub id: String,
-    pub kind: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub label: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum AsideContextBlock {
-    Text {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        label: Option<String>,
-        text: String,
-    },
-    Json {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        label: Option<String>,
-        data: serde_json::Value,
-    },
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct AsideTurnContext {
-    pub flow: AsideFlow,
-    pub blocks: Vec<AsideContextBlock>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

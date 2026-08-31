@@ -12,6 +12,7 @@ import {
   Command,
   LoaderCircle,
   PanelRightClose,
+  Paperclip,
   Pin,
   RotateCcw,
   Send,
@@ -21,10 +22,13 @@ import {
 } from "lucide-react";
 import type {
   AgentState,
+  AsideHostAttachment,
+  HostCaptureResult,
   NativeError,
   RuntimeEvent,
   RuntimeHistoryMessage,
 } from "./lib/contracts";
+import { canAppendHostAttachment, createHostTurnContext } from "./lib/context";
 import { isDesktopRuntime, nativeClient, toNativeError } from "./lib/ipc";
 import "./App.css";
 
@@ -71,6 +75,16 @@ function runtimeError(message: string): NativeError {
   return { operation: "conversation", recoverable: true, message };
 }
 
+function attachmentExpiry(expiresAt: number): string {
+  const remaining = expiresAt - Date.now();
+  if (remaining <= 0) return "Expired";
+  if (remaining < 60_000) return "Expires soon";
+  return `Expires ${new Date(expiresAt).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  })}`;
+}
+
 function toChatMessage(message: RuntimeHistoryMessage): ChatMessage {
   return {
     id: message.id,
@@ -84,10 +98,12 @@ function App() {
   const [agentState, setAgentState] = useState<AgentState>(initialAgentState);
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [draft, setDraft] = useState("");
+  const [attachments, setAttachments] = useState<AsideHostAttachment[]>([]);
   const [nativeError, setNativeError] = useState<NativeError | null>(null);
   const [activeRun, setActiveRun] = useState<ActiveRun | null>(null);
   const [runtimeReady, setRuntimeReady] = useState(false);
   const activeRunRef = useRef<ActiveRun | null>(null);
+  const attachmentsRef = useRef<AsideHostAttachment[]>([]);
   const historyHydratedRef = useRef(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -166,6 +182,7 @@ function App() {
     async (prompt: string, assistantId?: string): Promise<void> => {
       const trimmed = prompt.trim();
       if (!trimmed || activeRunRef.current) return;
+      const promptAttachments = attachmentsRef.current;
 
       const retryAssistantIndex = assistantId
         ? messages.findIndex((message) => message.id === assistantId)
@@ -215,7 +232,13 @@ function App() {
       setCurrentRun(run);
       setNativeError(null);
       try {
-        await nativeClient.runtimePrompt(run.requestId, trimmed);
+        await nativeClient.runtimePrompt(
+          run.requestId,
+          trimmed,
+          createHostTurnContext(promptAttachments),
+        );
+        attachmentsRef.current = [];
+        setAttachments([]);
       } catch (error) {
         const normalized = toNativeError(error, "conversation", true);
         failRun(run, normalized.message);
@@ -229,6 +252,7 @@ function App() {
     let stateUnlisten: (() => void) | undefined;
     let errorUnlisten: (() => void) | undefined;
     let runtimeUnlisten: (() => void) | undefined;
+    let hostCaptureUnlisten: (() => void) | undefined;
     let disposed = false;
 
     void nativeClient.getAgentState().then((state) => {
@@ -317,12 +341,44 @@ function App() {
         if (disposed) unlisten();
         else runtimeUnlisten = unlisten;
       });
+    void nativeClient
+      .onHostCapture((result: HostCaptureResult) => {
+        if (!result.attachment) {
+          if (result.error) {
+            setNativeError({
+              operation: "host_capture",
+              recoverable: result.error.recoverable,
+              message: result.error.message,
+            });
+          }
+          return;
+        }
+
+        const current = attachmentsRef.current;
+        if (!canAppendHostAttachment(current, result.attachment)) {
+          setNativeError({
+            operation: "host_capture",
+            recoverable: true,
+            message: "That context would exceed the prompt limit. Remove an attachment first.",
+          });
+          return;
+        }
+        const next = [...current, result.attachment];
+        attachmentsRef.current = next;
+        setAttachments(next);
+        setNativeError(null);
+      })
+      .then((unlisten) => {
+        if (disposed) unlisten();
+        else hostCaptureUnlisten = unlisten;
+      });
 
     return () => {
       disposed = true;
       stateUnlisten?.();
       errorUnlisten?.();
       runtimeUnlisten?.();
+      hostCaptureUnlisten?.();
     };
   }, [failRun, hydrateHistory, setCurrentRun, updateAssistant]);
 
@@ -377,6 +433,14 @@ function App() {
       setNativeError(toNativeError(error, "conversation_cancel", true));
     });
   }, [setCurrentRun]);
+
+  const removeAttachment = useCallback((attachmentId: string) => {
+    const next = attachmentsRef.current.filter(
+      (attachment) => attachment.id !== attachmentId,
+    );
+    attachmentsRef.current = next;
+    setAttachments(next);
+  }, []);
 
   const modeLabel = agentState.surface === "workspace" ? "Workspace" : "Side";
   const shortcutLabel = isDesktopRuntime() ? "Ctrl + Alt + A" : "Desktop app shortcut";
@@ -525,6 +589,38 @@ function App() {
             <X size={14} />
           </button>
         </div>
+      )}
+
+      {attachments.length > 0 && (
+        <section className="attachment-tray" aria-label="Captured context">
+          <div className="attachment-heading">
+            <span>
+              <Paperclip size={13} />
+              {attachments.length} captured source{attachments.length === 1 ? "" : "s"}
+            </span>
+            <span className="attachment-heading-note">Ready for this prompt</span>
+          </div>
+          <div className="attachment-list">
+            {attachments.map((attachment) => (
+              <article className="attachment-item" key={attachment.id}>
+                <div className="attachment-copy">
+                  <strong>{attachment.source}</strong>
+                  <span>{attachment.summary}</span>
+                  <small>{attachmentExpiry(attachment.expiresAt)}</small>
+                </div>
+                <button
+                  className="attachment-remove"
+                  type="button"
+                  aria-label={`Remove ${attachment.source}`}
+                  title={`Remove ${attachment.source}`}
+                  onClick={() => removeAttachment(attachment.id)}
+                >
+                  <X size={13} />
+                </button>
+              </article>
+            ))}
+          </div>
+        </section>
       )}
 
       <form

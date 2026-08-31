@@ -4,6 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import type {
   AgentState,
   AsideTurnContext,
+  HostCaptureResult,
   NativeError,
   RuntimeEvent,
 } from "./contracts";
@@ -127,6 +128,25 @@ export const nativeClient = {
     return command<AgentState>("resize_agent", { width, height });
   },
 
+  captureActiveHostContext: async (): Promise<HostCaptureResult> => {
+    if (!isDesktopRuntime()) {
+      return {
+        captureId: `preview-capture-${Date.now()}`,
+        host: {
+          kind: "unsupported",
+          availability: "unavailable",
+          capabilities: [],
+        },
+        error: {
+          code: "unavailable",
+          message: "Host context capture is available in the desktop app.",
+          recoverable: true,
+        },
+      };
+    }
+    return command<HostCaptureResult>("capture_active_host_context");
+  },
+
   startDragging: async (): Promise<void> => {
     if (isDesktopRuntime()) await getCurrentWindow().startDragging();
   },
@@ -203,6 +223,16 @@ export const nativeClient = {
     }
     return tauriListen<RuntimeEvent>("runtime://event", ({ payload }) =>
       handler(payload),
+    );
+  },
+
+  onHostCapture: async (
+    handler: (result: HostCaptureResult) => void,
+  ): Promise<() => void> => {
+    if (!isDesktopRuntime()) return () => undefined;
+    return tauriListen<HostCaptureResult>(
+      "host://capture-completed",
+      ({ payload }) => handler(payload),
     );
   },
 };

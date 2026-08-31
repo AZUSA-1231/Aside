@@ -420,6 +420,113 @@ h1 {
   overflow-wrap: anywhere;
 }
 
+.attachment-tray {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 0 20px 10px;
+}
+
+.attachment-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #55736b;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.attachment-heading > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.attachment-heading-note {
+  min-width: 0;
+  color: #9aaba3;
+  font-size: 9px;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 142px;
+  overflow-y: auto;
+  padding: 1px 2px 2px;
+  scrollbar-width: thin;
+  scrollbar-color: #c7d8d0 transparent;
+}
+
+.attachment-item {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 9px;
+  color: #40534d;
+  background: #edf5f0;
+  border: 1px solid #dceae2;
+  border-radius: 7px;
+}
+
+.attachment-copy {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.attachment-copy strong,
+.attachment-copy span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-copy strong {
+  color: #2d665b;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.attachment-copy span {
+  color: #71877e;
+  font-size: 10px;
+  line-height: 14px;
+}
+
+.attachment-copy small {
+  color: #9aaba3;
+  font-size: 9px;
+  line-height: 12px;
+}
+
+.attachment-remove {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  color: #7b948a;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.attachment-remove:hover {
+  color: #a14e40;
+  background: #f8e4dd;
+}
+
 .dismiss-button {
   width: 22px;
   height: 22px;
@@ -550,7 +657,8 @@ h1 {
   }
 
   .composer,
-  .error-banner {
+  .error-banner,
+  .attachment-tray {
     margin-left: 14px;
     margin-right: 14px;
   }

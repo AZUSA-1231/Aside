@@ -1,4 +1,5 @@
 mod commands;
+mod context;
 mod platform;
 mod runtime;
 mod workspace;
@@ -46,6 +47,8 @@ pub fn run() {
             commands::enter_workspace_mode,
             commands::exit_workspace_mode,
             commands::get_active_window_state,
+            commands::get_active_host,
+            commands::capture_active_host_context,
             commands::get_workspace_state,
             commands::move_agent,
             commands::resize_agent,

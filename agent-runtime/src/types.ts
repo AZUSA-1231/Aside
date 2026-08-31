@@ -1,10 +1,18 @@
 export const RUNTIME_MAX_REQUEST_ID_LENGTH = 128;
 export const RUNTIME_MAX_PROMPT_LENGTH = 20_000;
 export const MAX_CONTEXT_BLOCKS = 8;
+export const MAX_CONTEXT_ATTACHMENTS = 8;
 export const MAX_CONTEXT_TEXT_BYTES = 8 * 1024;
 export const MAX_CONTEXT_JSON_BYTES = 16 * 1024;
 export const MAX_CONTEXT_TOTAL_BYTES = 24 * 1024;
 export const MAX_CONTEXT_JSON_DEPTH = 4;
+
+export type AsideHostKind = "browser" | "explorer" | "vscode" | "pdf_reader";
+export type AsideContextSensitivity =
+  | "public"
+  | "local_metadata"
+  | "local_content"
+  | "restricted";
 
 export interface AsideFlow {
   id: string;
@@ -26,9 +34,21 @@ export interface AsideJsonContextBlock {
 
 export type AsideContextBlock = AsideTextContextBlock | AsideJsonContextBlock;
 
+export interface AsideHostAttachment {
+  id: string;
+  host: AsideHostKind;
+  source: string;
+  capturedAt: number;
+  expiresAt: number;
+  sensitivity: AsideContextSensitivity;
+  summary: string;
+  blocks: AsideContextBlock[];
+}
+
 export interface AsideTurnContext {
   flow: AsideFlow;
   blocks: AsideContextBlock[];
+  attachments?: AsideHostAttachment[];
 }
 
 export interface RuntimeHistoryMessage {

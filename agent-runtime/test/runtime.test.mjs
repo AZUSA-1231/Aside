@@ -23,6 +23,26 @@ function makeAgent(faux) {
   });
 }
 
+function hostAttachment({
+  id,
+  host,
+  source,
+  text,
+  capturedAt = Date.now(),
+  expiresAt = capturedAt + 60_000,
+}) {
+  return {
+    id,
+    host,
+    source,
+    capturedAt,
+    expiresAt,
+    sensitivity: "local_content",
+    summary: `${source} summary`,
+    blocks: [{ type: "text", label: "Captured text", text }],
+  };
+}
+
 function waitFor(events, predicate) {
   if (events.some(predicate)) return Promise.resolve();
   return new Promise((resolve) => {
@@ -262,6 +282,151 @@ test("projects text and JSON context for one run only", async () => {
       JSON.stringify(message).includes("move the meeting"),
     ),
     false,
+  );
+});
+
+test("accumulates multiple host attachments in one provider projection", async () => {
+  const faux = fauxProvider({ tokensPerSecond: 1000 });
+  const providerContexts = [];
+  faux.setResponses([
+    (context) => {
+      providerContexts.push(structuredClone(context));
+      return fauxAssistantMessage("combined");
+    },
+    (context) => {
+      providerContexts.push(structuredClone(context));
+      return fauxAssistantMessage("without captures");
+    },
+  ]);
+  const agent = makeAgent(faux);
+  const runtime = await createConversationRuntime({
+    agent,
+    emit: () => undefined,
+  });
+
+  await runtime.prompt("attachments-1", "combine these", {
+    flow: { id: "flow-attachments", kind: "conversation" },
+    blocks: [],
+    attachments: [
+      hostAttachment({
+        id: "capture-browser",
+        host: "browser",
+        source: "Browser tab",
+        text: "browser selection",
+      }),
+      hostAttachment({
+        id: "capture-explorer",
+        host: "explorer",
+        source: "Explorer folder",
+        text: "selected file metadata",
+      }),
+    ],
+  });
+  await runtime.prompt("attachments-2", "new question");
+
+  const firstProjection = providerContexts[0].messages.find(
+    (message) =>
+      message.role === "user" &&
+      Array.isArray(message.content) &&
+      message.content.some((block) =>
+        (block.text ?? "").includes("[Aside reference context]"),
+      ),
+  );
+  assert.ok(firstProjection);
+  const projectionText = firstProjection.content
+    .map((block) => block.text ?? "")
+    .join("");
+  assert.match(projectionText, /browser selection/);
+  assert.match(projectionText, /selected file metadata/);
+  assert.ok(
+    projectionText.indexOf("Browser tab") <
+      projectionText.indexOf("Explorer folder"),
+  );
+  assert.equal(
+    providerContexts[1].messages.some((message) =>
+      JSON.stringify(message).includes("selected file metadata"),
+    ),
+    false,
+  );
+  assert.equal(
+    agent.state.messages.some((message) =>
+      JSON.stringify(message).includes("selected file metadata"),
+    ),
+    false,
+  );
+});
+
+test("filters expired host attachments and enforces the aggregate block limit", () => {
+  const normalized = validateTurnContext(
+    {
+      flow: { id: "flow-expiry", kind: "conversation" },
+      blocks: [],
+      attachments: [
+        hostAttachment({
+          id: "expired",
+          host: "pdf_reader",
+          source: "Expired PDF",
+          text: "should be removed",
+          capturedAt: 1,
+          expiresAt: 2,
+        }),
+        hostAttachment({
+          id: "active",
+          host: "vscode",
+          source: "VSCode editor",
+          text: "should remain",
+          capturedAt: 1,
+          expiresAt: 2_000,
+        }),
+      ],
+    },
+    1_000,
+  );
+  assert.deepEqual(
+    normalized.attachments.map((attachment) => attachment.id),
+    ["active"],
+  );
+  assert.doesNotMatch(normalized.projectionText, /should be removed/);
+  assert.match(normalized.projectionText, /should remain/);
+
+  assert.throws(
+    () =>
+      validateTurnContext({
+        flow: { id: "flow-block-limit", kind: "conversation" },
+        blocks: [],
+        attachments: Array.from({ length: 9 }, (_, index) =>
+          hostAttachment({
+            id: `capture-${index}`,
+            host: "browser",
+            source: `Browser ${index}`,
+            text: `capture ${index}`,
+          }),
+        ),
+      }),
+    /context\.attachments/,
+  );
+
+  assert.throws(
+    () =>
+      validateTurnContext({
+        flow: { id: "flow-duplicate", kind: "conversation" },
+        blocks: [],
+        attachments: [
+          hostAttachment({
+            id: "capture-duplicate",
+            host: "browser",
+            source: "Browser first",
+            text: "first",
+          }),
+          hostAttachment({
+            id: "capture-duplicate",
+            host: "browser",
+            source: "Browser second",
+            text: "second",
+          }),
+        ],
+      }),
+    /context\.attachments\[1\]\.id/,
   );
 });
 

@@ -3,12 +3,14 @@ use std::sync::{Mutex, MutexGuard};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State, WebviewWindow};
 
+use crate::context::{self, HostCaptureResult, HostView};
 use crate::platform::{self, Rect, TargetWindow};
 use crate::runtime::{AsideTurnContext, RuntimeManager, RuntimeRequest};
 use crate::workspace::{self, WorkspaceSnapshot};
 
 pub const AGENT_STATE_EVENT: &str = "agent://state-changed";
 pub const NATIVE_ERROR_EVENT: &str = "agent://error";
+pub const HOST_CAPTURE_EVENT: &str = "host://capture-completed";
 
 #[derive(Clone, Copy, Debug, Default, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -55,6 +57,7 @@ pub struct PublicRect {
 #[serde(rename_all = "camelCase")]
 pub struct WindowContext {
     pub target_id: String,
+    pub application_id: Option<String>,
     pub monitor_id: String,
     pub bounds: PublicRect,
     pub maximized: bool,
@@ -233,6 +236,7 @@ fn public_rect(rect: Rect) -> PublicRect {
 fn public_context(target: &TargetWindow) -> WindowContext {
     WindowContext {
         target_id: target.opaque_id.clone(),
+        application_id: target.application_id.clone(),
         monitor_id: format!("monitor-{:#016x}", target.monitor),
         bounds: public_rect(target.bounds),
         maximized: target.maximized,
@@ -375,9 +379,23 @@ pub(crate) fn toggle_agent_internal(
 
 pub(crate) fn toggle_agent_from_shortcut(app: &AppHandle) {
     let state = app.state::<AppState>();
+    let should_capture = match lock_native(state.inner()) {
+        Ok(native) => matches!(native.visibility, Visibility::Hidden),
+        Err(error) => {
+            emit_error(app, error);
+            return;
+        }
+    };
+    if should_capture {
+        emit_host_capture(app, context::capture_foreground_context());
+    }
     if let Err(error) = toggle_agent_internal(app, state.inner()) {
         emit_error(app, error);
     }
+}
+
+fn emit_host_capture(app: &AppHandle, result: HostCaptureResult) {
+    let _ = app.emit(HOST_CAPTURE_EVENT, result);
 }
 
 #[tauri::command]
@@ -460,6 +478,16 @@ pub fn exit_workspace_mode(
 #[tauri::command]
 pub fn get_active_window_state() -> Result<Option<WindowContext>, NativeError> {
     Ok(platform::foreground_target().as_ref().map(public_context))
+}
+
+#[tauri::command]
+pub fn get_active_host() -> Result<HostView, NativeError> {
+    Ok(context::classify_foreground_host())
+}
+
+#[tauri::command]
+pub fn capture_active_host_context() -> Result<HostCaptureResult, NativeError> {
+    Ok(context::capture_foreground_context())
 }
 
 #[tauri::command]

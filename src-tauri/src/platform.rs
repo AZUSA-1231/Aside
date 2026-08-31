@@ -37,6 +37,7 @@ impl Rect {
 #[derive(Clone, Debug)]
 pub struct TargetWindow {
     pub opaque_id: String,
+    pub application_id: Option<String>,
     pub bounds: Rect,
     pub maximized: bool,
     pub monitor: usize,
@@ -69,11 +70,13 @@ mod windows {
     use std::ffi::c_void;
     use std::hash::{Hash, Hasher};
     use std::mem::size_of;
+    use std::path::Path;
 
     type Hwnd = isize;
     type Hmonitor = isize;
 
     const MONITOR_DEFAULTTONEAREST: u32 = 2;
+    const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
     const SW_RESTORE: i32 = 9;
     const SW_MAXIMIZE: i32 = 3;
     const DWMWA_EXTENDED_FRAME_BOUNDS: u32 = 9;
@@ -141,6 +144,18 @@ mod windows {
         fn ShowWindow(hwnd: Hwnd, command: i32) -> i32;
     }
 
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn CloseHandle(handle: Hwnd) -> i32;
+        fn OpenProcess(desired_access: u32, inherit_handle: i32, process_id: u32) -> Hwnd;
+        fn QueryFullProcessImageNameW(
+            process: Hwnd,
+            flags: u32,
+            file_name: *mut u16,
+            size: *mut u32,
+        ) -> i32;
+    }
+
     #[link(name = "dwmapi")]
     extern "system" {
         fn DwmGetWindowAttribute(
@@ -201,6 +216,29 @@ mod windows {
         String::from_utf16_lossy(&buffer[..length as usize])
     }
 
+    fn application_id(process_id: u32) -> Option<String> {
+        let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, process_id) };
+        if process == 0 {
+            return None;
+        }
+
+        let mut buffer = [0u16; 1024];
+        let mut length = buffer.len() as u32;
+        let result =
+            unsafe { QueryFullProcessImageNameW(process, 0, buffer.as_mut_ptr(), &mut length) };
+        unsafe {
+            CloseHandle(process);
+        }
+        if result == 0 || length == 0 {
+            return None;
+        }
+
+        Path::new(&String::from_utf16_lossy(&buffer[..length as usize]))
+            .file_name()?
+            .to_str()
+            .map(str::to_ascii_lowercase)
+    }
+
     fn is_unsupported_class(class: &str) -> bool {
         matches!(
             class,
@@ -248,6 +286,7 @@ mod windows {
 
         Some(TargetWindow {
             opaque_id: opaque_id(hwnd, process_id, &class),
+            application_id: application_id(process_id),
             bounds,
             maximized: unsafe { IsZoomed(hwnd) } != 0,
             monitor: monitor as usize,
@@ -259,6 +298,10 @@ mod windows {
 
     pub fn foreground_target() -> Option<TargetWindow> {
         target_from_handle(unsafe { GetForegroundWindow() })
+    }
+
+    pub fn target_is_current(target: &TargetWindow) -> bool {
+        ensure_target(target).is_ok()
     }
 
     pub fn cursor_work_area() -> Option<Rect> {
@@ -457,7 +500,8 @@ mod windows {
 
 #[cfg(target_os = "windows")]
 pub use windows::{
-    cursor_work_area, foreground_target, restore_target, set_window_rect, tile_target_with_agent,
+    cursor_work_area, foreground_target, restore_target, set_window_rect, target_is_current,
+    tile_target_with_agent,
 };
 
 #[cfg(not(target_os = "windows"))]
@@ -466,6 +510,10 @@ mod unsupported {
 
     pub fn foreground_target() -> Option<TargetWindow> {
         None
+    }
+
+    pub fn target_is_current(_: &TargetWindow) -> bool {
+        false
     }
 
     pub fn cursor_work_area() -> Option<Rect> {
@@ -498,5 +546,6 @@ mod unsupported {
 
 #[cfg(not(target_os = "windows"))]
 pub use unsupported::{
-    cursor_work_area, foreground_target, restore_target, set_window_rect, tile_target_with_agent,
+    cursor_work_area, foreground_target, restore_target, set_window_rect, target_is_current,
+    tile_target_with_agent,
 };
