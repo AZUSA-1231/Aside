@@ -52,6 +52,16 @@ impl TargetWindow {
     pub fn is_workspace_candidate(&self) -> bool {
         self.maximized || self.bounds.nearly_fills(self.work_area, 12)
     }
+
+    #[cfg(target_os = "windows")]
+    pub(crate) fn native_handle(&self) -> isize {
+        self.handle
+    }
+
+    #[cfg(target_os = "windows")]
+    pub(crate) fn native_process_id(&self) -> u32 {
+        self.process_id
+    }
 }
 
 #[derive(Debug)]
@@ -304,6 +314,14 @@ mod windows {
         ensure_target(target).is_ok()
     }
 
+    pub fn target_is_captureable(target: &TargetWindow) -> bool {
+        ensure_target(target).is_ok()
+            && unsafe { IsWindowVisible(target.handle) } != 0
+            && unsafe { IsIconic(target.handle) } == 0
+            && target.bounds.width > 0
+            && target.bounds.height > 0
+    }
+
     pub fn cursor_work_area() -> Option<Rect> {
         let mut point = Point { x: 0, y: 0 };
         if unsafe { GetCursorPos(&mut point) } == 0 {
@@ -500,8 +518,8 @@ mod windows {
 
 #[cfg(target_os = "windows")]
 pub use windows::{
-    cursor_work_area, foreground_target, restore_target, set_window_rect, target_is_current,
-    tile_target_with_agent,
+    cursor_work_area, foreground_target, restore_target, set_window_rect, target_is_captureable,
+    target_is_current, tile_target_with_agent,
 };
 
 #[cfg(not(target_os = "windows"))]
@@ -513,6 +531,10 @@ mod unsupported {
     }
 
     pub fn target_is_current(_: &TargetWindow) -> bool {
+        false
+    }
+
+    pub fn target_is_captureable(_: &TargetWindow) -> bool {
         false
     }
 
@@ -546,6 +568,6 @@ mod unsupported {
 
 #[cfg(not(target_os = "windows"))]
 pub use unsupported::{
-    cursor_work_area, foreground_target, restore_target, set_window_rect, target_is_current,
-    tile_target_with_agent,
+    cursor_work_area, foreground_target, restore_target, set_window_rect, target_is_captureable,
+    target_is_current, tile_target_with_agent,
 };

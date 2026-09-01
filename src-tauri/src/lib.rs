@@ -1,5 +1,6 @@
 mod commands;
 mod context;
+mod chromium_uia;
 mod platform;
 mod runtime;
 mod workspace;
