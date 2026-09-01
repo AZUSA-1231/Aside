@@ -13,6 +13,7 @@
     "preview": "vite preview",
     "runtime:test": "node --test agent-runtime/test/runtime.test.mjs agent-runtime/test/session.test.mjs agent-runtime/test/protocol.test.mjs agent-runtime/test/config.test.mjs",
     "pi:build": "npm run build --workspace=@earendil-works/pi-telemetry && npm run build --workspace=@earendil-works/pi-ai && npm run build --workspace=@earendil-works/pi-agent-core",
+    "chromium:probe": "node tools/chromium-cdp-probe.mjs",
     "tauri": "tauri",
     "typecheck": "tsc --noEmit"
   },
@@ -31,6 +32,7 @@
     "@vitejs/plugin-react": "^4.6.0",
     "typescript": "~5.8.3",
     "vite": "^7.0.4",
-    "@tauri-apps/cli": "^2"
+    "@tauri-apps/cli": "^2",
+    "ws": "^8.21.3"
   }
 }

@@ -1,0 +1,3419 @@
+{
+    "probe":  "chromium-uia-screen",
+    "generatedAt":  "2026-08-31T16:08:05.6930351Z",
+    "view":  "Content",
+    "limits":  {
+                   "maxNodes":  800,
+                   "maxDepth":  16
+               },
+    "target":  {
+                   "processName":  "msedge",
+                   "processPath":  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+                   "className":  "Chrome_WidgetWin_1",
+                   "title":  {
+                                 "present":  true,
+                                 "length":  55,
+                                 "hash":  "82fb0df9a1d95e1e"
+                             }
+               },
+    "nodeCount":  93,
+    "truncated":  false,
+    "nodes":  [
+                  {
+                      "index":  0,
+                      "parentIndex":  -1,
+                      "depth":  0,
+                      "type":  "ControlType.Window",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  55,
+                                          "hash":  "82fb0df9a1d95e1e"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  false,
+                      "offscreen":  null,
+                      "keyboardFocusable":  null,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  15,
+                                     "y":  15,
+                                     "width":  1257,
+                                     "height":  1338
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "Aside UIA restricted fixture - 用户配置 1 - Microsoft​ Edge",
+                      "automationId":  null
+                  },
+                  {
+                      "index":  1,
+                      "parentIndex":  0,
+                      "depth":  1,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  false,
+                      "offscreen":  null,
+                      "keyboardFocusable":  null,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  26,
+                                     "y":  15,
+                                     "width":  1235,
+                                     "height":  1327
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  null
+                  },
+                  {
+                      "index":  2,
+                      "parentIndex":  0,
+                      "depth":  1,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  45,
+                                          "hash":  "11452c1d23e0b57c"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  26,
+                                     "y":  15,
+                                     "width":  1236,
+                                     "height":  1328
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "Aside UIA restricted fixture - Microsoft Edge",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  3,
+                      "parentIndex":  2,
+                      "depth":  2,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  26,
+                                     "y":  15,
+                                     "width":  1236,
+                                     "height":  1328
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  4,
+                      "parentIndex":  2,
+                      "depth":  2,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  9,
+                                          "hash":  "f1b7c24cdc9af535"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  null,
+                      "keyboardFocusable":  null,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  548,
+                                     "y":  123,
+                                     "width":  516,
+                                     "height":  309
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "翻译 英语 页面?",
+                      "automationId":  null
+                  },
+                  {
+                      "index":  5,
+                      "parentIndex":  2,
+                      "depth":  2,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  null,
+                      "keyboardFocusable":  null,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  251,
+                                     "y":  131,
+                                     "width":  786,
+                                     "height":  741
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  null
+                  },
+                  {
+                      "index":  6,
+                      "parentIndex":  3,
+                      "depth":  3,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  26,
+                                     "y":  15,
+                                     "width":  1236,
+                                     "height":  1328
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  7,
+                      "parentIndex":  3,
+                      "depth":  3,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  26,
+                                     "y":  15,
+                                     "width":  1236,
+                                     "height":  1328
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  8,
+                      "parentIndex":  4,
+                      "depth":  3,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  false,
+                      "offscreen":  null,
+                      "keyboardFocusable":  null,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  548,
+                                     "y":  123,
+                                     "width":  516,
+                                     "height":  309
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  null
+                  },
+                  {
+                      "index":  9,
+                      "parentIndex":  4,
+                      "depth":  3,
+                      "type":  "ControlType.Text",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  9,
+                                          "hash":  "f1b7c24cdc9af535"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  566,
+                                     "y":  123,
+                                     "width":  480,
+                                     "height":  267
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "翻译 英语 页面?",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  10,
+                      "parentIndex":  5,
+                      "depth":  3,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  false,
+                      "offscreen":  null,
+                      "keyboardFocusable":  null,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  251,
+                                     "y":  131,
+                                     "width":  786,
+                                     "height":  741
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  null
+                  },
+                  {
+                      "index":  11,
+                      "parentIndex":  5,
+                      "depth":  3,
+                      "type":  "ControlType.Window",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  6,
+                                          "hash":  "aace985333ea67ee"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  269,
+                                     "y":  131,
+                                     "width":  750,
+                                     "height":  699
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "同步用户配置",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  12,
+                      "parentIndex":  6,
+                      "depth":  4,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  1055,
+                                     "y":  17,
+                                     "width":  207,
+                                     "height":  59
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  13,
+                      "parentIndex":  6,
+                      "depth":  4,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  26,
+                                     "y":  15,
+                                     "width":  1236,
+                                     "height":  1328
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  14,
+                      "parentIndex":  9,
+                      "depth":  4,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  548,
+                                     "y":  123,
+                                     "width":  516,
+                                     "height":  309
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  15,
+                      "parentIndex":  11,
+                      "depth":  4,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  251,
+                                     "y":  131,
+                                     "width":  786,
+                                     "height":  741
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  16,
+                      "parentIndex":  12,
+                      "depth":  5,
+                      "type":  "ControlType.Button",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  3,
+                                          "hash":  "ac29e57a46f41c30"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  6,
+                                                  "hash":  "6b16e226db748811"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  null,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  1055,
+                                     "y":  17,
+                                     "width":  69,
+                                     "height":  59
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  true,
+                                       "scroll":  false
+                                   },
+                      "name":  "最小化",
+                      "automationId":  "view_2"
+                  },
+                  {
+                      "index":  17,
+                      "parentIndex":  12,
+                      "depth":  5,
+                      "type":  "ControlType.Button",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  3,
+                                          "hash":  "82c4aa13b7ca109e"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  6,
+                                                  "hash":  "dbe9afeed96e69b3"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  null,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  1124,
+                                     "y":  17,
+                                     "width":  69,
+                                     "height":  59
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  true,
+                                       "scroll":  false
+                                   },
+                      "name":  "最大化",
+                      "automationId":  "view_3"
+                  },
+                  {
+                      "index":  18,
+                      "parentIndex":  12,
+                      "depth":  5,
+                      "type":  "ControlType.Button",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  2,
+                                          "hash":  "3fd47edce45b3603"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  6,
+                                                  "hash":  "34ac8d56155f6f01"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  null,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  1193,
+                                     "y":  17,
+                                     "width":  69,
+                                     "height":  59
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  true,
+                                       "scroll":  false
+                                   },
+                      "name":  "关闭",
+                      "automationId":  "view_7"
+                  },
+                  {
+                      "index":  19,
+                      "parentIndex":  13,
+                      "depth":  5,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  26,
+                                     "y":  15,
+                                     "width":  1236,
+                                     "height":  120
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  20,
+                      "parentIndex":  13,
+                      "depth":  5,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  26,
+                                     "y":  135,
+                                     "width":  1236,
+                                     "height":  1208
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  21,
+                      "parentIndex":  13,
+                      "depth":  5,
+                      "type":  "ControlType.Tab",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  4,
+                                          "hash":  "cfe146b8e9117e79"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  29,
+                                     "y":  15,
+                                     "width":  1026,
+                                     "height":  62
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  true,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "标签页栏",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  22,
+                      "parentIndex":  14,
+                      "depth":  5,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  548,
+                                     "y":  123,
+                                     "width":  516,
+                                     "height":  309
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  23,
+                      "parentIndex":  15,
+                      "depth":  5,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  251,
+                                     "y":  131,
+                                     "width":  786,
+                                     "height":  741
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  24,
+                      "parentIndex":  19,
+                      "depth":  6,
+                      "type":  "ControlType.ToolBar",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  3,
+                                          "hash":  "5fe5c79245e0be7e"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  9,
+                                                  "hash":  "a73fbcd81dad90f7"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  26,
+                                     "y":  75,
+                                     "width":  1236,
+                                     "height":  60
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  true,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "应用栏",
+                      "automationId":  "view_1000"
+                  },
+                  {
+                      "index":  25,
+                      "parentIndex":  19,
+                      "depth":  6,
+                      "type":  "ControlType.Text",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  26,
+                                          "hash":  "9166a7ed6225632c"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  284,
+                                     "y":  114,
+                                     "width":  546,
+                                     "height":  42
+                                 },
+                      "patterns":  {
+                                       "text":  true,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "若要进行快速访问，请将你的网址收藏放在此收藏夹栏上。",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  26,
+                      "parentIndex":  19,
+                      "depth":  6,
+                      "type":  "ControlType.Hyperlink",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  7,
+                                          "hash":  "407aa5f30f1e058e"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  null,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  836,
+                                     "y":  114,
+                                     "width":  126,
+                                     "height":  42
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  true,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  true,
+                                       "scroll":  false
+                                   },
+                      "name":  "立即管理收藏夹",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  27,
+                      "parentIndex":  20,
+                      "depth":  6,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  26,
+                                     "y":  135,
+                                     "width":  1236,
+                                     "height":  1208
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  28,
+                      "parentIndex":  21,
+                      "depth":  6,
+                      "type":  "ControlType.Button",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  5,
+                                          "hash":  "57dda14f60e2a1e0"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  9,
+                                                  "hash":  "1412643efaeb091f"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  null,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  32,
+                                     "y":  15,
+                                     "width":  48,
+                                     "height":  54
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "搜索标签页",
+                      "automationId":  "view_1056"
+                  },
+                  {
+                      "index":  29,
+                      "parentIndex":  21,
+                      "depth":  6,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  7,
+                                                  "hash":  "f6a641ce96c155d0"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  74,
+                                     "y":  15,
+                                     "width":  384,
+                                     "height":  62
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  "view_25"
+                  },
+                  {
+                      "index":  30,
+                      "parentIndex":  21,
+                      "depth":  6,
+                      "type":  "ControlType.Button",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  5,
+                                          "hash":  "edd38dfc7fcf4279"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  7,
+                                                  "hash":  "7d8662d3552da384"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  null,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  452,
+                                     "y":  15,
+                                     "width":  48,
+                                     "height":  62
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  true,
+                                       "scroll":  false
+                                   },
+                      "name":  "新建标签页",
+                      "automationId":  "view_28"
+                  },
+                  {
+                      "index":  31,
+                      "parentIndex":  21,
+                      "depth":  6,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  500,
+                                     "y":  15,
+                                     "width":  555,
+                                     "height":  62
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  32,
+                      "parentIndex":  22,
+                      "depth":  6,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  590,
+                                     "y":  147,
+                                     "width":  390,
+                                     "height":  33
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  33,
+                      "parentIndex":  22,
+                      "depth":  6,
+                      "type":  "ControlType.Button",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  2,
+                                          "hash":  "3fd47edce45b3603"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  null,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  986,
+                                     "y":  147,
+                                     "width":  36,
+                                     "height":  36
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  true,
+                                       "scroll":  false
+                                   },
+                      "name":  "关闭",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  34,
+                      "parentIndex":  22,
+                      "depth":  6,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  566,
+                                     "y":  192,
+                                     "width":  480,
+                                     "height":  198
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  35,
+                      "parentIndex":  23,
+                      "depth":  6,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  null,
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  36,
+                      "parentIndex":  23,
+                      "depth":  6,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  269,
+                                     "y":  131,
+                                     "width":  750,
+                                     "height":  699
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  37,
+                      "parentIndex":  24,
+                      "depth":  7,
+                      "type":  "ControlType.Button",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  2,
+                                          "hash":  "572cf45ba43634b3"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  9,
+                                                  "hash":  "224246b2194902c6"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  null,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  32,
+                                     "y":  81,
+                                     "width":  48,
+                                     "height":  48
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  true,
+                                       "scroll":  false
+                                   },
+                      "name":  "返回",
+                      "automationId":  "view_1001"
+                  },
+                  {
+                      "index":  38,
+                      "parentIndex":  24,
+                      "depth":  7,
+                      "type":  "ControlType.Button",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  2,
+                                          "hash":  "aee88743413144a2"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  9,
+                                                  "hash":  "99d383a712170fbc"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  null,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  86,
+                                     "y":  81,
+                                     "width":  48,
+                                     "height":  48
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  true,
+                                       "scroll":  false
+                                   },
+                      "name":  "刷新",
+                      "automationId":  "view_1003"
+                  },
+                  {
+                      "index":  39,
+                      "parentIndex":  24,
+                      "depth":  7,
+                      "type":  "ControlType.Group",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  140,
+                                     "y":  81,
+                                     "width":  954,
+                                     "height":  48
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  40,
+                      "parentIndex":  24,
+                      "depth":  7,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  1100,
+                                     "y":  75,
+                                     "width":  48,
+                                     "height":  60
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  41,
+                      "parentIndex":  24,
+                      "depth":  7,
+                      "type":  "ControlType.Button",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  7,
+                                          "hash":  "43d1983b26a2a089"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  9,
+                                                  "hash":  "c9d4c58adb395d0d"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  null,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  1154,
+                                     "y":  81,
+                                     "width":  48,
+                                     "height":  48
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "个人 个人资料",
+                      "automationId":  "view_1013"
+                  },
+                  {
+                      "index":  42,
+                      "parentIndex":  24,
+                      "depth":  7,
+                      "type":  "ControlType.Button",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  13,
+                                          "hash":  "9d0e9a78093ff685"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  9,
+                                                  "hash":  "fd238922c5d720ac"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  null,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  1208,
+                                     "y":  81,
+                                     "width":  48,
+                                     "height":  48
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "设置及其他 (Alt+F)",
+                      "automationId":  "view_1015"
+                  },
+                  {
+                      "index":  43,
+                      "parentIndex":  27,
+                      "depth":  7,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  26,
+                                     "y":  135,
+                                     "width":  1236,
+                                     "height":  1208
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  44,
+                      "parentIndex":  29,
+                      "depth":  7,
+                      "type":  "ControlType.Tab",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  74,
+                                     "y":  15,
+                                     "width":  384,
+                                     "height":  62
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  true,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  45,
+                      "parentIndex":  29,
+                      "depth":  7,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  74,
+                                     "y":  15,
+                                     "width":  384,
+                                     "height":  62
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  46,
+                      "parentIndex":  32,
+                      "depth":  7,
+                      "type":  "ControlType.Text",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  9,
+                                          "hash":  "f1b7c24cdc9af535"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  590,
+                                     "y":  147,
+                                     "width":  390,
+                                     "height":  33
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "翻译 英语 页面?",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  47,
+                      "parentIndex":  34,
+                      "depth":  7,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  590,
+                                     "y":  192,
+                                     "width":  432,
+                                     "height":  198
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  48,
+                      "parentIndex":  36,
+                      "depth":  7,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  269,
+                                     "y":  143,
+                                     "width":  750,
+                                     "height":  675
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  49,
+                      "parentIndex":  39,
+                      "depth":  8,
+                      "type":  "ControlType.Button",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  2,
+                                          "hash":  "39932f24fe11a6ba"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  9,
+                                                  "hash":  "a67ba47d86d6d990"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  null,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  146,
+                                     "y":  87,
+                                     "width":  84,
+                                     "height":  36
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "文件",
+                      "automationId":  "view_1019"
+                  },
+                  {
+                      "index":  50,
+                      "parentIndex":  39,
+                      "depth":  8,
+                      "type":  "ControlType.Edit",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  6,
+                                          "hash":  "874efa562880c234"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  9,
+                                                  "hash":  "27814a28c5a196af"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  null,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  230,
+                                     "y":  87,
+                                     "width":  774,
+                                     "height":  36
+                                 },
+                      "patterns":  {
+                                       "text":  true,
+                                       "value":  true,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "地址和搜索栏",
+                      "automationId":  "view_1021"
+                  },
+                  {
+                      "index":  51,
+                      "parentIndex":  39,
+                      "depth":  8,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  null,
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  52,
+                      "parentIndex":  39,
+                      "depth":  8,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  1010,
+                                     "y":  87,
+                                     "width":  78,
+                                     "height":  36
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  53,
+                      "parentIndex":  40,
+                      "depth":  8,
+                      "type":  "ControlType.Button",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  3,
+                                          "hash":  "796d20e915884195"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  9,
+                                                  "hash":  "1d9be7d39891fbe1"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  null,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  1100,
+                                     "y":  81,
+                                     "width":  48,
+                                     "height":  48
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "收藏夹",
+                      "automationId":  "view_1011"
+                  },
+                  {
+                      "index":  54,
+                      "parentIndex":  43,
+                      "depth":  8,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  26,
+                                     "y":  135,
+                                     "width":  1236,
+                                     "height":  1208
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  55,
+                      "parentIndex":  43,
+                      "depth":  8,
+                      "type":  "ControlType.Edit",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  null,
+                      "patterns":  {
+                                       "text":  true,
+                                       "value":  true,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  56,
+                      "parentIndex":  44,
+                      "depth":  8,
+                      "type":  "ControlType.TabItem",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  28,
+                                          "hash":  "348263c7a74efe5d"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  7,
+                                                  "hash":  "15e16367c6e5718c"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  null,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  74,
+                                     "y":  15,
+                                     "width":  384,
+                                     "height":  62
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  true,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "Aside UIA restricted fixture",
+                      "automationId":  "view_24"
+                  },
+                  {
+                      "index":  57,
+                      "parentIndex":  44,
+                      "depth":  8,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  null,
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  58,
+                      "parentIndex":  47,
+                      "depth":  8,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  590,
+                                     "y":  192,
+                                     "width":  432,
+                                     "height":  198
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  59,
+                      "parentIndex":  48,
+                      "depth":  8,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  269,
+                                     "y":  143,
+                                     "width":  750,
+                                     "height":  675
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  60,
+                      "parentIndex":  52,
+                      "depth":  9,
+                      "type":  "ControlType.Button",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  6,
+                                          "hash":  "3f79cbe949230133"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  9,
+                                                  "hash":  "a803a50b8df42e8e"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  null,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  1010,
+                                     "y":  87,
+                                     "width":  36,
+                                     "height":  36
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "显示翻译选项",
+                      "automationId":  "view_1026"
+                  },
+                  {
+                      "index":  61,
+                      "parentIndex":  52,
+                      "depth":  9,
+                      "type":  "ControlType.Button",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  18,
+                                          "hash":  "c9dad68d7866a132"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  9,
+                                                  "hash":  "637bb746ca154d4f"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  null,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  1052,
+                                     "y":  87,
+                                     "width":  36,
+                                     "height":  36
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "将此页面添加到收藏夹(Ctrl+D)",
+                      "automationId":  "view_1006"
+                  },
+                  {
+                      "index":  62,
+                      "parentIndex":  54,
+                      "depth":  9,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  26,
+                                     "y":  135,
+                                     "width":  1236,
+                                     "height":  1208
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  63,
+                      "parentIndex":  56,
+                      "depth":  9,
+                      "type":  "ControlType.Button",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  5,
+                                          "hash":  "83deaec053e921ce"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  7,
+                                                  "hash":  "b5a6a8a8545ac64d"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  null,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  410,
+                                     "y":  33,
+                                     "width":  24,
+                                     "height":  24
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  true,
+                                       "scroll":  false
+                                   },
+                      "name":  "关闭标签页",
+                      "automationId":  "view_27"
+                  },
+                  {
+                      "index":  64,
+                      "parentIndex":  57,
+                      "depth":  9,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  null,
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  65,
+                      "parentIndex":  57,
+                      "depth":  9,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  null,
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  66,
+                      "parentIndex":  58,
+                      "depth":  9,
+                      "type":  "ControlType.Text",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  null,
+                      "patterns":  {
+                                       "text":  true,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  67,
+                      "parentIndex":  58,
+                      "depth":  9,
+                      "type":  "ControlType.Text",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  3,
+                                          "hash":  "c59110a32337a979"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  590,
+                                     "y":  192,
+                                     "width":  432,
+                                     "height":  30
+                                 },
+                      "patterns":  {
+                                       "text":  true,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "翻译为",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  68,
+                      "parentIndex":  58,
+                      "depth":  9,
+                      "type":  "ControlType.ComboBox",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  3,
+                                          "hash":  "c59110a32337a979"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  null,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  590,
+                                     "y":  234,
+                                     "width":  432,
+                                     "height":  48
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  true,
+                                       "selection":  true,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "翻译为",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  69,
+                      "parentIndex":  58,
+                      "depth":  9,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  590,
+                                     "y":  294,
+                                     "width":  432,
+                                     "height":  96
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  70,
+                      "parentIndex":  59,
+                      "depth":  9,
+                      "type":  "ControlType.Document",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  21,
+                                          "hash":  "e72ff76080f5837f"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  11,
+                                                  "hash":  "3c73e21a09012d7b"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  null,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  269,
+                                     "y":  143,
+                                     "width":  750,
+                                     "height":  675
+                                 },
+                      "patterns":  {
+                                       "text":  true,
+                                       "value":  true,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  true
+                                   },
+                      "name":  "我们现在正在你的所有设备上同步你的浏览数据",
+                      "automationId":  "RootWebArea"
+                  },
+                  {
+                      "index":  71,
+                      "parentIndex":  62,
+                      "depth":  10,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  26,
+                                     "y":  135,
+                                     "width":  1236,
+                                     "height":  1208
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  72,
+                      "parentIndex":  64,
+                      "depth":  10,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  null,
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  73,
+                      "parentIndex":  69,
+                      "depth":  10,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  590,
+                                     "y":  318,
+                                     "width":  234,
+                                     "height":  48
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  74,
+                      "parentIndex":  69,
+                      "depth":  10,
+                      "type":  "ControlType.Button",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  2,
+                                          "hash":  "a52a08335185f048"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  6,
+                                                  "hash":  "6b16e226db748811"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  null,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  836,
+                                     "y":  318,
+                                     "width":  72,
+                                     "height":  48
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  true,
+                                       "scroll":  false
+                                   },
+                      "name":  "翻译",
+                      "automationId":  "view_2"
+                  },
+                  {
+                      "index":  75,
+                      "parentIndex":  69,
+                      "depth":  10,
+                      "type":  "ControlType.Button",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  2,
+                                          "hash":  "38844b135cf70dfc"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  6,
+                                                  "hash":  "39f44b751b3e6912"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  null,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  920,
+                                     "y":  318,
+                                     "width":  102,
+                                     "height":  48
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "更多",
+                      "automationId":  "view_6"
+                  },
+                  {
+                      "index":  76,
+                      "parentIndex":  70,
+                      "depth":  10,
+                      "type":  "ControlType.Text",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  21,
+                                          "hash":  "e72ff76080f5837f"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  299,
+                                     "y":  221,
+                                     "width":  690,
+                                     "height":  39
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "我们现在正在你的所有设备上同步你的浏览数据",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  77,
+                      "parentIndex":  70,
+                      "depth":  10,
+                      "type":  "ControlType.Text",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  58,
+                                          "hash":  "773fb24fef0a9144"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  299,
+                                     "y":  291,
+                                     "width":  658,
+                                     "height":  64
+                                 },
+                      "patterns":  {
+                                       "text":  true,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "yandz041231@gmail.com 已在此设备上登录，因此我们也使你登录到了 Microsoft Edge。",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  78,
+                      "parentIndex":  70,
+                      "depth":  10,
+                      "type":  "ControlType.Text",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  49,
+                                          "hash":  "36d076ef196f296d"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  299,
+                                     "y":  381,
+                                     "width":  677,
+                                     "height":  64
+                                 },
+                      "patterns":  {
+                                       "text":  true,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "在使用 Microsoft Edge 的任何地方，都可以随时访问收藏夹、密码、历史记录等更多信息。",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  79,
+                      "parentIndex":  70,
+                      "depth":  10,
+                      "type":  "ControlType.Text",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  22,
+                                          "hash":  "8ca6239c51e0adf2"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  299,
+                                     "y":  466,
+                                     "width":  404,
+                                     "height":  25
+                                 },
+                      "patterns":  {
+                                       "text":  true,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "若要退出登录，请转到“设置”\u003e“个人资料”。",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  80,
+                      "parentIndex":  70,
+                      "depth":  10,
+                      "type":  "ControlType.Hyperlink",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  14,
+                                          "hash":  "ea773ea1a89a2f04"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  12,
+                                                  "hash":  "fd18fa3bff847e73"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  null,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  299,
+                                     "y":  506,
+                                     "width":  178,
+                                     "height":  30
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  true,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  true,
+                                       "scroll":  false
+                                   },
+                      "name":  "Microsoft 隐私声明",
+                      "automationId":  "privacy-link"
+                  },
+                  {
+                      "index":  81,
+                      "parentIndex":  70,
+                      "depth":  10,
+                      "type":  "ControlType.Hyperlink",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  3,
+                                          "hash":  "4eafa9e925b30bcd"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  14,
+                                                  "hash":  "ccbc0bf9dd964ef2"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  null,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  299,
+                                     "y":  536,
+                                     "width":  63,
+                                     "height":  30
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  true,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  true,
+                                       "scroll":  false
+                                   },
+                      "name":  "自定义",
+                      "automationId":  "customize-link"
+                  },
+                  {
+                      "index":  82,
+                      "parentIndex":  70,
+                      "depth":  10,
+                      "type":  "ControlType.Button",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  2,
+                                          "hash":  "8e37cd5f7f76c831"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  13,
+                                                  "hash":  "60fb69f5b1d0aa87"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  null,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  685,
+                                     "y":  578,
+                                     "width":  304,
+                                     "height":  48
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  true,
+                                       "scroll":  false
+                                   },
+                      "name":  "明白",
+                      "automationId":  "got-it-button"
+                  },
+                  {
+                      "index":  83,
+                      "parentIndex":  71,
+                      "depth":  11,
+                      "type":  "ControlType.Pane",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  null,
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  84,
+                      "parentIndex":  71,
+                      "depth":  11,
+                      "type":  "ControlType.Document",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  28,
+                                          "hash":  "348263c7a74efe5d"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  11,
+                                                  "hash":  "3c73e21a09012d7b"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  null,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  32,
+                                     "y":  135,
+                                     "width":  1224,
+                                     "height":  1202
+                                 },
+                      "patterns":  {
+                                       "text":  true,
+                                       "value":  true,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  true
+                                   },
+                      "name":  "Aside UIA restricted fixture",
+                      "automationId":  "RootWebArea"
+                  },
+                  {
+                      "index":  85,
+                      "parentIndex":  84,
+                      "depth":  12,
+                      "type":  "ControlType.Group",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  0,
+                                          "hash":  "e3b0c44298fc1c14"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  80,
+                                     "y":  183,
+                                     "width":  1128,
+                                     "height":  498
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  86,
+                      "parentIndex":  85,
+                      "depth":  13,
+                      "type":  "ControlType.Text",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  24,
+                                          "hash":  "73ab801f66dc6271"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  80,
+                                     "y":  183,
+                                     "width":  1128,
+                                     "height":  72
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "Copy restriction fixture",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  87,
+                      "parentIndex":  85,
+                      "depth":  13,
+                      "type":  "ControlType.Text",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  61,
+                                          "hash":  "b6d96b66a30e98da"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  80,
+                                     "y":  287,
+                                     "width":  633,
+                                     "height":  36
+                                 },
+                      "patterns":  {
+                                       "text":  true,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "This synthetic text is visible but CSS selection is disabled.",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  88,
+                      "parentIndex":  85,
+                      "depth":  13,
+                      "type":  "ControlType.Group",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  27,
+                                          "hash":  "f7aeb7a05e89e52c"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  80,
+                                     "y":  347,
+                                     "width":  1128,
+                                     "height":  274
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "Restricted selection region",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  89,
+                      "parentIndex":  85,
+                      "depth":  13,
+                      "type":  "ControlType.Text",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  48,
+                                          "hash":  "26c43836faf56046"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  80,
+                                     "y":  644,
+                                     "width":  549,
+                                     "height":  36
+                                 },
+                      "patterns":  {
+                                       "text":  true,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "This sentence remains selectable for comparison.",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  90,
+                      "parentIndex":  88,
+                      "depth":  14,
+                      "type":  "ControlType.Text",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  27,
+                                          "hash":  "f7aeb7a05e89e52c"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  13,
+                                                  "hash":  "e7de52b8b225c6cf"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  111,
+                                     "y":  408,
+                                     "width":  1066,
+                                     "height":  55
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "Restricted selection region",
+                      "automationId":  "blocked-title"
+                  },
+                  {
+                      "index":  91,
+                      "parentIndex":  88,
+                      "depth":  14,
+                      "type":  "ControlType.Text",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  62,
+                                          "hash":  "b07eda6a6d57a488"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  false,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  111,
+                                     "y":  491,
+                                     "width":  693,
+                                     "height":  36
+                                 },
+                      "patterns":  {
+                                       "text":  true,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  false,
+                                       "scroll":  false
+                                   },
+                      "name":  "The page rejects copy and context menu events for this region.",
+                      "automationId":  ""
+                  },
+                  {
+                      "index":  92,
+                      "parentIndex":  88,
+                      "depth":  14,
+                      "type":  "ControlType.Button",
+                      "nameMetrics":  {
+                                          "present":  true,
+                                          "length":  32,
+                                          "hash":  "8b4ac45b5a318b2b"
+                                      },
+                      "automationIdMetrics":  {
+                                                  "present":  true,
+                                                  "length":  0,
+                                                  "hash":  "e3b0c44298fc1c14"
+                                              },
+                      "enabled":  null,
+                      "offscreen":  false,
+                      "keyboardFocusable":  null,
+                      "contentElement":  null,
+                      "controlElement":  null,
+                      "bounds":  {
+                                     "x":  111,
+                                     "y":  557,
+                                     "width":  302,
+                                     "height":  33
+                                 },
+                      "patterns":  {
+                                       "text":  false,
+                                       "value":  false,
+                                       "selection":  false,
+                                       "selectionItem":  false,
+                                       "invoke":  true,
+                                       "scroll":  false
+                                   },
+                      "name":  "A still-readable semantic button",
+                      "automationId":  ""
+                  }
+              ]
+}

@@ -1,0 +1,1174 @@
+{
+    "probe":  "chromium-uia-screen",
+    "generatedAt":  "2026-09-01T05:11:23.7974616Z",
+    "target":  {
+                   "handle":  "0x280048",
+                   "valid":  true,
+                   "processId":  23756,
+                   "processName":  "msedge",
+                   "processPath":  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+                   "className":  "Chrome_WidgetWin_1",
+                   "title":  {
+                                 "present":  true,
+                                 "length":  39,
+                                 "hash":  "7931c1a7402d1a88"
+                             }
+               },
+    "uia":  {
+                "available":  true,
+                "rootCreated":  true,
+                "focusedElement":  {
+                                       "type":  "ControlType.Document",
+                                       "name":  {
+                                                    "present":  true,
+                                                    "length":  6,
+                                                    "hash":  "f911e414cf6bdfc5"
+                                                },
+                                       "belongsToTarget":  true
+                                   },
+                "controlView":  {
+                                    "view":  "Control",
+                                    "nodeCount":  188,
+                                    "truncated":  false,
+                                    "summary":  {
+                                                    "patternCounts":  {
+                                                                          "text":  13,
+                                                                          "value":  33,
+                                                                          "selection":  3,
+                                                                          "selectionItem":  4,
+                                                                          "invoke":  54,
+                                                                          "scroll":  7
+                                                                      },
+                                                    "controlTypeCounts":  {
+                                                                              "ControlType.Window":  1,
+                                                                              "ControlType.Pane":  27,
+                                                                              "ControlType.Button":  41,
+                                                                              "ControlType.Tab":  2,
+                                                                              "ControlType.ToolBar":  1,
+                                                                              "ControlType.Group":  29,
+                                                                              "ControlType.Edit":  4,
+                                                                              "ControlType.TabItem":  4,
+                                                                              "ControlType.Text":  19,
+                                                                              "ControlType.Document":  1,
+                                                                              "ControlType.Hyperlink":  28,
+                                                                              "ControlType.Image":  2,
+                                                                              "ControlType.List":  5,
+                                                                              "ControlType.StatusBar":  1,
+                                                                              "ControlType.ListItem":  22,
+                                                                              "ControlType.Separator":  1
+                                                                          },
+                                                    "tabs":  [
+                                                                 {
+                                                                     "name":  {
+                                                                                  "present":  true,
+                                                                                  "length":  6,
+                                                                                  "hash":  "f911e414cf6bdfc5"
+                                                                              },
+                                                                     "automationId":  {
+                                                                                          "present":  true,
+                                                                                          "length":  7,
+                                                                                          "hash":  "15e16367c6e5718c"
+                                                                                      },
+                                                                     "selected":  null,
+                                                                     "patterns":  {
+                                                                                      "text":  false,
+                                                                                      "value":  false,
+                                                                                      "selection":  false,
+                                                                                      "selectionItem":  true,
+                                                                                      "invoke":  false,
+                                                                                      "scroll":  false
+                                                                                  }
+                                                                 },
+                                                                 {
+                                                                     "name":  {
+                                                                                  "present":  true,
+                                                                                  "length":  31,
+                                                                                  "hash":  "de11e2826351caa2"
+                                                                              },
+                                                                     "automationId":  {
+                                                                                          "present":  true,
+                                                                                          "length":  7,
+                                                                                          "hash":  "15e16367c6e5718c"
+                                                                                      },
+                                                                     "selected":  false,
+                                                                     "patterns":  {
+                                                                                      "text":  false,
+                                                                                      "value":  false,
+                                                                                      "selection":  false,
+                                                                                      "selectionItem":  true,
+                                                                                      "invoke":  false,
+                                                                                      "scroll":  false
+                                                                                  }
+                                                                 },
+                                                                 {
+                                                                     "name":  {
+                                                                                  "present":  true,
+                                                                                  "length":  28,
+                                                                                  "hash":  "4d96449e3f840c62"
+                                                                              },
+                                                                     "automationId":  {
+                                                                                          "present":  true,
+                                                                                          "length":  7,
+                                                                                          "hash":  "15e16367c6e5718c"
+                                                                                      },
+                                                                     "selected":  false,
+                                                                     "patterns":  {
+                                                                                      "text":  false,
+                                                                                      "value":  false,
+                                                                                      "selection":  false,
+                                                                                      "selectionItem":  true,
+                                                                                      "invoke":  false,
+                                                                                      "scroll":  false
+                                                                                  }
+                                                                 },
+                                                                 {
+                                                                     "name":  {
+                                                                                  "present":  true,
+                                                                                  "length":  42,
+                                                                                  "hash":  "e61a5b5fc033565d"
+                                                                              },
+                                                                     "automationId":  {
+                                                                                          "present":  true,
+                                                                                          "length":  7,
+                                                                                          "hash":  "15e16367c6e5718c"
+                                                                                      },
+                                                                     "selected":  false,
+                                                                     "patterns":  {
+                                                                                      "text":  false,
+                                                                                      "value":  false,
+                                                                                      "selection":  false,
+                                                                                      "selectionItem":  true,
+                                                                                      "invoke":  false,
+                                                                                      "scroll":  false
+                                                                                  }
+                                                                 }
+                                                             ],
+                                                    "textProviders":  [
+                                                                          {
+                                                                              "type":  "ControlType.Edit",
+                                                                              "name":  {
+                                                                                           "present":  true,
+                                                                                           "length":  6,
+                                                                                           "hash":  "874efa562880c234"
+                                                                                       },
+                                                                              "metrics":  {
+                                                                                              "documentSample":  {
+                                                                                                                     "present":  true,
+                                                                                                                     "length":  18,
+                                                                                                                     "hash":  "996e1f714b08e971",
+                                                                                                                     "text":  "https://github.com"
+                                                                                                                 },
+                                                                                              "selectionRangeCount":  1,
+                                                                                              "selectionText":  {
+                                                                                                                    "present":  false,
+                                                                                                                    "length":  0,
+                                                                                                                    "hash":  null,
+                                                                                                                    "samples":  [
+                                                                                                                                    ""
+                                                                                                                                ]
+                                                                                                                },
+                                                                                              "visibleRangeCount":  0,
+                                                                                              "visibleText":  {
+                                                                                                                  "present":  false,
+                                                                                                                  "length":  0
+                                                                                                              }
+                                                                                          }
+                                                                          },
+                                                                          {
+                                                                              "type":  "ControlType.Edit",
+                                                                              "name":  {
+                                                                                           "present":  true,
+                                                                                           "length":  0,
+                                                                                           "hash":  "e3b0c44298fc1c14"
+                                                                                       },
+                                                                              "metrics":  {
+                                                                                              "documentSample":  {
+                                                                                                                     "present":  true,
+                                                                                                                     "length":  0,
+                                                                                                                     "hash":  "e3b0c44298fc1c14",
+                                                                                                                     "text":  ""
+                                                                                                                 },
+                                                                                              "selectionRangeCount":  1,
+                                                                                              "selectionText":  {
+                                                                                                                    "present":  false,
+                                                                                                                    "length":  0,
+                                                                                                                    "hash":  null,
+                                                                                                                    "samples":  [
+                                                                                                                                    ""
+                                                                                                                                ]
+                                                                                                                },
+                                                                                              "visibleRangeCount":  0,
+                                                                                              "visibleText":  {
+                                                                                                                  "present":  false,
+                                                                                                                  "length":  0
+                                                                                                              }
+                                                                                          }
+                                                                          },
+                                                                          {
+                                                                              "type":  "ControlType.Document",
+                                                                              "name":  {
+                                                                                           "present":  true,
+                                                                                           "length":  6,
+                                                                                           "hash":  "f911e414cf6bdfc5"
+                                                                                       },
+                                                                              "metrics":  {
+                                                                                              "documentSample":  {
+                                                                                                                     "present":  true,
+                                                                                                                     "length":  1114,
+                                                                                                                     "hash":  "b9389f3fb05a300f",
+                                                                                                                     "text":  "?\nSkip to content\n?\n?\n?\nDashboard\nType / to search\n?\n?\nOpen Copilot…\n?\n?\n?\n?\n?\n?\n?\n?\n?\n?\nAZUSA-1231\nTop repositories\nNew\nFind a repository…\n?\nAZUSA-1231/DataInsight\n?\nJohnnyNg10/tiexi\nDashboard\nHome\nCopilot\n?\nAsk anything or type @ to add context with Copilot\nAsk\nAll repositories\n?\nModel:\nAuto\n?\n?\nChat commands\nDebug\nAgent\nCreate issue\n?\nWrite code\n?\nGit\n?\nPull requests\nFeed\nFilter\n?\nTrending repositories\n·\nSee more\n?\nTHU-MAIC/OpenMAIC\nOpen Multi-Agent Interactive Classroom — Get an immersive, multi-agent learning experience in just one click\n?\nTypeScript27.7k\n Star\n?\n?\n?\npollen-robotics/microduck\nA Tiny biped duck robot ??\n?\nRust5.2k\n Star\n?\nFooter\nGitHub Homepage\n? 2026 GitHub,?Inc.\nFooter navigation\nTerms\nPrivacy\nSecurity\nStatus\nCommunity\nDocs\nContact\nManage cookies\nDo not share my personal information\nLatest from our changelog\n?\n20 hours ago\nGitHub Copilot in VS Code, August 2026 releases\n?\n3 days ago\nGitHub Copilot in Visual Studio — August update\n?\n3 days ago\nGitHub Copilot weekly releases — August 24\n?\n4 days ago\nUpcoming changes to GitHub Copilot policies and billing\nView changelog →\n?\n?\n?"
+                                                                                                                 },
+                                                                                              "selectionRangeCount":  0,
+                                                                                              "selectionText":  {
+                                                                                                                    "present":  false,
+                                                                                                                    "length":  0,
+                                                                                                                    "hash":  null,
+                                                                                                                    "samples":  [
+
+                                                                                                                                ]
+                                                                                                                },
+                                                                                              "visibleRangeCount":  77,
+                                                                                              "visibleText":  {
+                                                                                                                  "present":  true,
+                                                                                                                  "length":  266
+                                                                                                              }
+                                                                                          }
+                                                                          },
+                                                                          {
+                                                                              "type":  "ControlType.Text",
+                                                                              "name":  {
+                                                                                           "present":  true,
+                                                                                           "length":  19,
+                                                                                           "hash":  "514c044318c9e5a2"
+                                                                                       },
+                                                                              "metrics":  {
+                                                                                              "documentSample":  {
+                                                                                                                     "present":  true,
+                                                                                                                     "length":  19,
+                                                                                                                     "hash":  "514c044318c9e5a2",
+                                                                                                                     "text":  "? 2026 GitHub,?Inc."
+                                                                                                                 },
+                                                                                              "selectionRangeCount":  0,
+                                                                                              "selectionText":  {
+                                                                                                                    "present":  false,
+                                                                                                                    "length":  0,
+                                                                                                                    "hash":  null,
+                                                                                                                    "samples":  [
+
+                                                                                                                                ]
+                                                                                                                },
+                                                                                              "visibleRangeCount":  0,
+                                                                                              "visibleText":  {
+                                                                                                                  "present":  false,
+                                                                                                                  "length":  0
+                                                                                                              }
+                                                                                          }
+                                                                          },
+                                                                          {
+                                                                              "type":  "ControlType.Edit",
+                                                                              "name":  {
+                                                                                           "present":  true,
+                                                                                           "length":  50,
+                                                                                           "hash":  "1454bdf9cafcff3c"
+                                                                                       },
+                                                                              "metrics":  {
+                                                                                              "documentSample":  {
+                                                                                                                     "present":  true,
+                                                                                                                     "length":  50,
+                                                                                                                     "hash":  "1454bdf9cafcff3c",
+                                                                                                                     "text":  "Ask anything or type @ to add context with Copilot"
+                                                                                                                 },
+                                                                                              "selectionRangeCount":  0,
+                                                                                              "selectionText":  {
+                                                                                                                    "present":  false,
+                                                                                                                    "length":  0,
+                                                                                                                    "hash":  null,
+                                                                                                                    "samples":  [
+
+                                                                                                                                ]
+                                                                                                                },
+                                                                                              "visibleRangeCount":  0,
+                                                                                              "visibleText":  {
+                                                                                                                  "present":  false,
+                                                                                                                  "length":  0
+                                                                                                              }
+                                                                                          }
+                                                                          },
+                                                                          {
+                                                                              "type":  "ControlType.Edit",
+                                                                              "name":  {
+                                                                                           "present":  true,
+                                                                                           "length":  18,
+                                                                                           "hash":  "2195c861d52140d9"
+                                                                                       },
+                                                                              "metrics":  {
+                                                                                              "documentSample":  {
+                                                                                                                     "present":  true,
+                                                                                                                     "length":  18,
+                                                                                                                     "hash":  "2195c861d52140d9",
+                                                                                                                     "text":  "Find a repository…"
+                                                                                                                 },
+                                                                                              "selectionRangeCount":  0,
+                                                                                              "selectionText":  {
+                                                                                                                    "present":  false,
+                                                                                                                    "length":  0,
+                                                                                                                    "hash":  null,
+                                                                                                                    "samples":  [
+
+                                                                                                                                ]
+                                                                                                                },
+                                                                                              "visibleRangeCount":  0,
+                                                                                              "visibleText":  {
+                                                                                                                  "present":  false,
+                                                                                                                  "length":  0
+                                                                                                              }
+                                                                                          }
+                                                                          },
+                                                                          {
+                                                                              "type":  "ControlType.Text",
+                                                                              "name":  {
+                                                                                           "present":  true,
+                                                                                           "length":  16,
+                                                                                           "hash":  "77fe4eba38d81f4b"
+                                                                                       },
+                                                                              "metrics":  {
+                                                                                              "documentSample":  {
+                                                                                                                     "present":  true,
+                                                                                                                     "length":  16,
+                                                                                                                     "hash":  "77fe4eba38d81f4b",
+                                                                                                                     "text":  "All repositories"
+                                                                                                                 },
+                                                                                              "selectionRangeCount":  0,
+                                                                                              "selectionText":  {
+                                                                                                                    "present":  false,
+                                                                                                                    "length":  0,
+                                                                                                                    "hash":  null,
+                                                                                                                    "samples":  [
+
+                                                                                                                                ]
+                                                                                                                },
+                                                                                              "visibleRangeCount":  1,
+                                                                                              "visibleText":  {
+                                                                                                                  "present":  true,
+                                                                                                                  "length":  16
+                                                                                                              }
+                                                                                          }
+                                                                          },
+                                                                          {
+                                                                              "type":  "ControlType.Text",
+                                                                              "name":  {
+                                                                                           "present":  true,
+                                                                                           "length":  1,
+                                                                                           "hash":  "a137f17a19a09cbe"
+                                                                                       },
+                                                                              "metrics":  {
+                                                                                              "documentSample":  {
+                                                                                                                     "present":  true,
+                                                                                                                     "length":  1,
+                                                                                                                     "hash":  "a137f17a19a09cbe",
+                                                                                                                     "text":  "·"
+                                                                                                                 },
+                                                                                              "selectionRangeCount":  0,
+                                                                                              "selectionText":  {
+                                                                                                                    "present":  false,
+                                                                                                                    "length":  0,
+                                                                                                                    "hash":  null,
+                                                                                                                    "samples":  [
+
+                                                                                                                                ]
+                                                                                                                },
+                                                                                              "visibleRangeCount":  1,
+                                                                                              "visibleText":  {
+                                                                                                                  "present":  true,
+                                                                                                                  "length":  1
+                                                                                                              }
+                                                                                          }
+                                                                          },
+                                                                          {
+                                                                              "type":  "ControlType.Text",
+                                                                              "name":  {
+                                                                                           "present":  true,
+                                                                                           "length":  108,
+                                                                                           "hash":  "61b25367dcf4c441"
+                                                                                       },
+                                                                              "metrics":  {
+                                                                                              "documentSample":  {
+                                                                                                                     "present":  true,
+                                                                                                                     "length":  108,
+                                                                                                                     "hash":  "61b25367dcf4c441",
+                                                                                                                     "text":  "Open Multi-Agent Interactive Classroom — Get an immersive, multi-agent learning experience in just one click"
+                                                                                                                 },
+                                                                                              "selectionRangeCount":  0,
+                                                                                              "selectionText":  {
+                                                                                                                    "present":  false,
+                                                                                                                    "length":  0,
+                                                                                                                    "hash":  null,
+                                                                                                                    "samples":  [
+
+                                                                                                                                ]
+                                                                                                                },
+                                                                                              "visibleRangeCount":  1,
+                                                                                              "visibleText":  {
+                                                                                                                  "present":  true,
+                                                                                                                  "length":  108
+                                                                                                              }
+                                                                                          }
+                                                                          },
+                                                                          {
+                                                                              "type":  "ControlType.Text",
+                                                                              "name":  {
+                                                                                           "present":  true,
+                                                                                           "length":  12,
+                                                                                           "hash":  "21dbf47d8247d636"
+                                                                                       },
+                                                                              "metrics":  {
+                                                                                              "documentSample":  {
+                                                                                                                     "present":  true,
+                                                                                                                     "length":  12,
+                                                                                                                     "hash":  "21dbf47d8247d636",
+                                                                                                                     "text":  "20 hours ago"
+                                                                                                                 },
+                                                                                              "selectionRangeCount":  0,
+                                                                                              "selectionText":  {
+                                                                                                                    "present":  false,
+                                                                                                                    "length":  0,
+                                                                                                                    "hash":  null,
+                                                                                                                    "samples":  [
+
+                                                                                                                                ]
+                                                                                                                },
+                                                                                              "visibleRangeCount":  1,
+                                                                                              "visibleText":  {
+                                                                                                                  "present":  true,
+                                                                                                                  "length":  12
+                                                                                                              }
+                                                                                          }
+                                                                          },
+                                                                          {
+                                                                              "type":  "ControlType.Text",
+                                                                              "name":  {
+                                                                                           "present":  true,
+                                                                                           "length":  10,
+                                                                                           "hash":  "46463ba858e208f2"
+                                                                                       },
+                                                                              "metrics":  {
+                                                                                              "documentSample":  {
+                                                                                                                     "present":  true,
+                                                                                                                     "length":  10,
+                                                                                                                     "hash":  "46463ba858e208f2",
+                                                                                                                     "text":  "3 days ago"
+                                                                                                                 },
+                                                                                              "selectionRangeCount":  0,
+                                                                                              "selectionText":  {
+                                                                                                                    "present":  false,
+                                                                                                                    "length":  0,
+                                                                                                                    "hash":  null,
+                                                                                                                    "samples":  [
+
+                                                                                                                                ]
+                                                                                                                },
+                                                                                              "visibleRangeCount":  1,
+                                                                                              "visibleText":  {
+                                                                                                                  "present":  true,
+                                                                                                                  "length":  10
+                                                                                                              }
+                                                                                          }
+                                                                          },
+                                                                          {
+                                                                              "type":  "ControlType.Text",
+                                                                              "name":  {
+                                                                                           "present":  true,
+                                                                                           "length":  10,
+                                                                                           "hash":  "46463ba858e208f2"
+                                                                                       },
+                                                                              "metrics":  {
+                                                                                              "documentSample":  {
+                                                                                                                     "present":  true,
+                                                                                                                     "length":  10,
+                                                                                                                     "hash":  "46463ba858e208f2",
+                                                                                                                     "text":  "3 days ago"
+                                                                                                                 },
+                                                                                              "selectionRangeCount":  0,
+                                                                                              "selectionText":  {
+                                                                                                                    "present":  false,
+                                                                                                                    "length":  0,
+                                                                                                                    "hash":  null,
+                                                                                                                    "samples":  [
+
+                                                                                                                                ]
+                                                                                                                },
+                                                                                              "visibleRangeCount":  1,
+                                                                                              "visibleText":  {
+                                                                                                                  "present":  true,
+                                                                                                                  "length":  10
+                                                                                                              }
+                                                                                          }
+                                                                          },
+                                                                          {
+                                                                              "type":  "ControlType.Text",
+                                                                              "name":  {
+                                                                                           "present":  true,
+                                                                                           "length":  10,
+                                                                                           "hash":  "6faa883aa9730459"
+                                                                                       },
+                                                                              "metrics":  {
+                                                                                              "documentSample":  {
+                                                                                                                     "present":  true,
+                                                                                                                     "length":  10,
+                                                                                                                     "hash":  "6faa883aa9730459",
+                                                                                                                     "text":  "4 days ago"
+                                                                                                                 },
+                                                                                              "selectionRangeCount":  0,
+                                                                                              "selectionText":  {
+                                                                                                                    "present":  false,
+                                                                                                                    "length":  0,
+                                                                                                                    "hash":  null,
+                                                                                                                    "samples":  [
+
+                                                                                                                                ]
+                                                                                                                },
+                                                                                              "visibleRangeCount":  1,
+                                                                                              "visibleText":  {
+                                                                                                                  "present":  true,
+                                                                                                                  "length":  10
+                                                                                                              }
+                                                                                          }
+                                                                          }
+                                                                      ],
+                                                    "edits":  [
+                                                                  {
+                                                                      "name":  {
+                                                                                   "present":  true,
+                                                                                   "length":  6,
+                                                                                   "hash":  "874efa562880c234"
+                                                                               },
+                                                                      "automationId":  {
+                                                                                           "present":  true,
+                                                                                           "length":  9,
+                                                                                           "hash":  "27814a28c5a196af"
+                                                                                       },
+                                                                      "enabled":  null,
+                                                                      "offscreen":  false,
+                                                                      "value":  {
+                                                                                    "available":  true,
+                                                                                    "value":  {
+                                                                                                  "present":  true,
+                                                                                                  "length":  18,
+                                                                                                  "hash":  "996e1f714b08e971"
+                                                                                              }
+                                                                                }
+                                                                  },
+                                                                  {
+                                                                      "name":  {
+                                                                                   "present":  true,
+                                                                                   "length":  0,
+                                                                                   "hash":  "e3b0c44298fc1c14"
+                                                                               },
+                                                                      "automationId":  {
+                                                                                           "present":  true,
+                                                                                           "length":  0,
+                                                                                           "hash":  "e3b0c44298fc1c14"
+                                                                                       },
+                                                                      "enabled":  null,
+                                                                      "offscreen":  false,
+                                                                      "value":  {
+                                                                                    "available":  true,
+                                                                                    "value":  {
+                                                                                                  "present":  true,
+                                                                                                  "length":  0,
+                                                                                                  "hash":  "e3b0c44298fc1c14"
+                                                                                              }
+                                                                                }
+                                                                  },
+                                                                  {
+                                                                      "name":  {
+                                                                                   "present":  true,
+                                                                                   "length":  50,
+                                                                                   "hash":  "1454bdf9cafcff3c"
+                                                                               },
+                                                                      "automationId":  {
+                                                                                           "present":  true,
+                                                                                           "length":  21,
+                                                                                           "hash":  "9da74780f79b0fa0"
+                                                                                       },
+                                                                      "enabled":  null,
+                                                                      "offscreen":  false,
+                                                                      "value":  {
+                                                                                    "available":  true,
+                                                                                    "value":  {
+                                                                                                  "present":  true,
+                                                                                                  "length":  0,
+                                                                                                  "hash":  "e3b0c44298fc1c14"
+                                                                                              }
+                                                                                }
+                                                                  },
+                                                                  {
+                                                                      "name":  {
+                                                                                   "present":  true,
+                                                                                   "length":  18,
+                                                                                   "hash":  "2195c861d52140d9"
+                                                                               },
+                                                                      "automationId":  {
+                                                                                           "present":  true,
+                                                                                           "length":  27,
+                                                                                           "hash":  "32d20dc9de9a7713"
+                                                                                       },
+                                                                      "enabled":  null,
+                                                                      "offscreen":  false,
+                                                                      "value":  {
+                                                                                    "available":  true,
+                                                                                    "value":  {
+                                                                                                  "present":  true,
+                                                                                                  "length":  0,
+                                                                                                  "hash":  "e3b0c44298fc1c14"
+                                                                                              }
+                                                                                }
+                                                                  }
+                                                              ]
+                                                }
+                                },
+                "contentView":  {
+                                    "view":  "Content",
+                                    "nodeCount":  168,
+                                    "truncated":  false,
+                                    "summary":  {
+                                                    "patternCounts":  {
+                                                                          "text":  13,
+                                                                          "value":  33,
+                                                                          "selection":  2,
+                                                                          "selectionItem":  0,
+                                                                          "invoke":  48,
+                                                                          "scroll":  7
+                                                                      },
+                                                    "controlTypeCounts":  {
+                                                                              "ControlType.Window":  1,
+                                                                              "ControlType.Pane":  19,
+                                                                              "ControlType.Button":  34,
+                                                                              "ControlType.Tab":  1,
+                                                                              "ControlType.ToolBar":  1,
+                                                                              "ControlType.Group":  29,
+                                                                              "ControlType.Edit":  4,
+                                                                              "ControlType.Text":  19,
+                                                                              "ControlType.Document":  1,
+                                                                              "ControlType.Hyperlink":  28,
+                                                                              "ControlType.Image":  2,
+                                                                              "ControlType.List":  5,
+                                                                              "ControlType.StatusBar":  1,
+                                                                              "ControlType.ListItem":  22,
+                                                                              "ControlType.Separator":  1
+                                                                          },
+                                                    "tabs":  [
+
+                                                             ],
+                                                    "textProviders":  [
+                                                                          {
+                                                                              "type":  "ControlType.Edit",
+                                                                              "name":  {
+                                                                                           "present":  true,
+                                                                                           "length":  6,
+                                                                                           "hash":  "874efa562880c234"
+                                                                                       },
+                                                                              "metrics":  {
+                                                                                              "documentSample":  {
+                                                                                                                     "present":  true,
+                                                                                                                     "length":  18,
+                                                                                                                     "hash":  "996e1f714b08e971",
+                                                                                                                     "text":  "https://github.com"
+                                                                                                                 },
+                                                                                              "selectionRangeCount":  1,
+                                                                                              "selectionText":  {
+                                                                                                                    "present":  false,
+                                                                                                                    "length":  0,
+                                                                                                                    "hash":  null,
+                                                                                                                    "samples":  [
+                                                                                                                                    ""
+                                                                                                                                ]
+                                                                                                                },
+                                                                                              "visibleRangeCount":  0,
+                                                                                              "visibleText":  {
+                                                                                                                  "present":  false,
+                                                                                                                  "length":  0
+                                                                                                              }
+                                                                                          }
+                                                                          },
+                                                                          {
+                                                                              "type":  "ControlType.Edit",
+                                                                              "name":  {
+                                                                                           "present":  true,
+                                                                                           "length":  0,
+                                                                                           "hash":  "e3b0c44298fc1c14"
+                                                                                       },
+                                                                              "metrics":  {
+                                                                                              "documentSample":  {
+                                                                                                                     "present":  true,
+                                                                                                                     "length":  0,
+                                                                                                                     "hash":  "e3b0c44298fc1c14",
+                                                                                                                     "text":  ""
+                                                                                                                 },
+                                                                                              "selectionRangeCount":  1,
+                                                                                              "selectionText":  {
+                                                                                                                    "present":  false,
+                                                                                                                    "length":  0,
+                                                                                                                    "hash":  null,
+                                                                                                                    "samples":  [
+                                                                                                                                    ""
+                                                                                                                                ]
+                                                                                                                },
+                                                                                              "visibleRangeCount":  0,
+                                                                                              "visibleText":  {
+                                                                                                                  "present":  false,
+                                                                                                                  "length":  0
+                                                                                                              }
+                                                                                          }
+                                                                          },
+                                                                          {
+                                                                              "type":  "ControlType.Document",
+                                                                              "name":  {
+                                                                                           "present":  true,
+                                                                                           "length":  6,
+                                                                                           "hash":  "f911e414cf6bdfc5"
+                                                                                       },
+                                                                              "metrics":  {
+                                                                                              "documentSample":  {
+                                                                                                                     "present":  true,
+                                                                                                                     "length":  1114,
+                                                                                                                     "hash":  "b9389f3fb05a300f",
+                                                                                                                     "text":  "?\nSkip to content\n?\n?\n?\nDashboard\nType / to search\n?\n?\nOpen Copilot…\n?\n?\n?\n?\n?\n?\n?\n?\n?\n?\nAZUSA-1231\nTop repositories\nNew\nFind a repository…\n?\nAZUSA-1231/DataInsight\n?\nJohnnyNg10/tiexi\nDashboard\nHome\nCopilot\n?\nAsk anything or type @ to add context with Copilot\nAsk\nAll repositories\n?\nModel:\nAuto\n?\n?\nChat commands\nDebug\nAgent\nCreate issue\n?\nWrite code\n?\nGit\n?\nPull requests\nFeed\nFilter\n?\nTrending repositories\n·\nSee more\n?\nTHU-MAIC/OpenMAIC\nOpen Multi-Agent Interactive Classroom — Get an immersive, multi-agent learning experience in just one click\n?\nTypeScript27.7k\n Star\n?\n?\n?\npollen-robotics/microduck\nA Tiny biped duck robot ??\n?\nRust5.2k\n Star\n?\nFooter\nGitHub Homepage\n? 2026 GitHub,?Inc.\nFooter navigation\nTerms\nPrivacy\nSecurity\nStatus\nCommunity\nDocs\nContact\nManage cookies\nDo not share my personal information\nLatest from our changelog\n?\n20 hours ago\nGitHub Copilot in VS Code, August 2026 releases\n?\n3 days ago\nGitHub Copilot in Visual Studio — August update\n?\n3 days ago\nGitHub Copilot weekly releases — August 24\n?\n4 days ago\nUpcoming changes to GitHub Copilot policies and billing\nView changelog →\n?\n?\n?"
+                                                                                                                 },
+                                                                                              "selectionRangeCount":  0,
+                                                                                              "selectionText":  {
+                                                                                                                    "present":  false,
+                                                                                                                    "length":  0,
+                                                                                                                    "hash":  null,
+                                                                                                                    "samples":  [
+
+                                                                                                                                ]
+                                                                                                                },
+                                                                                              "visibleRangeCount":  77,
+                                                                                              "visibleText":  {
+                                                                                                                  "present":  true,
+                                                                                                                  "length":  266
+                                                                                                              }
+                                                                                          }
+                                                                          },
+                                                                          {
+                                                                              "type":  "ControlType.Text",
+                                                                              "name":  {
+                                                                                           "present":  true,
+                                                                                           "length":  19,
+                                                                                           "hash":  "514c044318c9e5a2"
+                                                                                       },
+                                                                              "metrics":  {
+                                                                                              "documentSample":  {
+                                                                                                                     "present":  true,
+                                                                                                                     "length":  19,
+                                                                                                                     "hash":  "514c044318c9e5a2",
+                                                                                                                     "text":  "? 2026 GitHub,?Inc."
+                                                                                                                 },
+                                                                                              "selectionRangeCount":  0,
+                                                                                              "selectionText":  {
+                                                                                                                    "present":  false,
+                                                                                                                    "length":  0,
+                                                                                                                    "hash":  null,
+                                                                                                                    "samples":  [
+
+                                                                                                                                ]
+                                                                                                                },
+                                                                                              "visibleRangeCount":  0,
+                                                                                              "visibleText":  {
+                                                                                                                  "present":  false,
+                                                                                                                  "length":  0
+                                                                                                              }
+                                                                                          }
+                                                                          },
+                                                                          {
+                                                                              "type":  "ControlType.Edit",
+                                                                              "name":  {
+                                                                                           "present":  true,
+                                                                                           "length":  50,
+                                                                                           "hash":  "1454bdf9cafcff3c"
+                                                                                       },
+                                                                              "metrics":  {
+                                                                                              "documentSample":  {
+                                                                                                                     "present":  true,
+                                                                                                                     "length":  50,
+                                                                                                                     "hash":  "1454bdf9cafcff3c",
+                                                                                                                     "text":  "Ask anything or type @ to add context with Copilot"
+                                                                                                                 },
+                                                                                              "selectionRangeCount":  0,
+                                                                                              "selectionText":  {
+                                                                                                                    "present":  false,
+                                                                                                                    "length":  0,
+                                                                                                                    "hash":  null,
+                                                                                                                    "samples":  [
+
+                                                                                                                                ]
+                                                                                                                },
+                                                                                              "visibleRangeCount":  0,
+                                                                                              "visibleText":  {
+                                                                                                                  "present":  false,
+                                                                                                                  "length":  0
+                                                                                                              }
+                                                                                          }
+                                                                          },
+                                                                          {
+                                                                              "type":  "ControlType.Edit",
+                                                                              "name":  {
+                                                                                           "present":  true,
+                                                                                           "length":  18,
+                                                                                           "hash":  "2195c861d52140d9"
+                                                                                       },
+                                                                              "metrics":  {
+                                                                                              "documentSample":  {
+                                                                                                                     "present":  true,
+                                                                                                                     "length":  18,
+                                                                                                                     "hash":  "2195c861d52140d9",
+                                                                                                                     "text":  "Find a repository…"
+                                                                                                                 },
+                                                                                              "selectionRangeCount":  0,
+                                                                                              "selectionText":  {
+                                                                                                                    "present":  false,
+                                                                                                                    "length":  0,
+                                                                                                                    "hash":  null,
+                                                                                                                    "samples":  [
+
+                                                                                                                                ]
+                                                                                                                },
+                                                                                              "visibleRangeCount":  0,
+                                                                                              "visibleText":  {
+                                                                                                                  "present":  false,
+                                                                                                                  "length":  0
+                                                                                                              }
+                                                                                          }
+                                                                          },
+                                                                          {
+                                                                              "type":  "ControlType.Text",
+                                                                              "name":  {
+                                                                                           "present":  true,
+                                                                                           "length":  16,
+                                                                                           "hash":  "77fe4eba38d81f4b"
+                                                                                       },
+                                                                              "metrics":  {
+                                                                                              "documentSample":  {
+                                                                                                                     "present":  true,
+                                                                                                                     "length":  16,
+                                                                                                                     "hash":  "77fe4eba38d81f4b",
+                                                                                                                     "text":  "All repositories"
+                                                                                                                 },
+                                                                                              "selectionRangeCount":  0,
+                                                                                              "selectionText":  {
+                                                                                                                    "present":  false,
+                                                                                                                    "length":  0,
+                                                                                                                    "hash":  null,
+                                                                                                                    "samples":  [
+
+                                                                                                                                ]
+                                                                                                                },
+                                                                                              "visibleRangeCount":  1,
+                                                                                              "visibleText":  {
+                                                                                                                  "present":  true,
+                                                                                                                  "length":  16
+                                                                                                              }
+                                                                                          }
+                                                                          },
+                                                                          {
+                                                                              "type":  "ControlType.Text",
+                                                                              "name":  {
+                                                                                           "present":  true,
+                                                                                           "length":  1,
+                                                                                           "hash":  "a137f17a19a09cbe"
+                                                                                       },
+                                                                              "metrics":  {
+                                                                                              "documentSample":  {
+                                                                                                                     "present":  true,
+                                                                                                                     "length":  1,
+                                                                                                                     "hash":  "a137f17a19a09cbe",
+                                                                                                                     "text":  "·"
+                                                                                                                 },
+                                                                                              "selectionRangeCount":  0,
+                                                                                              "selectionText":  {
+                                                                                                                    "present":  false,
+                                                                                                                    "length":  0,
+                                                                                                                    "hash":  null,
+                                                                                                                    "samples":  [
+
+                                                                                                                                ]
+                                                                                                                },
+                                                                                              "visibleRangeCount":  1,
+                                                                                              "visibleText":  {
+                                                                                                                  "present":  true,
+                                                                                                                  "length":  1
+                                                                                                              }
+                                                                                          }
+                                                                          },
+                                                                          {
+                                                                              "type":  "ControlType.Text",
+                                                                              "name":  {
+                                                                                           "present":  true,
+                                                                                           "length":  108,
+                                                                                           "hash":  "61b25367dcf4c441"
+                                                                                       },
+                                                                              "metrics":  {
+                                                                                              "documentSample":  {
+                                                                                                                     "present":  true,
+                                                                                                                     "length":  108,
+                                                                                                                     "hash":  "61b25367dcf4c441",
+                                                                                                                     "text":  "Open Multi-Agent Interactive Classroom — Get an immersive, multi-agent learning experience in just one click"
+                                                                                                                 },
+                                                                                              "selectionRangeCount":  0,
+                                                                                              "selectionText":  {
+                                                                                                                    "present":  false,
+                                                                                                                    "length":  0,
+                                                                                                                    "hash":  null,
+                                                                                                                    "samples":  [
+
+                                                                                                                                ]
+                                                                                                                },
+                                                                                              "visibleRangeCount":  1,
+                                                                                              "visibleText":  {
+                                                                                                                  "present":  true,
+                                                                                                                  "length":  108
+                                                                                                              }
+                                                                                          }
+                                                                          },
+                                                                          {
+                                                                              "type":  "ControlType.Text",
+                                                                              "name":  {
+                                                                                           "present":  true,
+                                                                                           "length":  12,
+                                                                                           "hash":  "21dbf47d8247d636"
+                                                                                       },
+                                                                              "metrics":  {
+                                                                                              "documentSample":  {
+                                                                                                                     "present":  true,
+                                                                                                                     "length":  12,
+                                                                                                                     "hash":  "21dbf47d8247d636",
+                                                                                                                     "text":  "20 hours ago"
+                                                                                                                 },
+                                                                                              "selectionRangeCount":  0,
+                                                                                              "selectionText":  {
+                                                                                                                    "present":  false,
+                                                                                                                    "length":  0,
+                                                                                                                    "hash":  null,
+                                                                                                                    "samples":  [
+
+                                                                                                                                ]
+                                                                                                                },
+                                                                                              "visibleRangeCount":  1,
+                                                                                              "visibleText":  {
+                                                                                                                  "present":  true,
+                                                                                                                  "length":  12
+                                                                                                              }
+                                                                                          }
+                                                                          },
+                                                                          {
+                                                                              "type":  "ControlType.Text",
+                                                                              "name":  {
+                                                                                           "present":  true,
+                                                                                           "length":  10,
+                                                                                           "hash":  "46463ba858e208f2"
+                                                                                       },
+                                                                              "metrics":  {
+                                                                                              "documentSample":  {
+                                                                                                                     "present":  true,
+                                                                                                                     "length":  10,
+                                                                                                                     "hash":  "46463ba858e208f2",
+                                                                                                                     "text":  "3 days ago"
+                                                                                                                 },
+                                                                                              "selectionRangeCount":  0,
+                                                                                              "selectionText":  {
+                                                                                                                    "present":  false,
+                                                                                                                    "length":  0,
+                                                                                                                    "hash":  null,
+                                                                                                                    "samples":  [
+
+                                                                                                                                ]
+                                                                                                                },
+                                                                                              "visibleRangeCount":  1,
+                                                                                              "visibleText":  {
+                                                                                                                  "present":  true,
+                                                                                                                  "length":  10
+                                                                                                              }
+                                                                                          }
+                                                                          },
+                                                                          {
+                                                                              "type":  "ControlType.Text",
+                                                                              "name":  {
+                                                                                           "present":  true,
+                                                                                           "length":  10,
+                                                                                           "hash":  "46463ba858e208f2"
+                                                                                       },
+                                                                              "metrics":  {
+                                                                                              "documentSample":  {
+                                                                                                                     "present":  true,
+                                                                                                                     "length":  10,
+                                                                                                                     "hash":  "46463ba858e208f2",
+                                                                                                                     "text":  "3 days ago"
+                                                                                                                 },
+                                                                                              "selectionRangeCount":  0,
+                                                                                              "selectionText":  {
+                                                                                                                    "present":  false,
+                                                                                                                    "length":  0,
+                                                                                                                    "hash":  null,
+                                                                                                                    "samples":  [
+
+                                                                                                                                ]
+                                                                                                                },
+                                                                                              "visibleRangeCount":  1,
+                                                                                              "visibleText":  {
+                                                                                                                  "present":  true,
+                                                                                                                  "length":  10
+                                                                                                              }
+                                                                                          }
+                                                                          },
+                                                                          {
+                                                                              "type":  "ControlType.Text",
+                                                                              "name":  {
+                                                                                           "present":  true,
+                                                                                           "length":  10,
+                                                                                           "hash":  "6faa883aa9730459"
+                                                                                       },
+                                                                              "metrics":  {
+                                                                                              "documentSample":  {
+                                                                                                                     "present":  true,
+                                                                                                                     "length":  10,
+                                                                                                                     "hash":  "6faa883aa9730459",
+                                                                                                                     "text":  "4 days ago"
+                                                                                                                 },
+                                                                                              "selectionRangeCount":  0,
+                                                                                              "selectionText":  {
+                                                                                                                    "present":  false,
+                                                                                                                    "length":  0,
+                                                                                                                    "hash":  null,
+                                                                                                                    "samples":  [
+
+                                                                                                                                ]
+                                                                                                                },
+                                                                                              "visibleRangeCount":  1,
+                                                                                              "visibleText":  {
+                                                                                                                  "present":  true,
+                                                                                                                  "length":  10
+                                                                                                              }
+                                                                                          }
+                                                                          }
+                                                                      ],
+                                                    "edits":  [
+                                                                  {
+                                                                      "name":  {
+                                                                                   "present":  true,
+                                                                                   "length":  6,
+                                                                                   "hash":  "874efa562880c234"
+                                                                               },
+                                                                      "automationId":  {
+                                                                                           "present":  true,
+                                                                                           "length":  9,
+                                                                                           "hash":  "27814a28c5a196af"
+                                                                                       },
+                                                                      "enabled":  null,
+                                                                      "offscreen":  false,
+                                                                      "value":  {
+                                                                                    "available":  true,
+                                                                                    "value":  {
+                                                                                                  "present":  true,
+                                                                                                  "length":  18,
+                                                                                                  "hash":  "996e1f714b08e971"
+                                                                                              }
+                                                                                }
+                                                                  },
+                                                                  {
+                                                                      "name":  {
+                                                                                   "present":  true,
+                                                                                   "length":  0,
+                                                                                   "hash":  "e3b0c44298fc1c14"
+                                                                               },
+                                                                      "automationId":  {
+                                                                                           "present":  true,
+                                                                                           "length":  0,
+                                                                                           "hash":  "e3b0c44298fc1c14"
+                                                                                       },
+                                                                      "enabled":  null,
+                                                                      "offscreen":  false,
+                                                                      "value":  {
+                                                                                    "available":  true,
+                                                                                    "value":  {
+                                                                                                  "present":  true,
+                                                                                                  "length":  0,
+                                                                                                  "hash":  "e3b0c44298fc1c14"
+                                                                                              }
+                                                                                }
+                                                                  },
+                                                                  {
+                                                                      "name":  {
+                                                                                   "present":  true,
+                                                                                   "length":  50,
+                                                                                   "hash":  "1454bdf9cafcff3c"
+                                                                               },
+                                                                      "automationId":  {
+                                                                                           "present":  true,
+                                                                                           "length":  21,
+                                                                                           "hash":  "9da74780f79b0fa0"
+                                                                                       },
+                                                                      "enabled":  null,
+                                                                      "offscreen":  false,
+                                                                      "value":  {
+                                                                                    "available":  true,
+                                                                                    "value":  {
+                                                                                                  "present":  true,
+                                                                                                  "length":  0,
+                                                                                                  "hash":  "e3b0c44298fc1c14"
+                                                                                              }
+                                                                                }
+                                                                  },
+                                                                  {
+                                                                      "name":  {
+                                                                                   "present":  true,
+                                                                                   "length":  18,
+                                                                                   "hash":  "2195c861d52140d9"
+                                                                               },
+                                                                      "automationId":  {
+                                                                                           "present":  true,
+                                                                                           "length":  27,
+                                                                                           "hash":  "32d20dc9de9a7713"
+                                                                                       },
+                                                                      "enabled":  null,
+                                                                      "offscreen":  false,
+                                                                      "value":  {
+                                                                                    "available":  true,
+                                                                                    "value":  {
+                                                                                                  "present":  true,
+                                                                                                  "length":  0,
+                                                                                                  "hash":  "e3b0c44298fc1c14"
+                                                                                              }
+                                                                                }
+                                                                  }
+                                                              ]
+                                                }
+                                },
+                "semanticTreeFiles":  [
+                                          "C:\\Users\\YANdz\\AppData\\Local\\Temp\\aside-live-chromium-uia\\live-edge-20260901-131120652\\trees\\live-edge-20260901-131120652\\uia-control-view.json",
+                                          "C:\\Users\\YANdz\\AppData\\Local\\Temp\\aside-live-chromium-uia\\live-edge-20260901-131120652\\trees\\live-edge-20260901-131120652\\uia-content-view.json"
+                                      ],
+                "note":  ""
+            },
+    "screenCapture":  {
+                          "requested":  true,
+                          "gdi":  {
+                                      "copyFromScreen":  {
+                                                             "captured":  true,
+                                                             "path":  "C:\\Users\\YANdz\\AppData\\Local\\Temp\\aside-live-chromium-uia\\live-edge-20260901-131120652\\screen\\screen-copy.png",
+                                                             "bytes":  166,
+                                                             "sha256":  "682042fe0651bc5d04a41b4d708fe04e794f8141f03b71aa1ec176f996ec20eb"
+                                                         },
+                                      "printWindow":  {
+                                                          "captured":  true,
+                                                          "path":  "C:\\Users\\YANdz\\AppData\\Local\\Temp\\aside-live-chromium-uia\\live-edge-20260901-131120652\\screen\\print-window.png",
+                                                          "bytes":  622,
+                                                          "sha256":  "d05ad2a398cb7d00ee9d19b258becf78342c7b2e7127850a2a8cd7a0f76450a3"
+                                                      }
+                                  },
+                          "note":  ""
+                      },
+    "warnings":  [
+
+                 ]
+}

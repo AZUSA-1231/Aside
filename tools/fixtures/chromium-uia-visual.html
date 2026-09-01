@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Aside UIA visual fixture</title>
+  <style>
+    body { font: 16px/1.5 sans-serif; margin: 32px; max-width: 760px; }
+    canvas, svg { display: block; margin: 16px 0; border: 1px solid #999; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Visual content fixture</h1>
+    <p>The chart label below is drawn into a canvas and has no equivalent text node.</p>
+    <canvas id="chart" width="640" height="240" aria-label="Synthetic chart image"></canvas>
+    <svg width="640" height="120" role="img" aria-label="Synthetic SVG illustration">
+      <rect x="10" y="10" width="620" height="100" fill="#d9e8ff"></rect>
+      <text x="24" y="72" font-size="28">SVG rendered label</text>
+    </svg>
+    <p aria-label="Semantic explanation">The surrounding paragraph is still available to UIA.</p>
+  </main>
+  <script>
+    const canvas = document.getElementById('chart');
+    const context = canvas.getContext('2d');
+    context.fillStyle = '#f4f4f4';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = '#2563eb';
+    context.fillRect(80, 150, 90, 50);
+    context.fillRect(220, 100, 90, 100);
+    context.fillRect(360, 45, 90, 155);
+    context.fillStyle = '#111';
+    context.font = '24px sans-serif';
+    context.fillText('Canvas-only label', 24, 36);
+  </script>
+</body>
+</html>

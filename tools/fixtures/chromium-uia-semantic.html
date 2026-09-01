@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Aside UIA semantic fixture</title>
+  <style>
+    body { font: 16px/1.5 sans-serif; margin: 32px; max-width: 760px; }
+    nav { display: flex; gap: 16px; margin-bottom: 24px; }
+    .panel { border: 1px solid #999; padding: 16px; margin: 16px 0; }
+    label { display: block; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Semantic capture fixture</h1>
+    <p id="intro">This synthetic page tests headings, links, controls, lists, tables, and text ranges.</p>
+    <nav aria-label="Fixture navigation">
+      <a href="#controls">Controls</a>
+      <a href="#table">Table</a>
+      <a href="#selection">Selection</a>
+    </nav>
+  </header>
+
+  <main>
+    <section id="controls" class="panel" aria-labelledby="controls-title">
+      <h2 id="controls-title">Controls</h2>
+      <button type="button" id="run-button">Run fixture action</button>
+      <button type="button" id="disabled-button" disabled>Disabled action</button>
+      <label for="query">Search query</label>
+      <input id="query" name="query" type="search" value="synthetic query">
+      <label for="notes">Notes</label>
+      <textarea id="notes" name="notes">Synthetic notes for UIA TextPattern.</textarea>
+    </section>
+
+    <section id="table" class="panel" aria-labelledby="table-title">
+      <h2 id="table-title">Data table</h2>
+      <ul aria-label="Fixture items">
+        <li>Alpha item</li>
+        <li>Beta item</li>
+        <li>Gamma item</li>
+      </ul>
+      <table>
+        <caption>Sample records</caption>
+        <thead><tr><th scope="col">Name</th><th scope="col">State</th></tr></thead>
+        <tbody>
+          <tr><td>Record one</td><td>Ready</td></tr>
+          <tr><td>Record two</td><td>Review</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="selection" class="panel" aria-labelledby="selection-title">
+      <h2 id="selection-title">Selection target</h2>
+      <p>Select part of this sentence to measure UIA TextPattern selection.</p>
+      <p contenteditable="true" aria-label="Editable fixture text">Editable synthetic text.</p>
+      <p aria-hidden="true">This hidden sentence should not be treated as generic context.</p>
+    </section>
+  </main>
+</body>
+</html>

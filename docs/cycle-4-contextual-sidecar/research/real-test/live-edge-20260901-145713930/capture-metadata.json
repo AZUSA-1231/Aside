@@ -1,0 +1,21 @@
+{
+    "capture":  "live-chromium-uia",
+    "generatedAt":  "2026-09-01T06:57:28.3232987Z",
+    "browser":  "edge",
+    "target":  {
+                   "handle":  "0xF059C",
+                   "processId":  18580,
+                   "processName":  "msedge",
+                   "className":  "Chrome_WidgetWin_1",
+                   "title":  "GitHub - 个人 - Microsoft​ Edge"
+               },
+    "options":  {
+                    "includeContent":  true,
+                    "screenCapture":  true,
+                    "maxNodes":  800,
+                    "maxDepth":  16
+                },
+    "probeExitCode":  0,
+    "probeOutput":  "C:\\Users\\YANdz\\AppData\\Local\\Temp\\aside-live-chromium-uia\\live-edge-20260901-145713930\\probe-output.txt",
+    "treeOutput":  "C:\\Users\\YANdz\\AppData\\Local\\Temp\\aside-live-chromium-uia\\live-edge-20260901-145713930\\trees"
+}

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Aside UIA restricted fixture</title>
+  <style>
+    body { font: 16px/1.5 sans-serif; margin: 32px; max-width: 760px; }
+    .blocked { user-select: none; -webkit-user-select: none; border: 1px solid #999; padding: 20px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Copy restriction fixture</h1>
+    <p>This synthetic text is visible but CSS selection is disabled.</p>
+    <section class="blocked" aria-labelledby="blocked-title">
+      <h2 id="blocked-title">Restricted selection region</h2>
+      <p id="blocked-text">The page rejects copy and context menu events for this region.</p>
+      <button type="button">A still-readable semantic button</button>
+    </section>
+    <p id="normal-text">This sentence remains selectable for comparison.</p>
+  </main>
+  <script>
+    document.addEventListener('copy', function (event) { event.preventDefault(); });
+    document.addEventListener('contextmenu', function (event) { event.preventDefault(); });
+  </script>
+</body>
+</html>
