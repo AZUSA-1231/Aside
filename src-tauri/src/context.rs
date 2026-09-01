@@ -42,6 +42,7 @@ pub enum HostAvailability {
 pub enum HostCapability {
     Identify,
     CaptureContext,
+    ChromiumUiaSemanticCapture,
     BrowserUrlTitle,
     ExplorerMetadata,
     VscodeWorkspace,
@@ -178,6 +179,10 @@ impl HostTargetSnapshot {
             .map(platform::target_is_current)
             .unwrap_or(true)
     }
+
+    pub(crate) fn native_target(&self) -> Option<&TargetWindow> {
+        self.native_target.as_ref()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -217,9 +222,9 @@ impl HostExtractorRegistry {
     }
 
     pub fn production() -> Self {
-        // Real host transports are added by later plans. An empty registry is
-        // an honest unsupported fallback, not a generic content extractor.
-        Self::new(Vec::new())
+        Self::new(vec![Box::new(
+            crate::chromium_uia::ChromiumUiaExtractor::default(),
+        )])
     }
 
     fn matching<'a>(&'a self, target: &HostTargetSnapshot) -> Vec<&'a dyn HostExtractor> {
@@ -329,28 +334,38 @@ pub fn classify_foreground_host() -> HostView {
 }
 
 pub fn capture_foreground_context() -> HostCaptureResult {
+    match snapshot_foreground_target() {
+        Some(target) => capture_target_context(target),
+        None => failed_result(
+            next_capture_id(),
+            unavailable_host_view(),
+            HostCaptureErrorCode::NoForegroundTarget,
+        ),
+    }
+}
+
+pub fn snapshot_foreground_target() -> Option<HostTargetSnapshot> {
+    platform::foreground_target().map(HostTargetSnapshot::from_target)
+}
+
+pub fn capture_target_context(target: HostTargetSnapshot) -> HostCaptureResult {
     let capture_id = next_capture_id();
     let registry = HostExtractorRegistry::production();
-    let Some(target) = platform::foreground_target() else {
-        return failed_result(
-            capture_id,
-            HostView {
-                target_id: None,
-                application_id: None,
-                kind: HostKind::Unsupported,
-                availability: HostAvailability::Unavailable,
-                capabilities: Vec::new(),
-            },
-            HostCaptureErrorCode::NoForegroundTarget,
-        );
-    };
-    let captured_at = now_millis();
-    let snapshot = HostTargetSnapshot::from_target(target);
     registry.capture(HostCaptureRequest {
         capture_id,
-        target: snapshot,
-        captured_at,
+        target,
+        captured_at: now_millis(),
     })
+}
+
+fn unavailable_host_view() -> HostView {
+    HostView {
+        target_id: None,
+        application_id: None,
+        kind: HostKind::Unsupported,
+        availability: HostAvailability::Unavailable,
+        capabilities: Vec::new(),
+    }
 }
 
 fn next_capture_id() -> String {
@@ -741,5 +756,22 @@ mod tests {
         assert_eq!(result.host.availability, HostAvailability::Unsupported);
         assert!(result.attachment.is_none());
         assert!(result.error.is_none());
+    }
+
+    #[test]
+    fn production_registry_classifies_chromium_by_executable_identity() {
+        let registry = HostExtractorRegistry::production();
+
+        for application_id in ["chrome.exe", "msedge.exe"] {
+            let view = registry.classify(&HostTargetSnapshot::synthetic(
+                "browser-target",
+                Some(application_id),
+            ));
+            assert_eq!(view.kind, HostKind::Browser);
+            assert_eq!(view.availability, HostAvailability::Available);
+            assert!(view
+                .capabilities
+                .contains(&HostCapability::ChromiumUiaSemanticCapture));
+        }
     }
 }

@@ -1,6 +1,6 @@
 # Cycle 4 Contextual Sidecar Product Requirements
 
-Status: active; P0 adapter layer implemented, host transports deferred  
+Status: active; P1 Chromium UIA capture implemented, visual and other host transports deferred
 Platform: Windows desktop  
 Predecessor: [Cycle 3 Pi Implementation](../cycle-3-pi-implementation/PRD.md)
 

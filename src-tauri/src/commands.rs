@@ -387,7 +387,15 @@ pub(crate) fn toggle_agent_from_shortcut(app: &AppHandle) {
         }
     };
     if should_capture {
-        emit_host_capture(app, context::capture_foreground_context());
+        match context::snapshot_foreground_target() {
+            Some(target) => {
+                let app_handle = app.clone();
+                std::thread::spawn(move || {
+                    emit_host_capture(&app_handle, context::capture_target_context(target));
+                });
+            }
+            None => emit_host_capture(app, context::capture_foreground_context()),
+        }
     }
     if let Err(error) = toggle_agent_internal(app, state.inner()) {
         emit_error(app, error);
@@ -486,8 +494,28 @@ pub fn get_active_host() -> Result<HostView, NativeError> {
 }
 
 #[tauri::command]
-pub fn capture_active_host_context() -> Result<HostCaptureResult, NativeError> {
-    Ok(context::capture_foreground_context())
+pub fn capture_active_host_context(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<HostCaptureResult, NativeError> {
+    let _operation = lock_operation(&state)?;
+    let was_visible = matches!(lock_native(&state)?.visibility, Visibility::Visible);
+    if was_visible {
+        hide_agent_locked(&app, state.inner())?;
+    }
+
+    let result = context::capture_foreground_context();
+
+    if was_visible {
+        if let Err(error) = show_agent_locked(&app, &state) {
+            emit_error(
+                &app,
+                native_error("show_agent", error.message, error.recoverable),
+            );
+        }
+    }
+
+    Ok(result)
 }
 
 #[tauri::command]

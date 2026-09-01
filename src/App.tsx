@@ -15,6 +15,7 @@ import {
   Paperclip,
   Pin,
   RotateCcw,
+  ScanSearch,
   Send,
   Sparkles,
   Square,
@@ -434,6 +435,38 @@ function App() {
     });
   }, [setCurrentRun]);
 
+  const handleCapture = useCallback(async () => {
+    try {
+      const result = await nativeClient.captureActiveHostContext();
+      if (!result.attachment) {
+        setNativeError({
+          operation: "host_capture",
+          recoverable: result.error?.recoverable ?? true,
+          message:
+            result.error?.message ??
+            "The current application does not provide supported context.",
+        });
+        return;
+      }
+
+      const current = attachmentsRef.current;
+      if (!canAppendHostAttachment(current, result.attachment)) {
+        setNativeError({
+          operation: "host_capture",
+          recoverable: true,
+          message: "That context would exceed the prompt limit. Remove an attachment first.",
+        });
+        return;
+      }
+      const next = [...current, result.attachment];
+      attachmentsRef.current = next;
+      setAttachments(next);
+      setNativeError(null);
+    } catch (error) {
+      setNativeError(toNativeError(error, "host_capture", true));
+    }
+  }, []);
+
   const removeAttachment = useCallback((attachmentId: string) => {
     const next = attachmentsRef.current.filter(
       (attachment) => attachment.id !== attachmentId,
@@ -503,6 +536,15 @@ function App() {
           <Command size={12} />
           {shortcutLabel}
         </span>
+        <button
+          className="icon-button capture-button"
+          type="button"
+          aria-label="Capture current host context"
+          title="Capture current host context"
+          onClick={() => void handleCapture()}
+        >
+          <ScanSearch size={15} />
+        </button>
         {agentState.surface === "workspace" && (
           <button
             className="workspace-exit"

@@ -63,6 +63,7 @@ export type AsideHostAvailability =
 export type AsideHostCapability =
   | "identify"
   | "capture_context"
+  | "chromium_uia_semantic_capture"
   | "browser_url_title"
   | "explorer_metadata"
   | "vscode_workspace"

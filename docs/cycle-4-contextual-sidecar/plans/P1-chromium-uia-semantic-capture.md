@@ -1,6 +1,6 @@
 # P1 - Chromium UIA Semantic Capture
 
-Status: planned; not executed  
+Status: implemented
 Depends on: [P0 - One-Shot Host Context Capture](./P0-one-shot-context-capture.md),
 [Chromium UIA and Screen Capture Study](../research/chromium-uia-screen-capture.md),
 and [Chromium UIA Depth Study](../research/chromium-uia-depth-study.md)  

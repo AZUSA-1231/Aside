@@ -1,0 +1,562 @@
+{
+  "id": "research-github-live-edge-20260901-145713930",
+  "host": "browser",
+  "source": "Microsoft Edge",
+  "capturedAt": 1788245848062,
+  "expiresAt": 1788246148062,
+  "sensitivity": "local_content",
+  "summary": "GitHub | 86 semantic nodes | complete",
+  "blocks": [
+    {
+      "type": "json",
+      "label": "browser.metadata",
+      "data": {
+        "application": "Microsoft Edge",
+        "pid": 18580,
+        "tabName": "GitHub - 内存使用率 - 130 MB",
+        "url": "https://github.com/",
+        "title": "GitHub",
+        "quality": "complete",
+        "view": "content",
+        "depth": {
+          "limit": 16,
+          "observed": 5,
+          "depthTruncated": false
+        },
+        "nodeLimit": 800,
+        "nodeCount": 86,
+        "nodeTruncated": false
+      }
+    },
+    {
+      "type": "json",
+      "label": "browser.semantic_page",
+      "data": {
+        "fields": [
+          "role",
+          "name",
+          "parent",
+          "selected"
+        ],
+        "nodes": [
+          [
+            "document",
+            "GitHub",
+            -1,
+            null
+          ],
+          [
+            "link",
+            "Skip to content",
+            0,
+            null
+          ],
+          [
+            "group",
+            "Dashboard menu",
+            0,
+            null
+          ],
+          [
+            "group",
+            "Explore",
+            0,
+            null
+          ],
+          [
+            "group",
+            "Global navigation menu",
+            0,
+            null
+          ],
+          [
+            "image",
+            "@AZUSA-1231",
+            2,
+            null
+          ],
+          [
+            "group",
+            "Top repositories",
+            2,
+            null
+          ],
+          [
+            "text",
+            "Dashboard",
+            0,
+            null
+          ],
+          [
+            "text",
+            "Home",
+            0,
+            null
+          ],
+          [
+            "text",
+            "Feed",
+            0,
+            null
+          ],
+          [
+            "text",
+            "Latest from our changelog",
+            3,
+            null
+          ],
+          [
+            "link",
+            "View changelog →",
+            3,
+            null
+          ],
+          [
+            "button",
+            "Open menu",
+            4,
+            null
+          ],
+          [
+            "link",
+            "Homepage ( g then d )",
+            4,
+            null
+          ],
+          [
+            "group",
+            "Breadcrumbs",
+            4,
+            null
+          ],
+          [
+            "button",
+            "Open quick search dialog, type / to search",
+            4,
+            null
+          ],
+          [
+            "link",
+            "Chat with Copilot",
+            4,
+            null
+          ],
+          [
+            "button",
+            "Open Copilot…",
+            4,
+            null
+          ],
+          [
+            "button",
+            "Create new...",
+            4,
+            null
+          ],
+          [
+            "link",
+            "All issues ( g then i )",
+            4,
+            null
+          ],
+          [
+            "link",
+            "All pull requests ( g then p )",
+            4,
+            null
+          ],
+          [
+            "link",
+            "All repositories",
+            4,
+            null
+          ],
+          [
+            "link",
+            "You have no unread notifications ( g then n )",
+            4,
+            null
+          ],
+          [
+            "button",
+            "Open user navigation menu",
+            4,
+            null
+          ],
+          [
+            "button",
+            "Go to AZUSA-1231 dashboard",
+            2,
+            null
+          ],
+          [
+            "text",
+            "Top repositories",
+            6,
+            null
+          ],
+          [
+            "link",
+            "New",
+            6,
+            null
+          ],
+          [
+            "group",
+            "Top repositories",
+            6,
+            null
+          ],
+          [
+            "text",
+            "Copilot",
+            0,
+            null
+          ],
+          [
+            "edit",
+            "Ask anything or type @ to add context with Copilot",
+            0,
+            null
+          ],
+          [
+            "button",
+            "Ask",
+            0,
+            null
+          ],
+          [
+            "button",
+            "Select repositories to attach to conversation",
+            0,
+            null
+          ],
+          [
+            "button",
+            "Add files, and spaces",
+            0,
+            null
+          ],
+          [
+            "button",
+            "Model: Auto",
+            0,
+            null
+          ],
+          [
+            "button",
+            "View token usage",
+            0,
+            null
+          ],
+          [
+            "button",
+            "Send now ( enter )",
+            0,
+            null
+          ],
+          [
+            "text",
+            "Chat commands",
+            0,
+            null
+          ],
+          [
+            "button",
+            "Filter",
+            0,
+            null
+          ],
+          [
+            "listitem",
+            "YesterdayGitHub Copilot in VS Code, August 2026 releases",
+            3,
+            null
+          ],
+          [
+            "listitem",
+            "3 days agoGitHub Copilot in Visual Studio — August update",
+            3,
+            null
+          ],
+          [
+            "listitem",
+            "3 days agoGitHub Copilot weekly releases — August 24",
+            3,
+            null
+          ],
+          [
+            "listitem",
+            "4 days agoUpcoming changes to GitHub Copilot policies and billing",
+            3,
+            null
+          ],
+          [
+            "image",
+            "User avatar",
+            23,
+            null
+          ],
+          [
+            "edit",
+            "Find a repository…",
+            27,
+            null
+          ],
+          [
+            "listitem",
+            "AZUSA-1231/DataInsight",
+            6,
+            null
+          ],
+          [
+            "listitem",
+            "JohnnyNg10/tiexi",
+            6,
+            null
+          ],
+          [
+            "text",
+            "All repositories",
+            31,
+            null
+          ],
+          [
+            "listitem",
+            "Debug",
+            0,
+            null
+          ],
+          [
+            "listitem",
+            "Agent",
+            0,
+            null
+          ],
+          [
+            "listitem",
+            "Create issue",
+            0,
+            null
+          ],
+          [
+            "listitem",
+            "Write code",
+            0,
+            null
+          ],
+          [
+            "listitem",
+            "Git",
+            0,
+            null
+          ],
+          [
+            "listitem",
+            "Pull requests",
+            0,
+            null
+          ],
+          [
+            "group",
+            "repository body 0-0",
+            0,
+            null
+          ],
+          [
+            "group",
+            "Aug 31, 2026, 16:39 GMT+8",
+            38,
+            null
+          ],
+          [
+            "link",
+            "GitHub Copilot in VS Code, August 2026 releases",
+            38,
+            null
+          ],
+          [
+            "group",
+            "Aug 29, 2026, 04:24 GMT+8",
+            39,
+            null
+          ],
+          [
+            "link",
+            "GitHub Copilot in Visual Studio — August update",
+            39,
+            null
+          ],
+          [
+            "group",
+            "Aug 29, 2026, 04:13 GMT+8",
+            40,
+            null
+          ],
+          [
+            "link",
+            "GitHub Copilot weekly releases — August 24",
+            40,
+            null
+          ],
+          [
+            "group",
+            "Aug 28, 2026, 19:37 GMT+8",
+            41,
+            null
+          ],
+          [
+            "link",
+            "Upcoming changes to GitHub Copilot policies and billing",
+            41,
+            null
+          ],
+          [
+            "listitem",
+            "Dashboard",
+            14,
+            null
+          ],
+          [
+            "link",
+            "Repository",
+            44,
+            null
+          ],
+          [
+            "link",
+            "AZUSA-1231/DataInsight",
+            44,
+            null
+          ],
+          [
+            "link",
+            "Repository",
+            45,
+            null
+          ],
+          [
+            "link",
+            "JohnnyNg10/tiexi",
+            45,
+            null
+          ],
+          [
+            "button",
+            "Debug",
+            47,
+            null
+          ],
+          [
+            "button",
+            "Agent",
+            48,
+            null
+          ],
+          [
+            "button",
+            "Create issue",
+            49,
+            null
+          ],
+          [
+            "button",
+            "Write code",
+            50,
+            null
+          ],
+          [
+            "button",
+            "Git",
+            51,
+            null
+          ],
+          [
+            "button",
+            "Pull requests",
+            52,
+            null
+          ],
+          [
+            "text",
+            "Trending repositories",
+            0,
+            null
+          ],
+          [
+            "text",
+            "·",
+            0,
+            null
+          ],
+          [
+            "link",
+            "See more",
+            0,
+            null
+          ],
+          [
+            "link",
+            "@THU-MAIC profile",
+            53,
+            null
+          ],
+          [
+            "link",
+            "THU-MAIC/OpenMAIC",
+            53,
+            null
+          ],
+          [
+            "text",
+            "Open Multi-Agent Interactive Classroom — Get an immersive, multi-agent learning experience in just one click",
+            53,
+            null
+          ],
+          [
+            "group",
+            "Repo Details 0-0",
+            53,
+            null
+          ],
+          [
+            "button",
+            "Star this repository",
+            53,
+            null
+          ],
+          [
+            "group",
+            "repository body 0-1",
+            0,
+            null
+          ],
+          [
+            "text",
+            "Yesterday",
+            54,
+            null
+          ],
+          [
+            "text",
+            "3 days ago",
+            56,
+            null
+          ],
+          [
+            "text",
+            "3 days ago",
+            58,
+            null
+          ],
+          [
+            "text",
+            "4 days ago",
+            60,
+            null
+          ]
+        ]
+      }
+    }
+  ]
+}

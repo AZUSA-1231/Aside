@@ -126,7 +126,9 @@ mod windows {
         fn GetMonitorInfoW(monitor: Hmonitor, info: *mut MonitorInfo) -> i32;
         fn GetWindowRect(hwnd: Hwnd, rect: *mut NativeRect) -> i32;
         fn GetWindowThreadProcessId(hwnd: Hwnd, process_id: *mut u32) -> u32;
+        fn IsIconic(hwnd: Hwnd) -> i32;
         fn IsWindow(hwnd: Hwnd) -> i32;
+        fn IsWindowVisible(hwnd: Hwnd) -> i32;
         fn IsZoomed(hwnd: Hwnd) -> i32;
         fn MonitorFromPoint(point: Point, flags: u32) -> Hmonitor;
         fn MonitorFromWindow(hwnd: Hwnd, flags: u32) -> Hmonitor;
