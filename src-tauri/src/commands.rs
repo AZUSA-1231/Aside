@@ -1,9 +1,11 @@
+use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
+use std::{fs, io};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State, WebviewWindow};
 
-use crate::context::{self, HostCaptureResult, HostView};
+use crate::context::{self, HostCaptureResult, HostTargetSnapshot, HostView};
 use crate::platform::{self, Rect, TargetWindow};
 use crate::runtime::{AsideTurnContext, RuntimeManager, RuntimeRequest};
 use crate::workspace::{self, WorkspaceSnapshot};
@@ -69,6 +71,15 @@ pub struct WindowContext {
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceState {
     pub active: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostCaptureResponse {
+    #[serde(flatten)]
+    pub result: HostCaptureResult,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_path: Option<String>,
 }
 
 #[derive(Default)]
@@ -391,10 +402,16 @@ pub(crate) fn toggle_agent_from_shortcut(app: &AppHandle) {
             Some(target) => {
                 let app_handle = app.clone();
                 std::thread::spawn(move || {
-                    emit_host_capture(&app_handle, context::capture_target_context(target));
+                    emit_host_capture(
+                        &app_handle,
+                        capture_with_artifact(&app_handle, context::capture_target_context(target)),
+                    );
                 });
             }
-            None => emit_host_capture(app, context::capture_foreground_context()),
+            None => emit_host_capture(
+                app,
+                capture_with_artifact(app, context::capture_foreground_context()),
+            ),
         }
     }
     if let Err(error) = toggle_agent_internal(app, state.inner()) {
@@ -402,7 +419,127 @@ pub(crate) fn toggle_agent_from_shortcut(app: &AppHandle) {
     }
 }
 
-fn emit_host_capture(app: &AppHandle, result: HostCaptureResult) {
+fn capture_file_path(app: &AppHandle, capture_id: &str) -> Result<PathBuf, NativeError> {
+    let capture_directory = app
+        .path()
+        .app_local_data_dir()
+        .map_err(|_| {
+            native_error(
+                "host_capture_save",
+                "Aside's local data directory could not be resolved.",
+                true,
+            )
+        })?
+        .join("captures");
+    fs::create_dir_all(&capture_directory).map_err(|_| {
+        native_error(
+            "host_capture_save",
+            "The captured context directory could not be created.",
+            true,
+        )
+    })?;
+    Ok(capture_directory.join(format!("{capture_id}.json")))
+}
+
+fn save_capture_file(
+    app: &AppHandle,
+    attachment: &crate::context::AsideHostAttachment,
+) -> Result<String, NativeError> {
+    let path = capture_file_path(app, &attachment.id)?;
+    let value = serde_json::to_value(attachment).map_err(|_| {
+        native_error(
+            "host_capture_save",
+            "The captured context could not be encoded as JSON.",
+            true,
+        )
+    })?;
+    let mut content = format_json(&value, 0, None).into_bytes();
+    content.push(b'\n');
+    fs::write(&path, content).map_err(|error| {
+        let message = match error.kind() {
+            io::ErrorKind::PermissionDenied => {
+                "The captured JSON file could not be written because access was denied."
+            }
+            _ => "The captured JSON file could not be written.",
+        };
+        native_error("host_capture_save", message, true)
+    })?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+fn format_json(value: &serde_json::Value, level: usize, key: Option<&str>) -> String {
+    match value {
+        serde_json::Value::Array(values) => {
+            if values.is_empty() {
+                return "[]".to_string();
+            }
+            if key == Some("fields") {
+                return serde_json::to_string(value).unwrap_or_else(|_| "[]".to_string());
+            }
+
+            let indent = "  ".repeat(level);
+            let child_indent = "  ".repeat(level + 1);
+            if key == Some("nodes") {
+                let nodes = values
+                    .iter()
+                    .map(|node| {
+                        format!(
+                            "{}{}",
+                            child_indent,
+                            serde_json::to_string(node).unwrap_or_else(|_| "null".to_string())
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(",\n");
+                return format!("[\n{nodes}\n{indent}]");
+            }
+
+            let items = values
+                .iter()
+                .map(|item| format!("{}{}", child_indent, format_json(item, level + 1, None)))
+                .collect::<Vec<_>>()
+                .join(",\n");
+            format!("[\n{items}\n{indent}]")
+        }
+        serde_json::Value::Object(entries) => {
+            if entries.is_empty() {
+                return "{}".to_string();
+            }
+
+            let indent = "  ".repeat(level);
+            let child_indent = "  ".repeat(level + 1);
+            let fields = entries
+                .iter()
+                .map(|(entry_key, entry_value)| {
+                    format!(
+                        "{}{}: {}",
+                        child_indent,
+                        serde_json::to_string(entry_key).unwrap_or_else(|_| "\"\"".to_string()),
+                        format_json(entry_value, level + 1, Some(entry_key.as_str()))
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(",\n");
+            format!("{{\n{fields}\n{indent}}}")
+        }
+        _ => serde_json::to_string(value).unwrap_or_else(|_| "null".to_string()),
+    }
+}
+
+fn capture_with_artifact(app: &AppHandle, result: HostCaptureResult) -> HostCaptureResponse {
+    let file_path = result.attachment.as_ref().and_then(|attachment| {
+        match save_capture_file(app, attachment) {
+            Ok(path) => Some(path),
+            Err(error) => {
+                emit_error(app, error);
+                None
+            }
+        }
+    });
+    HostCaptureResponse { result, file_path }
+}
+
+fn emit_host_capture(app: &AppHandle, result: HostCaptureResponse) {
     let _ = app.emit(HOST_CAPTURE_EVENT, result);
 }
 
@@ -497,8 +634,20 @@ pub fn get_active_host() -> Result<HostView, NativeError> {
 pub fn capture_active_host_context(
     app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<HostCaptureResult, NativeError> {
+) -> Result<HostCaptureResponse, NativeError> {
     let _operation = lock_operation(&state)?;
+    let workspace_target = lock_native(&state)?
+        .workspace
+        .as_ref()
+        .map(|snapshot| snapshot.target.clone());
+
+    if let Some(target) = workspace_target {
+        return Ok(capture_with_artifact(
+            &app,
+            context::capture_target_context(HostTargetSnapshot::from_target(target)),
+        ));
+    }
+
     let was_visible = matches!(lock_native(&state)?.visibility, Visibility::Visible);
     if was_visible {
         hide_agent_locked(&app, state.inner())?;
@@ -515,7 +664,7 @@ pub fn capture_active_host_context(
         }
     }
 
-    Ok(result)
+    Ok(capture_with_artifact(&app, result))
 }
 
 #[tauri::command]
@@ -610,4 +759,40 @@ pub fn runtime_cancel(
         .runtime
         .send(&app, RuntimeRequest::Cancel { request_id })
         .map_err(|message| native_error("conversation_cancel", message, true))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_json;
+    use serde_json::json;
+
+    #[test]
+    fn capture_json_keeps_nodes_compact_and_round_trippable() {
+        let value = json!({
+            "blocks": [{
+                "type": "json",
+                "data": {
+                    "fields": ["role", "name", "bounds"],
+                    "nodes": [
+                        ["document", "GitHub", {"x": 1, "y": 2}],
+                        ["link", "Issues", {"x": 3, "y": 4}]
+                    ]
+                }
+            }]
+        });
+
+        let rendered = format_json(&value, 0, None);
+        let parsed: serde_json::Value = serde_json::from_str(&rendered).expect("valid JSON");
+        assert_eq!(parsed, value);
+
+        let node_lines: Vec<&str> = rendered
+            .lines()
+            .filter(|line| line.contains("[\"document\"") || line.contains("[\"link\""))
+            .collect();
+        assert_eq!(node_lines.len(), 2);
+        assert!(node_lines
+            .iter()
+            .all(|line| line.trim_end().ends_with("],") || line.trim_end().ends_with(']')));
+        assert!(rendered.contains("\"fields\": [\"role\",\"name\",\"bounds\"]"));
+    }
 }

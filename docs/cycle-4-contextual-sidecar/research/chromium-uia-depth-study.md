@@ -1,6 +1,6 @@
 # Chromium UIA Depth Study
 
-Status: instrumentation ready; live depth matrix pending
+Status: baseline recorded; full live depth matrix pending
 
 Date: 2026-09-01
 
@@ -38,6 +38,14 @@ were `237x39`, with a black `CopyFromScreen` result and a caption-only
 `PrintWindow` result. Page UIA data was still present. The bounds around
 `-32000` indicate a minimized target-window state, so this sample must not be
 used as evidence of a GitHub UIA or screenshot protection mechanism.
+
+## Current P1 Decision
+
+The first production UIA slice uses `maxDepth=16` and `maxNodes=800`. This is a
+bounded default supported by the current live Edge baseline and the adapter's
+partial-result flags; it is not a claim that every Chromium page is complete at
+depth 16. The full depth matrix across stable Edge and Chrome pages remains a
+follow-up before changing the default or broadening completeness claims.
 
 ## Instrumentation
 
@@ -105,7 +113,8 @@ needed to reach page controls.
 
 If the page keeps exposing meaningful nodes after depth 32, the adapter should
 not raise a universal limit indefinitely. It should normalize from a bounded
-page `Document`, prioritize the selected tab and meaningful selected states, and
+page `Document`, prioritize the selected tab and meaningful named nodes with
+valid bounds, and
 record a partial result when the chosen budget is reached.
 
 ## Interpretation Boundary

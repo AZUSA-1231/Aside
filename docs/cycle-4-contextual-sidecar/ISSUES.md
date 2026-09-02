@@ -141,3 +141,71 @@ Edge and Chrome, choose the Windows capture API and document-region crop rule,
 define image serialization and budget limits, and test permission, protected
 surface, stale-target, and partial-UIA failure behavior. Extensions and CDP
 remain optional enhancements rather than prerequisites for the default path.
+
+## C4-I005 - Initialize UIA on a Dedicated COM Worker
+
+Status: resolved
+Discovered: 2026-09-02
+Affected: P1 Chromium UIA capture
+Requirements: FR-4.5, FR-4.7, FR-4.14
+
+### Fact
+
+The Tauri command thread can already belong to a COM apartment that is
+incompatible with the UIA initialization requested by the Chromium extractor.
+Calling `CoInitializeEx` and creating `IUIAutomation` directly on that thread
+can therefore return an unavailable result even when Edge is open and its UIA
+surface is readable.
+
+### Decision
+
+The native Chromium capture call clones only the bounded target snapshot,
+starts a short-lived named worker, initializes COM and performs the complete
+UIA query on that worker, then joins and releases the worker-owned UIA
+references. The extractor remains stateless; no COM object, HWND, or host map
+survives the one-shot call.
+
+## C4-I006 - Keep Capture Artifacts Inspectable Without Making Them Session State
+
+Status: accepted
+Discovered: 2026-09-02
+Affected: P1 capture UI and local inspection
+Requirements: FR-4.5, FR-4.6
+
+### Fact
+
+The attachment is intentionally temporary prompt state, but development and
+user verification need a concrete JSON artifact. Opening the file directly
+through the default application adds an unnecessary opener permission and does
+not improve the capture workflow.
+
+### Decision
+
+Each successful capture is written to Aside's local `captures` directory as a
+valid JSON artifact. The attachment remains temporary and is cleared after a
+successful prompt; the file is not automatically reattached or copied into
+session history. Aside provides an in-panel preview and a button to reveal the
+file in its folder. The artifact uses readable outer objects while keeping
+`fields` and each `nodes` tuple compact, with one node tuple per line.
+
+## C4-I007 - Use Bounds Instead of Unhelpful Node State Columns
+
+Status: accepted
+Discovered: 2026-09-02
+Affected: P1 semantic page projection
+Requirements: FR-4.7
+
+### Fact
+
+Parent indexes in a filtered tree are difficult for the agent to interpret,
+and UIA selection state is usually absent or unrelated to the user's pointer
+or highlighted text. The page's approximate screen position is more useful for
+understanding layout and control placement.
+
+### Decision
+
+The product-facing semantic table is fixed to `role`, `name`, and `bounds`.
+Parent indexes and page-node selection flags are removed from the attachment.
+Selection remains an internal signal only when needed to identify the active
+browser tab. UIA `Name` remains the sole semantic label source; text ranges,
+lengths, and diagnostic fields are not promoted into context.

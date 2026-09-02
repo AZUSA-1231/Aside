@@ -1,6 +1,6 @@
 # Cycle 4 Contextual Sidecar Product Requirements
 
-Status: active; P1 Chromium UIA capture implemented, visual and other host transports deferred
+Status: active; P1 Chromium UIA capture completed, visual and other host transports deferred
 Platform: Windows desktop  
 Predecessor: [Cycle 3 Pi Implementation](../cycle-3-pi-implementation/PRD.md)
 
@@ -63,8 +63,8 @@ not a license for Aside to continuously inspect the desktop.
 The user is reading a page, invokes Aside, and asks for a summary or an answer
 about the current page. Aside identifies the browser instance and stages the
 selected tab, page title, and a compact semantic view of the page through the
-browser's UIA surface. The semantic view is built from user-facing node names
-and selected state; it does not include a raw document text range. With browser
+browser's UIA surface. The semantic view is built from user-facing node roles,
+names, and screen bounds; it does not include a raw document text range. With browser
 visual capture enabled in settings, the same one-shot capture also stages a
 bounded image of that browser window. The user can remove the attachment before
 submitting the prompt.
@@ -114,8 +114,8 @@ the application generically.
 - An Aside-owned host adapter contract for identification, capture, and typed
   actions.
 - A Chromium UIA capture path for browser identity, selected-tab metadata, and
-  a compact semantic page tree containing user-facing node names and selected
-  state when the browser exposes those semantics.
+  a compact semantic page tree containing user-facing node roles, names, and
+  screen bounds when the browser exposes those semantics.
 - A user-controlled Chromium visual-capture setting that can pair one bounded
   per-window image with the UIA attachment for the same capture invocation.
 - A one-shot capture result that stages bounded context without introducing a
@@ -140,7 +140,7 @@ the application generically.
 
 | Host | Cycle 4 context target | Action boundary |
 | --- | --- | --- |
-| Browser | Browser identity, selected-tab metadata, active URL/title, and a compact UIA semantic tree of node roles, names, parent links, and selected state; optional bounded image of the same browser window when visual capture is enabled | No arbitrary injection, credentials, cookies, or form data; browser mutation is outside the first action slice unless separately approved |
+| Browser | Browser identity, selected-tab metadata, active URL/title, and a compact UIA semantic tree of node roles, names, and bounds; optional bounded image of the same browser window when visual capture is enabled | No arbitrary injection, credentials, cookies, or form data; browser mutation is outside the first action slice unless separately approved |
 | Windows Explorer | Current directory, selected item identity, and bounded file metadata; explicit file reads only when requested | Typed file operations such as a reversible rename or move may be proposed and must be previewed and confirmed |
 | VSCode | Workspace root, active file, explicit selection, and bounded diagnostics or file content through an approved extension | Typed workspace edit preview and confirmation through the host edit mechanism |
 | PDF reader | Reader/document identity and selected text or bounded document context when a reader-specific adapter provides it | No generic screen-based editing; actions require a separate reader capability |
@@ -199,6 +199,13 @@ the visual augmentation of a user-initiated browser capture:
   usable and Aside shows a recoverable visual-capture status; it does not
   silently widen the target to a monitor screenshot.
 
+When Aside is already visible in Workspace mode, its `Capture` button reuses
+the split host window and performs another one-shot UIA query without leaving
+or reopening Workspace. Each successful click appends another attachment
+until the aggregate prompt limit is reached. In ordinary Side mode, an
+explicit capture may briefly hide Aside so the current foreground host can be
+queried, then restores the rail; neither path creates a host-state manager.
+
 ### 5.2 Staged context
 
 Captured host context is an ordered collection of attachments for the current
@@ -220,6 +227,15 @@ attachments unchanged; it does not silently replace, truncate, or discard
 earlier context. Each capture has a bounded size and expiry, and the
 collection is discarded when the current task ends unless a future product
 feature explicitly chooses another retention policy.
+
+For inspection and manual verification, P1 also writes each successful
+capture as an Aside-owned JSON artifact below the application's local data
+directory. This artifact is separate from conversation history and is not
+automatically reattached after submission or restart. The attachment UI offers
+a compact in-panel JSON preview and a resource-manager reveal action; it does
+not launch an external JSON editor by default. The stored representation keeps
+the outer structure readable while placing each semantic `nodes` tuple on one
+line.
 
 ### 5.3 Answer and action
 
@@ -334,7 +350,7 @@ window. At minimum it must identify the browser, selected tab, active URL and
 title when the user invokes contextual assistance. It must also normalize the
 selected page `Document` into a compact semantic tree when the browser exposes
 that UIA surface. The default tree keeps only the node role, non-empty node
-`Name`, parent relationship, and selected state. It must not use clipboard
+`Name`, and a valid screen bounding rectangle. It must not use clipboard
 simulation or a raw `TextPattern.DocumentRange` to obtain page text.
 
 For this purpose, UIA `Name` is treated as the accessible display label of a
@@ -344,25 +360,26 @@ marked `offscreen` when that property is available, and normalize whitespace.
 An accessible name is not guaranteed to be literal rendered glyphs (for
 example, an icon button may expose an `aria-label`), so the result is described
 as semantic node names rather than a transcription of every visible character.
-The `selected` field represents UIA selection-item state and is included only
-when meaningful; a page text range is not serialized as a second text source.
+Screen bounds are included as `x`, `y`, `width`, and `height` so the agent can
+reason about approximate control placement; a page text range is not
+serialized as a second text source.
 
 The product-facing shape is column-oriented and intentionally small:
 
 ```json
 {
-  "fields": ["role", "name", "parent", "selected"],
+  "fields": ["role", "name", "bounds"],
   "nodes": [
-    ["document", "GitHub", -1, null],
-    ["link", "THU-MAIC/OpenMAIC", 0, null],
-    ["listitem", "Open pull requests", 0, true]
+    ["document", "GitHub", {"x": 1857, "y": 120, "width": 1920, "height": 900}],
+    ["link", "THU-MAIC/OpenMAIC", {"x": 1857, "y": 260, "width": 210, "height": 24}],
+    ["listitem", "Open pull requests", {"x": 1857, "y": 300, "width": 240, "height": 32}]
   ]
 }
 ```
 
 Browser identity, page title, and sanitized URL remain attachment metadata;
 they are not repeated as arbitrary node properties. Character counts,
-`TextPattern` samples, visible-range text, bounds, automation IDs, pattern
+`TextPattern` samples, visible-range text, automation IDs, pattern
 diagnostics, and hashes are internal diagnostics or native extraction data and
 must be removed before provider projection. The implementation still measures
 serialized byte size internally to enforce context limits; the measurement is
@@ -544,9 +561,11 @@ OCR is not part of that setting.
 
 The default Chromium UIA payload is also resolved: use the page `Document`
 content tree as the source, represent user-facing semantic nodes with
-`role/name/parent/selected`, and omit raw document text ranges and diagnostic
+`role/name/bounds`, and omit raw document text ranges and diagnostic
 length/hash fields. The `Name` value is a visibility-filtered accessibility
-label, not a guarantee that every character was rendered literally.
+label, not a guarantee that every character was rendered literally. Bounds are
+serialized as the compact `{x, y, width, height}` screen rectangle returned by
+UIA.
 
 | Decision | Why it matters |
 | --- | --- |

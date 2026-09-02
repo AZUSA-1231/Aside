@@ -95,13 +95,24 @@ function isDescendant(nodes, index, rootIndex) {
   return false;
 }
 
-function nearestRetainedParent(nodes, retained, parentIndex) {
-  let current = parentIndex;
-  while (current !== undefined && current !== null && current >= 0) {
-    if (retained[current] !== undefined) return retained[current];
-    current = nodes[current]?.parentIndex ?? -1;
+function semanticBounds(bounds) {
+  if (
+    !bounds ||
+    bounds.width <= 0 ||
+    bounds.height <= 0 ||
+    !Number.isFinite(bounds.x) ||
+    !Number.isFinite(bounds.y) ||
+    !Number.isFinite(bounds.width) ||
+    !Number.isFinite(bounds.height)
+  ) {
+    return null;
   }
-  return -1;
+  return {
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
+  };
 }
 
 function sanitizeUrl(value) {
@@ -115,6 +126,41 @@ function sanitizeUrl(value) {
   } catch {
     return null;
   }
+}
+
+function formatJson(value, level = 0, key = undefined) {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value);
+  }
+
+  const indent = "  ".repeat(level);
+  const childIndent = "  ".repeat(level + 1);
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "[]";
+    if (key === "fields") return JSON.stringify(value);
+    if (key === "nodes") {
+      return `[\n${value
+        .map((node) => `${childIndent}${JSON.stringify(node)}`)
+        .join(",\n")}\n${indent}]`;
+    }
+    return `[\n${value
+      .map((item) => `${childIndent}${formatJson(item, level + 1)}`)
+      .join(",\n")}\n${indent}]`;
+  }
+
+  const entries = Object.entries(value);
+  if (entries.length === 0) return "{}";
+  return `{\n${entries
+    .map(
+      ([entryKey, entryValue]) =>
+        `${childIndent}${JSON.stringify(entryKey)}: ${formatJson(
+          entryValue,
+          level + 1,
+          entryKey,
+        )}`,
+    )
+    .join(",\n")}\n${indent}}`;
 }
 
 const nodes = source.nodes ?? [];
@@ -136,7 +182,9 @@ const documentEntry = documents[0];
 const documentNode = documentEntry.node;
 const documentIndex = documentEntry.index;
 const rootBounds = documentNode.bounds;
-const retained = [];
+const documentSubtreeNodeCount = nodes.filter((_, index) =>
+  isDescendant(nodes, index, documentIndex),
+).length;
 const semanticNodes = [];
 let observedDepth = 0;
 let nodeTruncated = false;
@@ -155,16 +203,11 @@ for (let index = documentIndex; index < nodes.length; index += 1) {
     nodeTruncated = true;
     break;
   }
-  const semanticIndex = semanticNodes.length;
-  retained[index] = semanticIndex;
   observedDepth = Math.max(observedDepth, relativeDepth);
   semanticNodes.push([
     roleForType(node.type),
     name ?? "",
-    index === documentIndex
-      ? -1
-      : nearestRetainedParent(nodes, retained, node.parentIndex),
-    node.selected === true ? true : null,
+    semanticBounds(node.bounds),
   ]);
 }
 
@@ -228,20 +271,23 @@ const attachment = {
       type: "json",
       label: "browser.semantic_page",
       data: {
-        fields: ["role", "name", "parent", "selected"],
+        fields: ["role", "name", "bounds"],
         nodes: semanticNodes,
       },
     },
   ],
 };
 
-fs.writeFileSync(outputPath, `${JSON.stringify(attachment, null, 2)}\n`, "utf8");
+fs.writeFileSync(outputPath, `${formatJson(attachment)}\n`, "utf8");
 console.log(`Wrote ${outputPath}`);
 console.log(
   JSON.stringify(
     {
+      rawNodeCount: nodes.length,
+      documentSubtreeNodeCount,
       application,
       nodeCount: semanticNodes.length,
+      filteredNodeCount: documentSubtreeNodeCount - semanticNodes.length,
       observedDepth,
       nodeTruncated,
       quality: captureQuality,

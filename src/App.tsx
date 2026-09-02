@@ -10,6 +10,8 @@ import {
   Check,
   CircleAlert,
   Command,
+  FileJson,
+  FolderOpen,
   LoaderCircle,
   PanelRightClose,
   Paperclip,
@@ -86,6 +88,48 @@ function attachmentExpiry(expiresAt: number): string {
   })}`;
 }
 
+function formatCaptureJson(value: unknown, level = 0, key?: string): string {
+  if (value === null || typeof value !== "object") {
+    const serialized = JSON.stringify(value);
+    return serialized === undefined ? "null" : serialized;
+  }
+
+  const indent = "  ".repeat(level);
+  const childIndent = "  ".repeat(level + 1);
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "[]";
+    if (key === "fields") return JSON.stringify(value);
+    if (key === "nodes") {
+      return `[
+${value
+  .map((node) => `${childIndent}${JSON.stringify(node)}`)
+  .join(",\n")}
+${indent}]`;
+    }
+    return `[
+${value
+  .map((item) => `${childIndent}${formatCaptureJson(item, level + 1)}`)
+  .join(",\n")}
+${indent}]`;
+  }
+
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (entries.length === 0) return "{}";
+  return `{
+${entries
+  .map(
+    ([entryKey, entryValue]) =>
+      `${childIndent}${JSON.stringify(entryKey)}: ${formatCaptureJson(
+        entryValue,
+        level + 1,
+        entryKey,
+      )}`,
+  )
+  .join(",\n")}
+${indent}}`;
+}
+
 function toChatMessage(message: RuntimeHistoryMessage): ChatMessage {
   return {
     id: message.id,
@@ -100,6 +144,9 @@ function App() {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [draft, setDraft] = useState("");
   const [attachments, setAttachments] = useState<AsideHostAttachment[]>([]);
+  const [capturePaths, setCapturePaths] = useState<Record<string, string>>({});
+  const [previewAttachment, setPreviewAttachment] =
+    useState<AsideHostAttachment | null>(null);
   const [nativeError, setNativeError] = useState<NativeError | null>(null);
   const [activeRun, setActiveRun] = useState<ActiveRun | null>(null);
   const [runtimeReady, setRuntimeReady] = useState(false);
@@ -240,6 +287,8 @@ function App() {
         );
         attachmentsRef.current = [];
         setAttachments([]);
+        setCapturePaths({});
+        setPreviewAttachment(null);
       } catch (error) {
         const normalized = toNativeError(error, "conversation", true);
         failRun(run, normalized.message);
@@ -367,7 +416,19 @@ function App() {
         const next = [...current, result.attachment];
         attachmentsRef.current = next;
         setAttachments(next);
-        setNativeError(null);
+        if (result.filePath) {
+          setCapturePaths((paths) => ({
+            ...paths,
+            [result.attachment!.id]: result.filePath!,
+          }));
+        } else {
+          setNativeError({
+            operation: "host_capture_save",
+            recoverable: true,
+            message: "Context was captured, but its JSON file could not be saved.",
+          });
+        }
+        if (result.filePath) setNativeError(null);
       })
       .then((unlisten) => {
         if (disposed) unlisten();
@@ -406,11 +467,15 @@ function App() {
     const handleEscape = (event: globalThis.KeyboardEvent) => {
       if (event.key !== "Escape" || agentState.visibility !== "visible") return;
       event.preventDefault();
+      if (previewAttachment) {
+        setPreviewAttachment(null);
+        return;
+      }
       void execute("hide_agent", nativeClient.hideAgent);
     };
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
-  }, [agentState.visibility, execute]);
+  }, [agentState.visibility, execute, previewAttachment]);
 
   const handleSubmit = useCallback(() => {
     void startRun(draft).then(() => setDraft(""));
@@ -461,7 +526,19 @@ function App() {
       const next = [...current, result.attachment];
       attachmentsRef.current = next;
       setAttachments(next);
-      setNativeError(null);
+      if (result.filePath) {
+        setCapturePaths((paths) => ({
+          ...paths,
+          [result.attachment!.id]: result.filePath!,
+        }));
+      } else {
+        setNativeError({
+          operation: "host_capture_save",
+          recoverable: true,
+          message: "Context was captured, but its JSON file could not be saved.",
+        });
+      }
+      if (result.filePath) setNativeError(null);
     } catch (error) {
       setNativeError(toNativeError(error, "host_capture", true));
     }
@@ -473,6 +550,23 @@ function App() {
     );
     attachmentsRef.current = next;
     setAttachments(next);
+    setCapturePaths((paths) => {
+      const nextPaths = { ...paths };
+      delete nextPaths[attachmentId];
+      return nextPaths;
+    });
+    setPreviewAttachment((current) =>
+      current?.id === attachmentId ? null : current,
+    );
+  }, []);
+
+  const revealCapturePath = useCallback(async (path: string) => {
+    try {
+      await nativeClient.revealPath(path);
+      setNativeError(null);
+    } catch (error) {
+      setNativeError(toNativeError(error, "reveal_capture_file", true));
+    }
   }, []);
 
   const modeLabel = agentState.surface === "workspace" ? "Workspace" : "Side";
@@ -537,13 +631,14 @@ function App() {
           {shortcutLabel}
         </span>
         <button
-          className="icon-button capture-button"
+          className="capture-button"
           type="button"
           aria-label="Capture current host context"
           title="Capture current host context"
           onClick={() => void handleCapture()}
         >
           <ScanSearch size={15} />
+          <span>Capture</span>
         </button>
         {agentState.surface === "workspace" && (
           <button
@@ -643,26 +738,86 @@ function App() {
             <span className="attachment-heading-note">Ready for this prompt</span>
           </div>
           <div className="attachment-list">
-            {attachments.map((attachment) => (
-              <article className="attachment-item" key={attachment.id}>
-                <div className="attachment-copy">
-                  <strong>{attachment.source}</strong>
-                  <span>{attachment.summary}</span>
-                  <small>{attachmentExpiry(attachment.expiresAt)}</small>
-                </div>
-                <button
-                  className="attachment-remove"
-                  type="button"
-                  aria-label={`Remove ${attachment.source}`}
-                  title={`Remove ${attachment.source}`}
-                  onClick={() => removeAttachment(attachment.id)}
-                >
-                  <X size={13} />
-                </button>
-              </article>
-            ))}
+            {attachments.map((attachment) => {
+              const filePath = capturePaths[attachment.id];
+              return (
+                <article className="attachment-item" key={attachment.id}>
+                  <div className="attachment-copy">
+                    <strong>{attachment.source}</strong>
+                    <span>{attachment.summary}</span>
+                    <small>{attachmentExpiry(attachment.expiresAt)}</small>
+                  </div>
+                  {filePath && (
+                    <button
+                      className="attachment-open"
+                      type="button"
+                      aria-label={`Show JSON location for ${attachment.source}`}
+                      title="Show captured JSON in folder"
+                      onClick={() => void revealCapturePath(filePath)}
+                    >
+                      <FolderOpen size={14} />
+                    </button>
+                  )}
+                  <button
+                    className="attachment-remove"
+                    type="button"
+                    aria-label={`Remove ${attachment.source}`}
+                    title={`Remove ${attachment.source}`}
+                    onClick={() => removeAttachment(attachment.id)}
+                  >
+                    <X size={13} />
+                  </button>
+                  {filePath && (
+                    <button
+                      className="attachment-file-row"
+                      type="button"
+                      title="Preview captured JSON"
+                      aria-label={`Preview JSON for ${attachment.source}`}
+                      onClick={() => setPreviewAttachment(attachment)}
+                    >
+                      <FileJson size={12} />
+                      <span>{filePath}</span>
+                    </button>
+                  )}
+                </article>
+              );
+            })}
           </div>
         </section>
+      )}
+
+      {previewAttachment && (
+        <div
+          className="capture-preview-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target) setPreviewAttachment(null);
+          }}
+        >
+          <section
+            className="capture-preview"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Captured JSON for ${previewAttachment.source}`}
+          >
+            <div className="capture-preview-header">
+              <div>
+                <strong>{previewAttachment.source}</strong>
+                <span>Captured JSON</span>
+              </div>
+              <button
+                className="dismiss-button"
+                type="button"
+                aria-label="Close JSON preview"
+                title="Close JSON preview"
+                onClick={() => setPreviewAttachment(null)}
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <pre>{formatCaptureJson(previewAttachment)}</pre>
+          </section>
+        </div>
       )}
 
       <form

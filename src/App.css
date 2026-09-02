@@ -226,6 +226,25 @@ textarea:focus-visible {
   background: #f4ead7;
 }
 
+.capture-button {
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  color: #236a5e;
+  background: #dfeee8;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.capture-button:hover {
+  color: #18594f;
+  background: #cfe5dc;
+}
+
 .conversation {
   min-height: 0;
   flex: 1;
@@ -467,6 +486,7 @@ h1 {
 .attachment-item {
   min-width: 0;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 8px 9px;
@@ -525,6 +545,139 @@ h1 {
 .attachment-remove:hover {
   color: #a14e40;
   background: #f8e4dd;
+}
+
+.attachment-open {
+  min-width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  color: #55736b;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.attachment-open:hover {
+  color: #1e6258;
+  background: #dceee7;
+}
+
+.attachment-file-row {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 2px;
+  padding: 5px 0 0;
+  border-top: 1px solid #dceae2;
+  color: #6b8178;
+  background: transparent;
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 0;
+  border-radius: 0;
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 750;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-file-row:hover {
+  color: #1e6258;
+}
+
+.attachment-file-row span {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 13px;
+}
+
+.capture-preview-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(23, 33, 30, 0.28);
+}
+
+.capture-preview {
+  width: min(100%, 680px);
+  height: min(82vh, 720px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #fbfdfb;
+  border: 1px solid #cfdfd6;
+  border-radius: 8px;
+  box-shadow: 0 18px 44px rgba(28, 54, 47, 0.2);
+}
+
+.capture-preview-header {
+  min-height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px 8px 14px;
+  color: #2d665b;
+  background: #edf5f0;
+  border-bottom: 1px solid #dceae2;
+}
+
+.capture-preview-header > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.capture-preview-header strong,
+.capture-preview-header span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.capture-preview-header strong {
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.capture-preview-header span {
+  color: #78908a;
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.capture-preview pre {
+  min-height: 0;
+  flex: 1;
+  margin: 0;
+  padding: 14px;
+  overflow: auto;
+  color: #263d36;
+  background: #ffffff;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 10px;
+  line-height: 15px;
+  tab-size: 2;
+  white-space: pre;
 }
 
 .dismiss-button {

@@ -99,17 +99,25 @@ struct DepthMetadata {
 
 #[derive(Debug, Serialize)]
 struct SemanticPage {
-    fields: [&'static str; 4],
+    fields: [&'static str; 3],
     nodes: Vec<SemanticNode>,
 }
 
 #[derive(Debug, Serialize)]
-struct SemanticNode(String, String, i32, Option<bool>);
+struct SemanticNode(String, String, Option<SemanticBounds>);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+struct SemanticBounds {
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+}
 
 impl SemanticPage {
     fn new(nodes: Vec<SemanticNode>) -> Self {
         Self {
-            fields: ["role", "name", "parent", "selected"],
+            fields: ["role", "name", "bounds"],
             nodes,
         }
     }
@@ -221,9 +229,7 @@ impl UiRect {
 struct RawSemanticNode {
     role: String,
     name: String,
-    parent: Option<usize>,
     depth: usize,
-    selected: Option<bool>,
     offscreen: Option<bool>,
     bounds: Option<UiRect>,
 }
@@ -239,7 +245,6 @@ fn normalize_semantic(
     root_bounds: Option<UiRect>,
     max_nodes: usize,
 ) -> NormalizedSemantic {
-    let mut retained = vec![None; raw_nodes.len()];
     let mut nodes = Vec::new();
     let mut observed_depth = 0;
     let mut node_truncated = false;
@@ -268,21 +273,11 @@ fn normalize_semantic(
             break;
         }
 
-        let parent = if is_root {
-            -1
-        } else {
-            nearest_retained_parent(raw_nodes, &retained, raw.parent)
-                .map(|parent| parent as i32)
-                .unwrap_or(-1)
-        };
-        let semantic_index = nodes.len();
-        retained[index] = Some(semantic_index);
         observed_depth = observed_depth.max(raw.depth);
         nodes.push(SemanticNode(
             raw.role.clone(),
             name.unwrap_or_default(),
-            parent,
-            raw.selected.filter(|selected| *selected),
+            raw.bounds.map(semantic_bounds),
         ));
     }
 
@@ -298,19 +293,13 @@ fn normalize_semantic(
     }
 }
 
-fn nearest_retained_parent(
-    raw_nodes: &[RawSemanticNode],
-    retained: &[Option<usize>],
-    parent: Option<usize>,
-) -> Option<usize> {
-    let mut current = parent;
-    while let Some(index) = current {
-        if let Some(retained_index) = retained.get(index).copied().flatten() {
-            return Some(retained_index);
-        }
-        current = raw_nodes.get(index).and_then(|node| node.parent);
+fn semantic_bounds(bounds: UiRect) -> SemanticBounds {
+    SemanticBounds {
+        x: bounds.left,
+        y: bounds.top,
+        width: bounds.right.saturating_sub(bounds.left),
+        height: bounds.bottom.saturating_sub(bounds.top),
     }
-    None
 }
 
 #[cfg(target_os = "windows")]
@@ -340,7 +329,6 @@ mod windows_capture {
     #[derive(Clone)]
     struct UiNode {
         element: IUIAutomationElement,
-        parent: Option<usize>,
         depth: usize,
         control_type: Option<i32>,
         name: Option<String>,
@@ -369,6 +357,21 @@ mod windows_capture {
     }
 
     pub(super) fn capture_windows(
+        target: &TargetWindow,
+        captured_at: u64,
+        max_depth: usize,
+        max_nodes: usize,
+    ) -> Result<ExtractedHostContext, HostCaptureErrorCode> {
+        let target = target.clone();
+        std::thread::Builder::new()
+            .name("aside-chromium-uia".to_string())
+            .spawn(move || capture_windows_on_worker(&target, captured_at, max_depth, max_nodes))
+            .map_err(|_| HostCaptureErrorCode::Unavailable)?
+            .join()
+            .unwrap_or(Err(HostCaptureErrorCode::CaptureFailed))
+    }
+
+    fn capture_windows_on_worker(
         target: &TargetWindow,
         captured_at: u64,
         max_depth: usize,
@@ -462,9 +465,7 @@ mod windows_capture {
                         .unwrap_or("unknown")
                         .to_string(),
                     name: node.name.clone().unwrap_or_default(),
-                    parent: node.parent,
                     depth: node.depth,
-                    selected: node.selected,
                     offscreen: node.offscreen,
                     bounds: node.bounds,
                 })
@@ -541,21 +542,12 @@ mod windows_capture {
         max_nodes: usize,
     ) -> UiTree {
         let mut tree = UiTree::new();
-        collect_element(
-            root.clone(),
-            None,
-            0,
-            walker,
-            max_depth,
-            max_nodes,
-            &mut tree,
-        );
+        collect_element(root.clone(), 0, walker, max_depth, max_nodes, &mut tree);
         tree
     }
 
     fn collect_element(
         element: IUIAutomationElement,
-        parent: Option<usize>,
         depth: usize,
         walker: &IUIAutomationTreeWalker,
         max_depth: usize,
@@ -566,9 +558,8 @@ mod windows_capture {
             tree.node_truncated = true;
             return;
         }
-        let node = read_node(element.clone(), parent, depth, &mut tree.provider_error);
-        let index = tree.nodes.len();
-        tree.nodes.push(node);
+        tree.nodes
+            .push(read_node(element.clone(), depth, &mut tree.provider_error));
 
         if depth >= max_depth {
             if unsafe { walker.GetFirstChildElement(&element) }.is_ok() {
@@ -585,7 +576,6 @@ mod windows_capture {
             }
             collect_element(
                 element.clone(),
-                Some(index),
                 depth + 1,
                 walker,
                 max_depth,
@@ -600,12 +590,7 @@ mod windows_capture {
         }
     }
 
-    fn read_node(
-        element: IUIAutomationElement,
-        parent: Option<usize>,
-        depth: usize,
-        provider_error: &mut bool,
-    ) -> UiNode {
+    fn read_node(element: IUIAutomationElement, depth: usize, provider_error: &mut bool) -> UiNode {
         let control_type = match unsafe { element.CurrentControlType() } {
             Ok(value) => Some(value.0),
             Err(_) => {
@@ -640,7 +625,6 @@ mod windows_capture {
             .and_then(UiRect::from_rect);
         UiNode {
             element,
-            parent,
             depth,
             control_type,
             name,
@@ -716,13 +700,11 @@ use windows_capture::capture_windows;
 mod tests {
     use super::*;
 
-    fn raw(role: &str, name: &str, parent: Option<usize>, depth: usize) -> RawSemanticNode {
+    fn raw(role: &str, name: &str, depth: usize) -> RawSemanticNode {
         RawSemanticNode {
             role: role.to_string(),
             name: name.to_string(),
-            parent,
             depth,
-            selected: None,
             offscreen: Some(false),
             bounds: Some(UiRect {
                 left: 0,
@@ -734,14 +716,13 @@ mod tests {
     }
 
     #[test]
-    fn normalizes_names_and_remaps_filtered_parents() {
-        let mut nodes = vec![
-            raw("document", " GitHub\n", None, 0),
-            raw("group", "", Some(0), 1),
-            raw("link", "  Open\tissues ", Some(1), 2),
-            raw("link", "  Open\tissues ", Some(1), 2),
+    fn normalizes_names_and_serializes_bounds() {
+        let nodes = vec![
+            raw("document", " GitHub\n", 0),
+            raw("group", "", 1),
+            raw("link", "  Open\tissues ", 2),
+            raw("link", "  Open\tissues ", 2),
         ];
-        nodes[3].selected = Some(true);
 
         let normalized = normalize_semantic(
             &nodes,
@@ -756,23 +737,30 @@ mod tests {
         assert_eq!(normalized.observed_depth, 2);
         assert_eq!(normalized.nodes.len(), 3);
         assert_eq!(normalized.nodes[0].1, "GitHub");
-        assert_eq!(normalized.nodes[1].2, 0);
-        assert_eq!(normalized.nodes[2].2, 0);
-        assert_eq!(normalized.nodes[2].3, Some(true));
+        assert_eq!(
+            normalized.nodes[1].2,
+            Some(SemanticBounds {
+                x: 0,
+                y: 0,
+                width: 100,
+                height: 100,
+            })
+        );
+        assert_eq!(normalized.nodes[2].2, normalized.nodes[1].2);
     }
 
     #[test]
     fn filters_offscreen_and_out_of_region_nodes() {
-        let mut offscreen = raw("text", "Hidden", Some(0), 1);
+        let mut offscreen = raw("text", "Hidden", 1);
         offscreen.offscreen = Some(true);
-        let mut outside = raw("text", "Outside", Some(0), 1);
+        let mut outside = raw("text", "Outside", 1);
         outside.bounds = Some(UiRect {
             left: 200,
             top: 200,
             right: 300,
             bottom: 300,
         });
-        let nodes = vec![raw("document", "Page", None, 0), offscreen, outside];
+        let nodes = vec![raw("document", "Page", 0), offscreen, outside];
         let normalized = normalize_semantic(
             &nodes,
             Some(UiRect {
@@ -788,7 +776,7 @@ mod tests {
 
     #[test]
     fn filters_nodes_with_invalid_bounds() {
-        let mut invalid = raw("text", "Invalid", Some(0), 1);
+        let mut invalid = raw("text", "Invalid", 1);
         invalid.bounds = Some(UiRect {
             left: 0,
             top: 0,
@@ -796,7 +784,7 @@ mod tests {
             bottom: 100,
         });
         let normalized = normalize_semantic(
-            &[raw("document", "Page", None, 0), invalid],
+            &[raw("document", "Page", 0), invalid],
             Some(UiRect {
                 left: 0,
                 top: 0,
@@ -811,9 +799,9 @@ mod tests {
     #[test]
     fn keeps_fixed_columns_and_reports_node_limit() {
         let nodes = vec![
-            raw("document", "Page", None, 0),
-            raw("text", "One", Some(0), 1),
-            raw("text", "Two", Some(0), 1),
+            raw("document", "Page", 0),
+            raw("text", "One", 1),
+            raw("text", "Two", 1),
         ];
         let normalized = normalize_semantic(
             &nodes,
@@ -828,6 +816,37 @@ mod tests {
         assert_eq!(normalized.nodes.len(), 2);
         assert!(normalized.node_truncated);
         assert_eq!(normalized.nodes[0].0, "document");
+    }
+
+    #[test]
+    fn semantic_page_exposes_only_agent_fields() {
+        let page = SemanticPage::new(vec![SemanticNode(
+            "button".to_string(),
+            "Open issues".to_string(),
+            Some(SemanticBounds {
+                x: 10,
+                y: 20,
+                width: 80,
+                height: 30,
+            }),
+        )]);
+
+        let value = serde_json::to_value(page).expect("semantic page should serialize");
+        assert_eq!(
+            value["fields"],
+            serde_json::json!(["role", "name", "bounds"])
+        );
+        assert_eq!(
+            value["nodes"][0],
+            serde_json::json!(["button", "Open issues", {
+                "x": 10,
+                "y": 20,
+                "width": 80,
+                "height": 30
+            }])
+        );
+        assert!(value["nodes"][0].get("parent").is_none());
+        assert!(value["nodes"][0].get("selected").is_none());
     }
 
     #[test]

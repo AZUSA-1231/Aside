@@ -1,6 +1,7 @@
 # P1 - Chromium UIA Semantic Capture
 
-Status: implemented
+Status: completed
+Completed: 2026-09-02
 Depends on: [P0 - One-Shot Host Context Capture](./P0-one-shot-context-capture.md),
 [Chromium UIA and Screen Capture Study](../research/chromium-uia-screen-capture.md),
 and [Chromium UIA Depth Study](../research/chromium-uia-depth-study.md)  
@@ -24,7 +25,7 @@ browser.metadata
      capture quality, effective depth and structural limits
 
 browser.semantic_page
-  -> compact ContentView page tree with role, node name, parent, selected
+  -> compact ContentView page tree with role, node name, and screen bounds
 ```
 
 The parser uses UIA `AutomationElement.Name` as its only page-text source. It
@@ -37,6 +38,12 @@ declared metadata fields reach the agent.
 This plan does not implement screen capture, OCR, CDP, a browser extension, or
 browser actions. The existing visual setting remains unavailable until a later
 plan adds a bounded image block and a Windows capture implementation.
+
+The completed slice also makes each successful attachment inspectable without
+changing its session semantics: Aside writes an Aside-owned JSON artifact to
+its local `captures` directory, shows a compact in-panel preview, and can
+reveal the artifact in the system file manager. The artifact is not restored
+as an attachment after submission or restart.
 
 ## Design
 
@@ -54,7 +61,7 @@ pre-focus invocation
   -> find selected tab and page Document
   -> read narrow browser metadata
   -> walk bounded ContentView page descendants
-  -> normalize names and selection flags
+  -> normalize names and screen bounds
   -> attach metadata + semantic page JSON
   -> release UIA references and target snapshot
 ```
@@ -67,15 +74,14 @@ the existing composer collection.
 UIA traversal may take materially longer than the side rail's visibility
 operation. The shortcut path should snapshot the target first, hand that
 snapshot to one bounded capture worker, and open the rail without waiting for
-the UIA walk. A capture button may consume that short-lived pre-focus
-invocation snapshot, but must not call `GetForegroundWindow` after Aside owns
-focus and then treat Aside as the host. If no valid pre-focus snapshot exists,
-the command returns a recoverable `no_host_target` result. Capturing another
-window requires another pre-focus invocation; the attachment collection may
-remain open and append the new result, but the native layer does not retain a
-host-state map. The worker may emit the existing `host://capture-completed`
-result when it finishes, but this is one invocation result rather than a
-native capture state machine.
+the UIA walk. When Workspace is already visible, the capture button reuses its
+`WorkspaceSnapshot` target and runs another one-shot query without hiding or
+reopening Aside. In ordinary Side mode, an explicit capture may briefly hide
+Aside, query the newly revealed foreground host, and restore the rail. This is
+still one synchronous invocation with no host map or polling lifecycle, and
+Aside is never passed to the extractor as the host. The worker may emit the
+existing `host://capture-completed` result when it finishes, but this is one
+invocation result rather than a native capture state machine.
 
 ### Product-facing attachment shape
 
@@ -103,11 +109,11 @@ from page nodes:
     "nodeTruncated": false
   },
   "semantic_page": {
-    "fields": ["role", "name", "parent", "selected"],
+    "fields": ["role", "name", "bounds"],
     "nodes": [
-      ["document", "GitHub", -1, null],
-      ["link", "THU-MAIC/OpenMAIC", 0, null],
-      ["listitem", "Open pull requests", 0, true]
+      ["document", "GitHub", {"x": 1857, "y": 120, "width": 1920, "height": 900}],
+      ["link", "THU-MAIC/OpenMAIC", {"x": 1857, "y": 260, "width": 210, "height": 24}],
+      ["listitem", "Open pull requests", {"x": 1857, "y": 300, "width": 240, "height": 32}]
     ]
   }
 }
@@ -220,19 +226,16 @@ For each node in the chosen page subtree:
    constructing the JSON block.
 5. Use `IsOffscreen` and valid bounds as internal visibility filters. Reject
    nodes marked offscreen; when bounds are available, require them to be valid
-   and intersect the chosen document region. Never serialize the bounds.
-6. Keep `selected=true` only when `SelectionItemPattern` reports a meaningful
-   selected state. A missing or false selection state is represented as `null`
-   in the fixed tuple schema to keep the column mapping deterministic.
-7. Remove empty layout containers. If a retained node's original parent was
-   filtered, remap it to the nearest retained ancestor.
-8. Preserve traversal order and repeated nodes. Do not globally deduplicate
+   and intersect the chosen document region. Serialize valid bounds as the
+   compact `{x, y, width, height}` screen rectangle.
+6. Remove empty layout containers.
+7. Preserve traversal order and repeated nodes. Do not globally deduplicate
    equal names because repeated links, rows, and controls carry page meaning.
 
 The normalizer must not call `TextPattern.DocumentRange.GetText`,
 `GetVisibleRanges`, or `GetSelection` on the default path. A highlighted text
-selection is therefore not represented as text in P1; `selected` means a
-selection-item state such as a selected tab or list item.
+selection is therefore not represented as text in P1. Selection state remains
+an internal UIA signal used only to identify the active browser tab.
 
 ### Bounds and limits
 
@@ -264,9 +267,8 @@ silently replace an older attachment or send a partially validated JSON value.
 
 ### Native and IPC ownership
 
-- `src-tauri/src/hosts/chromium_uia.rs` (or the repository's selected host
-  module) owns COM/UIA initialization, browser matching, metadata extraction,
-  bounded traversal, and semantic normalization.
+- `src-tauri/src/chromium_uia.rs` owns COM/UIA initialization, browser
+  matching, metadata extraction, bounded traversal, and semantic normalization.
 - `src-tauri/src/context.rs` registers the stateless Chromium extractor,
   carries the sanitized metadata block, and keeps P0 validation and expiry
   behavior authoritative.
@@ -283,11 +285,11 @@ silently replace an older attachment or send a partially validated JSON value.
   count and serialize the two JSON blocks deterministically.
 
 Use a native Windows UIA/COM binding with no stored apartment-bound objects.
-The implementation should initialize COM on the capture worker, perform all
-UIA calls on that worker, apply a wall-clock timeout, and release every
-element/pattern reference before returning. The exact `windows` crate feature
-set may be finalized during implementation, but it must cover Foundation,
-System COM, and UI Accessibility only; no browser automation package is needed.
+The implementation initializes COM on the capture worker, performs all UIA
+calls on that worker, applies the UIA connection timeout, and releases every
+element/pattern reference before returning. The `windows` crate feature set is
+limited to Foundation, System COM, and UI Accessibility; no browser automation
+package is needed.
 
 ### Failure behavior
 
@@ -306,41 +308,31 @@ System COM, and UI Accessibility only; no browser automation package is needed.
 | Target closes, minimizes, or changes identity | Stale-target error and no captured page content |
 | JSON or aggregate budget exceeded | Atomic oversize error; existing attachments unchanged |
 
-## Tasks
+## Completed Tasks
 
-1. Run the depth-matrix validation on the existing sanitized fixtures and live
-   Edge/Chrome samples. Record the selected default depth and confirm whether
-   the parser needs the current 800-node cap or a lower normalized-node cap.
-2. Add the Windows UIA dependency and a stateless COM worker. Keep the native
-   production build Windows-only and preserve non-Windows compilation through
-   an unavailable extractor path.
-3. Extend host capability reporting with a Chromium UIA semantic-capture
-   capability and register Chrome/Edge matchers by executable identity, not
-   title or pixel content.
-4. Implement selected-tab discovery, page-root selection, safe URL extraction,
-   title fallback, application mapping, and PID metadata.
-5. Implement the ContentView normalizer and fixed column-oriented
-   `role/name/parent/selected` JSON shape with visibility filtering, whitespace
-   normalization, parent remapping, and atomic size validation.
-6. Integrate the extractor into the one-shot shortcut and explicit capture
-   paths through the pre-focus invocation snapshot. A post-focus command must
-   consume that short-lived snapshot or return `no_host_target`; it must not
-   rediscover the foreground window. Do not add a host-state manager, polling
-   loop, or persistent UIA object.
-7. Update TypeScript contracts and the attachment preview only as needed to
-   display application, tab, title, quality, and a compact semantic-page
-   summary. Keep PID as informational metadata and never expose it as an
-   action target. Do not render raw diagnostic payloads.
-8. Add deterministic unit tests for metadata fallbacks, URL sanitization,
-   quality/depth derivation, page-root selection, name filtering, offscreen
-   filtering, parent remapping, selected state, repeated node preservation,
-   and JSON/aggregate budget rejection.
-9. Add Windows/manual verification for real Edge and Chrome, including a
-   normal GitHub page, Pinterest, a synthetic semantic page, a copy-disabled
-   page, a canvas/image page, a minimized window, an occluded window, an
-   elevated browser, and a browser that closes during capture.
-10. Record any mismatch between the live UIA provider and this contract in the
-    cycle `ISSUES.md` before broadening the parser or adding another transport.
+- [x] Recorded the live Edge baseline and retained bounded defaults of
+  `maxDepth=16` and `maxNodes=800`; the depth-matrix instrumentation remains
+  available for a later cross-browser study.
+- [x] Added the Windows UIA dependency and a short-lived COM worker while
+  preserving the unavailable path on non-Windows builds.
+- [x] Added executable-identity matching and Chromium UIA/browser metadata
+  capabilities for Chrome and Edge.
+- [x] Implemented selected-tab discovery, page-root selection, safe URL
+  extraction, title fallback, application mapping, and PID metadata.
+- [x] Implemented the ContentView normalizer with the fixed
+  `role/name/bounds` tuple shape, visibility filtering, whitespace
+  normalization, screen-bound conversion, and budget validation.
+- [x] Integrated shortcut capture, Workspace capture without leaving the
+  split view, ordinary Side capture, append-only attachments, and prompt-limit
+  rejection without a host-state manager or polling loop.
+- [x] Added the attachment JSON artifact, compact `nodes` serialization,
+  in-panel preview, and system file-manager reveal action. Direct external
+  file opening is intentionally outside this slice.
+- [x] Added deterministic tests for metadata, URL and quality behavior,
+  semantic filtering, bounds, repeated nodes, target isolation, and JSON or
+  aggregate budget rejection.
+- [x] Completed live Edge verification with GitHub and Pinterest samples and
+  recorded the UIA/provider mismatches in `ISSUES.md`.
 
 ## Deliverables
 
@@ -349,12 +341,14 @@ System COM, and UI Accessibility only; no browser automation package is needed.
 - A sanitized browser metadata JSON block containing application, PID, selected
   tab name, URL, title, quality, effective depth, and structural capture state.
 - A compact ContentView semantic-page JSON block containing only
-  `role/name/parent/selected` tuples.
+  `role/name/bounds` tuples.
 - A bounded COM/UIA worker with one-shot target validation and no retained host
   state.
-- A selected default depth backed by the live depth matrix and quality rules
-  that honestly mark partial results.
-- Unit, integration, and interactive Windows verification for Edge and Chrome.
+- A bounded default of `maxDepth=16` and `maxNodes=800`, backed by the current
+  live Edge baseline, instrumentation, and quality rules that honestly mark
+  partial results.
+- Unit/runtime verification, the shared Chrome path, and interactive Edge
+  verification; the full Chrome and depth-matrix sweep remains deferred.
 
 ## Exit Criteria
 
@@ -366,23 +360,48 @@ System COM, and UI Accessibility only; no browser automation package is needed.
   explicit depth/node truncation state. The success schema keeps these keys
   even when a safe value is `null`.
 - The semantic block contains no raw document text, character lengths, hashes,
-  bounds, automation IDs, pattern diagnostics, or browser chrome tree.
+  automation IDs, pattern diagnostics, parent indexes, or selection flags; it
+  contains only the declared role, name, and screen bounds columns.
 - The page tree is rooted at the selected page `Document`, uses `Name` as its
   only node-text source, filters invalid/offscreen/layout nodes, preserves
-  parent relationships, and records meaningful selected states.
+  traversal order, and records valid screen bounds when available.
 - Missing UIA features produce partial or metadata-only results rather than
   invented text or arbitrary tab selection.
 - Depth/node caps, traversal errors, stale targets, malformed data, and budget
   overflow produce the specified bounded result or recoverable error.
 - The UIA worker does not block the side rail's initial visibility path beyond
-  the pre-focus target snapshot and classification; post-focus capture does
-  not rediscover the foreground window, and no polling or multi-window host
+  the pre-focus target snapshot and classification. Workspace capture reuses
+  its target without hiding Aside; ordinary Side capture temporarily hides the
+  rail before querying the foreground host. No polling or multi-window host
   state is introduced.
 - Existing typecheck, build, Rust tests, and runtime tests remain green.
 
+## Completion Record
+
+P1 is closed for the initial Chromium UIA capture slice. The production path is
+Windows-only, supports Chrome and Edge through the shared executable matcher,
+and returns bounded metadata plus a compact ContentView semantic page. The
+semantic contract intentionally contains only `role`, `name`, and `bounds`;
+parent indexes, page-node selection flags, text ranges, lengths, and hashes do
+not reach the agent.
+
+Verification completed on 2026-09-02:
+
+- 17 Rust tests passed.
+- 28 runtime tests passed.
+- TypeScript typecheck, frontend build, Rust formatting, and diff checks passed.
+- Live Edge GitHub and Pinterest captures succeeded after moving UIA/COM work
+  to a dedicated worker.
+- Capture artifacts were inspected through the in-panel preview and the
+  system file-manager reveal path.
+- Chrome uses the same production matcher and extractor path; cross-browser
+  manual coverage remains in `Deferred`.
+
 ## Checks
 
-Run the depth study before choosing the final default:
+The current P1 default is `maxDepth=16` and `maxNodes=800`, selected from the
+available live Edge baseline. Run the broader depth study before changing that
+default or claiming cross-browser completeness:
 
 ```text
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/capture-live-chromium-uia.ps1 -Browser edge -ListOnly
@@ -410,7 +429,7 @@ The focused tests must cover:
 - depth-limit and node-limit truncation with independent flags;
 - ContentView root selection and ControlView metadata fallback;
 - name normalization, offscreen/invalid-bounds filtering, empty-container
-  removal, parent remapping, and selected flags;
+  removal, screen-bound conversion;
 - preservation of repeated equal nodes;
 - exclusion of TextPattern ranges and arbitrary Edit values;
 - stale-target rejection and no replacement-window capture;
@@ -418,6 +437,9 @@ The focused tests must cover:
 
 ## Deferred
 
+- Full live depth-matrix comparison across Chrome and Edge, plus the remaining
+  elevated, minimized, occluded, protected-surface, and close-during-capture
+  cases;
 - Windows Graphics Capture or another per-window pixel transport;
 - OCR or vision processing;
 - CDP and browser extension active-tab bridges;

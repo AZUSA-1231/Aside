@@ -1,6 +1,6 @@
 # Chromium UI Automation and Screen Capture Study
 
-Status: research recommendation; no production Chromium transport implemented  
+Status: research record; Chromium UIA transport implemented in P1
 Date: 2026-08-31  
 Scope: Windows Chromium-family browsers, including Chrome and Edge
 
@@ -17,7 +17,7 @@ one capture click
   -> snapshot the foreground browser window
   -> query the browser UIA tree
   -> extract page identity, selected tab, and a compact semantic tree of node
-     names plus selected state
+     roles, names, and screen bounds
   -> if semantic coverage is insufficient and visual fallback is enabled,
      capture that one browser window and use it as a visual/OCR input
   -> append one bounded attachment
@@ -196,7 +196,7 @@ Useful UIA concepts for the adapter are:
 | `AutomationElement` properties | Window identity, control type, name, bounds, enabled/offscreen state | Keep only sanitized metadata |
 | `TabItem` plus `SelectionItemPattern` | Find the selected browser tab | Use selected tab name as a low-cost page label; do not trust tree order |
 | `Document` plus `AutomationElement.Name` | Find the page root and read semantic node labels | Keep only normalized non-empty names from the visible page subtree |
-| `SelectionItemPattern` | Identify the selected tab or selected semantic item | Keep selected state only when the pattern provides it |
+| `SelectionItemPattern` | Identify the selected browser tab | Use the state internally for tab discovery; do not serialize it on page nodes |
 | `Edit` plus `ValuePattern` | Inspect address bar or other text controls | Do not forward values by default; form values are sensitive |
 | `Button`, `Link`, `InvokePattern`, and similar | Describe controls or later typed actions | Read-only for the first capture slice; no generic invocation |
 | `BoundingRectangle` | Locate the document region for a per-window visual crop | Use only for a bounded capture geometry |
@@ -221,9 +221,9 @@ For each page node, the normalizer:
    label;
 3. drops empty names, browser chrome, empty layout containers, and nodes whose
    `IsOffscreen` value is `true` when that value is available;
-4. trims and collapses whitespace without adding a second text source;
-5. remaps parent indexes after filtering; and
-6. carries `selected` only when UIA exposes a meaningful selection-item state.
+4. trims and collapses whitespace without adding a second text source; and
+5. converts valid `BoundingRectangle` values into compact `x`, `y`, `width`,
+   and `height` screen bounds.
 
 The output is therefore a semantic description, not a character-perfect page
 transcript. In particular, `TextPattern.DocumentRange`, `GetSelection`, and
@@ -235,19 +235,21 @@ The normalized page block has this shape:
 
 ```json
 {
-  "fields": ["role", "name", "parent", "selected"],
+  "fields": ["role", "name", "bounds"],
   "nodes": [
-    ["document", "GitHub", -1, null],
-    ["link", "THU-MAIC/OpenMAIC", 0, null],
-    ["button", "Open Copilot...", 0, true]
+    ["document", "GitHub", {"x": 1857, "y": 120, "width": 1920, "height": 900}],
+    ["link", "THU-MAIC/OpenMAIC", {"x": 1857, "y": 260, "width": 210, "height": 24}],
+    ["button", "Open Copilot...", {"x": 1857, "y": 300, "width": 160, "height": 32}]
   ]
 }
 ```
 
 The parser may use serialized byte size, node count, depth, and truncation
-state internally for bounded capture. None of those measurements, nor bounds,
-automation IDs, pattern flags, values, or hashes, are forwarded as semantic
-context.
+state internally for bounded capture. Parent indexes, selection flags, and
+automation IDs are not forwarded as semantic context. Bounds are the one
+diagnostic-adjacent field intentionally retained because they help the agent
+reason about approximate control placement. Pattern flags, values, and hashes
+remain internal.
 
 ## 4. Does UIA Depend on Copy or Selection Being Allowed?
 
@@ -293,7 +295,7 @@ The strategy remains one-shot and target-bound:
 4. Locate the selected `TabItem`; do not infer the active tab from element order.
 5. Locate the top-level web `Document` associated with that selected tab.
 6. Read title/identity metadata and normalize the page `Document` names and
-   meaningful selected states.
+   screen bounds.
 7. Do not read a `DocumentRange`, visible range, or text-selection range for the
    default semantic attachment; use screen capture only as the separately
    enabled visual augmentation.
@@ -307,7 +309,7 @@ source: Chrome page / Edge page
 sensitivity: local_metadata or local_content
 blocks:
   page_identity: browser brand, title metadata, sanitized origin/path
-  semantic_page: role/name/parent/selected node table
+  semantic_page: role/name/bounds node table
 ```
 
 The current Rust contract supports text and JSON blocks but not images. This
@@ -323,7 +325,7 @@ provider:
 - selected browser tab found;
 - page `Document` found;
 - named visible semantic nodes found;
-- meaningful selected states found;
+- valid screen bounds found;
 - tree traversal hit a cap or raised a provider error;
 - document bounds available for a visual crop.
 
@@ -470,7 +472,7 @@ the diagnostic fields as product context:
 
 | Case | UIA observation | Visual observation |
 | --- | --- | --- |
-| Semantic HTML page | Selected tab, Document, named visible nodes, selected states | Per-window capture dimensions and non-blank hash |
+| Semantic HTML page | Selected tab, Document, named visible nodes, and screen bounds | Per-window capture dimensions and non-blank hash |
 | User-selected paragraph | Confirm the default tree remains node-name based; text ranges are not serialized | Same target remains aligned |
 | `user-select: none` and copy prevention | Compare named-node availability without sending Ctrl+C | Pixels remain visible |
 | Canvas and image content | Missing or partial semantic text is expected | Capture plus optional OCR/vision test |

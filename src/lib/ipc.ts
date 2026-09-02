@@ -1,6 +1,7 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { listen as tauriListen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import type {
   AgentState,
   AsideTurnContext,
@@ -145,6 +146,13 @@ export const nativeClient = {
       };
     }
     return command<HostCaptureResult>("capture_active_host_context");
+  },
+
+  revealPath: async (path: string): Promise<void> => {
+    if (!isDesktopRuntime()) {
+      throw new Error("Opening a capture folder is available in the desktop app.");
+    }
+    await revealItemInDir(path);
   },
 
   startDragging: async (): Promise<void> => {

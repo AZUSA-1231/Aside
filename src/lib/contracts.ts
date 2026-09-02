@@ -117,6 +117,7 @@ export interface HostCaptureResult {
   captureId: string;
   host: HostView;
   attachment?: AsideHostAttachment;
+  filePath?: string;
   error?: HostCaptureError;
 }
 
