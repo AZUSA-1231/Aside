@@ -1,6 +1,7 @@
 # P0 - One-Shot Host Context Capture
 
-Status: implemented; real host transports deferred  
+Status: implemented foundation; remaining closeout work is tracked in
+the [single Cycle 4 closeout plan](../PLAN.md)
 Depends on: Cycle 2 Side rail and Cycle 3 runtime contracts  
 Unblocks: later real host extractor plans
 
@@ -31,9 +32,12 @@ the user can gather bounded context from several windows or applications before
 asking one question. When the combined normalized context reaches the existing
 Cycle 3 budget, a further capture is rejected without changing the collection.
 
-This plan establishes the common extractor contract and deterministic faux
-extractors. It does not implement Chromium CDP, a VSCode extension, Explorer
-automation, or a PDF SDK.
+This historical foundation plan established the common extractor contract and
+deterministic faux extractors. It did not implement Chromium CDP, a VSCode
+extension, Explorer automation, or a PDF SDK. Its original "unsupported"
+fallback wording describes the state at P0 completion; the current remaining
+scope is defined by the single closeout plan, which adds Generic UIA fallback
+and path-only strategies without changing this contract.
 
 ## Design
 
@@ -116,13 +120,16 @@ payload crosses the Tauri or runtime boundary.
 2. Implement host classification and extractor selection.
    - Define one `HostExtractor` interface for stable target matching,
      capability discovery, and bounded capture.
-   - Register faux Browser, Explorer, VSCode, PDF reader, and unsupported
-     extractors behind one simple registry or ordered selector. The registry
+   - Register faux Browser, Explorer, VSCode, PDF reader, and generic fallback
+     strategies behind one simple registry or ordered selector. The registry
      is lookup data, not a state manager.
-   - Match using stable application identity and declared capabilities. An
-     unknown, ambiguous, or inaccessible target must use unsupported fallback.
-   - Return an unavailable capability when a real transport is not installed;
-     do not guess from window titles, pixels, OCR, or generic accessibility.
+   - Match using stable application identity and declared capabilities. A
+     deterministic priority chooses one specialized strategy; an ambiguous
+     tie is explicit, while a target with no specialized match may use the
+     bounded Generic UIA fallback.
+   - Return an unavailable capability when the selected transport is not
+     installed; do not guess from window titles, pixels, OCR, or unbounded
+     accessibility.
 
 3. Implement the one-shot native capture function.
    - Snapshot the foreground target before Aside receives focus.
@@ -169,7 +176,7 @@ payload crosses the Tauri or runtime boundary.
 6. Add deterministic faux extractors and contract tests.
    - Provide bounded fixture responses for Browser URL/title, Explorer
      directory/item metadata, VSCode workspace/editor data, PDF reader/document
-     data, and unsupported fallback.
+     data, Generic UIA fallback, and no-UIA unavailable behavior.
    - Test stable classification, capability reporting, successful capture,
      unavailable transport, permission denial, timeout, cancellation, stale
      target, malformed payload, oversized payload, expiry, and unsupported
@@ -191,8 +198,8 @@ payload crosses the Tauri or runtime boundary.
 - A minimal Aside-owned one-shot host capture contract.
 - One native capture entry point with target snapshot, extractor selection,
   bounded validation, and sanitized result/error handling.
-- Faux extractors for Browser, Explorer, VSCode, PDF reader, and unsupported
-  host behavior.
+- Faux strategies for Browser, Explorer, VSCode, PDF reader, Generic UIA, and
+  no-UIA unavailable behavior.
 - Current-prompt attachment collection handling and runtime projection tests.
 - Lightweight repeated-click protection without a multi-window or background
   state manager.
@@ -203,7 +210,9 @@ payload crosses the Tauri or runtime boundary.
 - One capture operation can classify a target, select an extractor, and return
   one bounded attachment or a recoverable error.
 - The Side surface remains usable while a one-shot capture is pending.
-- Unknown or ambiguous hosts fall back without generic inspection.
+- A target with no specialized strategy receives one bounded Generic UIA
+  attempt when UIA is usable; an ambiguous specialized match remains explicit
+  and is not merged with another result.
 - A changed or closed target produces no captured content.
 - Repeated user captures accumulate bounded attachments from multiple targets
   without mixing their data or allowing a late result to overwrite another
@@ -219,9 +228,10 @@ payload crosses the Tauri or runtime boundary.
   session behavior remains unchanged except for the explicitly added capture
   entry point.
 
-This plan prepares the capture portions of C4-01 through C4-03 and C4-05
-through C4-10 using faux transports. It does not claim real host support,
-host actions, or the C4-14 native latency target.
+This plan prepared the foundation portions of C4-01 through C4-03 and C4-05
+through C4-10 using faux transports. It does not claim the remaining real path
+locators, host actions, or the C4-14 native latency target; those are tracked in
+the unified closeout plan.
 
 ## Checks
 
@@ -248,9 +258,9 @@ Add focused checks for:
 ## Deferred
 
 - Chromium CDP or browser extension implementation;
-- VSCode extension implementation;
-- Explorer native/COM integration and real file reads;
-- PDF reader-specific integration;
+- VSCode extension implementation, Explorer rich integration, and real file
+  reads;
+- PDF reader-specific content integration;
 - typed host actions, previews, confirmation, and file/editor mutation;
 - multi-window host state, background polling, application inventory, and
   usage insights;

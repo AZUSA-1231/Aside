@@ -1,0 +1,17 @@
+{
+  "maxBlocks": 8,
+  "maxAttachments": 8,
+  "maxTextBytes": 8192,
+  "maxJsonBytes": 16384,
+  "maxTotalBytes": 24576,
+  "maxDescriptors": 8,
+  "maxJsonDepth": 4,
+  "maxFlowIdLength": 128,
+  "maxFlowKindLength": 48,
+  "maxFlowLabelLength": 160,
+  "maxBlockLabelLength": 160,
+  "maxAttachmentSourceLength": 160,
+  "maxAttachmentSummaryLength": 240,
+  "maxAttachmentIdLength": 128,
+  "maxPathLength": 4096
+}

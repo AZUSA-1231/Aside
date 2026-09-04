@@ -32,4 +32,5 @@ windows = { version = "0.61.3", features = [
     "Win32_System_Ole",
     "Win32_System_Variant",
     "Win32_UI_Accessibility",
+    "Win32_UI_Shell",
 ] }

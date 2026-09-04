@@ -1,18 +1,38 @@
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
 use crate::platform::{self, TargetWindow};
 
-pub const MAX_CONTEXT_BLOCKS: usize = 8;
-pub const MAX_CONTEXT_TEXT_BYTES: usize = 8 * 1024;
-pub const MAX_CONTEXT_JSON_BYTES: usize = 16 * 1024;
-pub const MAX_CONTEXT_TOTAL_BYTES: usize = 24 * 1024;
-pub const MAX_CONTEXT_JSON_DEPTH: usize = 4;
-pub const MAX_CONTEXT_ID_LENGTH: usize = 128;
-pub const MAX_CONTEXT_SOURCE_LENGTH: usize = 160;
-pub const MAX_CONTEXT_SUMMARY_LENGTH: usize = 240;
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ContextLimits {
+    max_blocks: usize,
+    max_text_bytes: usize,
+    max_json_bytes: usize,
+    max_total_bytes: usize,
+    max_descriptors: usize,
+    max_json_depth: usize,
+    max_block_label_length: usize,
+    max_attachment_source_length: usize,
+    max_attachment_summary_length: usize,
+    max_attachment_id_length: usize,
+    max_path_length: usize,
+}
+
+static CONTEXT_LIMITS: OnceLock<ContextLimits> = OnceLock::new();
+
+fn context_limits() -> &'static ContextLimits {
+    CONTEXT_LIMITS.get_or_init(|| {
+        serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../shared/context-limits.json"
+        )))
+        .expect("shared context limits must be valid JSON")
+    })
+}
 
 static NEXT_CAPTURE_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -25,6 +45,9 @@ pub enum HostKind {
     VsCode,
     #[serde(rename = "pdf_reader")]
     PdfReader,
+    Word,
+    Excel,
+    Generic,
     Unsupported,
 }
 
@@ -42,11 +65,15 @@ pub enum HostAvailability {
 pub enum HostCapability {
     Identify,
     CaptureContext,
+    GenericUiaSemanticCapture,
     ChromiumUiaSemanticCapture,
     BrowserUrlTitle,
     ExplorerMetadata,
     VscodeWorkspace,
     PdfDocument,
+    WordDocument,
+    ExcelDocument,
+    PathDescriptor,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -73,6 +100,34 @@ pub enum HostCaptureErrorCode {
     Expired,
     StaleTarget,
     CaptureFailed,
+    LocatorUnavailable,
+    AmbiguousLocator,
+    InvalidPath,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PathRole {
+    WorkspaceRoot,
+    ActiveFile,
+    Directory,
+    SelectedItem,
+    Document,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PathKind {
+    File,
+    Directory,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PathDescriptor {
+    pub role: PathRole,
+    pub path: String,
+    pub kind: PathKind,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -103,12 +158,16 @@ pub enum AsideContextBlock {
 pub struct AsideHostAttachment {
     pub id: String,
     pub host: HostKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strategy: Option<String>,
     pub source: String,
     pub captured_at: u64,
     pub expires_at: u64,
     pub sensitivity: ContextSensitivity,
     pub summary: String,
     pub blocks: Vec<AsideContextBlock>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub descriptors: Vec<PathDescriptor>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -125,6 +184,10 @@ pub struct HostView {
     pub target_id: Option<String>,
     pub application_id: Option<String>,
     pub kind: HostKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub strategy: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub strategy_priority: Option<u16>,
     pub availability: HostAvailability,
     pub capabilities: Vec<HostCapability>,
 }
@@ -165,7 +228,7 @@ impl HostTargetSnapshot {
     }
 
     #[cfg(test)]
-    fn synthetic(target_id: &str, application_id: Option<&str>) -> Self {
+    pub(crate) fn synthetic(target_id: &str, application_id: Option<&str>) -> Self {
         Self {
             target_id: target_id.to_string(),
             application_id: application_id.map(str::to_string),
@@ -200,9 +263,12 @@ pub struct ExtractedHostContext {
     pub expires_at: u64,
     pub sensitivity: ContextSensitivity,
     pub blocks: Vec<AsideContextBlock>,
+    pub descriptors: Vec<PathDescriptor>,
 }
 
 pub trait HostExtractor: Send + Sync {
+    fn strategy_id(&self) -> &'static str;
+    fn priority(&self) -> u16;
     fn kind(&self) -> HostKind;
     fn matches(&self, target: &HostTargetSnapshot) -> bool;
     fn capabilities(&self, target: &HostTargetSnapshot) -> Vec<HostCapability>;
@@ -214,17 +280,51 @@ pub trait HostExtractor: Send + Sync {
 
 pub struct HostExtractorRegistry {
     extractors: Vec<Box<dyn HostExtractor>>,
+    generic: Box<dyn HostExtractor>,
+}
+
+#[derive(Clone, Copy)]
+enum StrategySelection<'a> {
+    Specialized(&'a dyn HostExtractor),
+    Generic(&'a dyn HostExtractor),
+    Ambiguous,
+    None,
 }
 
 impl HostExtractorRegistry {
     pub fn new(extractors: Vec<Box<dyn HostExtractor>>) -> Self {
-        Self { extractors }
+        Self {
+            extractors,
+            generic: Box::new(crate::generic_uia::GenericUiaExtractor::default()),
+        }
+    }
+
+    #[cfg(test)]
+    fn with_generic(
+        extractors: Vec<Box<dyn HostExtractor>>,
+        generic: Box<dyn HostExtractor>,
+    ) -> Self {
+        Self {
+            extractors,
+            generic,
+        }
     }
 
     pub fn production() -> Self {
-        Self::new(vec![Box::new(
+        let mut registry = Self::new(Vec::new());
+        registry.register(Box::new(
             crate::chromium_uia::ChromiumUiaExtractor::default(),
-        )])
+        ));
+        registry.register(Box::new(crate::file_hosts::VsCodePathExtractor));
+        registry.register(Box::new(crate::file_hosts::ExplorerPathExtractor));
+        registry.register(Box::new(crate::file_hosts::PdfPathExtractor));
+        registry.register(Box::new(crate::file_hosts::WordPathExtractor));
+        registry.register(Box::new(crate::file_hosts::ExcelPathExtractor));
+        registry
+    }
+
+    pub fn register(&mut self, extractor: Box<dyn HostExtractor>) {
+        self.extractors.push(extractor);
     }
 
     fn matching<'a>(&'a self, target: &HostTargetSnapshot) -> Vec<&'a dyn HostExtractor> {
@@ -235,26 +335,53 @@ impl HostExtractorRegistry {
             .collect()
     }
 
-    pub fn classify(&self, target: &HostTargetSnapshot) -> HostView {
+    fn select<'a>(&'a self, target: &HostTargetSnapshot) -> StrategySelection<'a> {
         let matches = self.matching(target);
-        if matches.len() > 1 {
-            return HostView {
-                target_id: Some(target.target_id.clone()),
-                application_id: target.application_id.clone(),
-                kind: HostKind::Unsupported,
-                availability: HostAvailability::Ambiguous,
-                capabilities: Vec::new(),
+        let Some(priority) = matches.iter().map(|extractor| extractor.priority()).min() else {
+            return if self.generic.matches(target) {
+                StrategySelection::Generic(self.generic.as_ref())
+            } else {
+                StrategySelection::None
             };
+        };
+        let winners: Vec<_> = matches
+            .into_iter()
+            .filter(|extractor| extractor.priority() == priority)
+            .collect();
+        if winners.len() == 1 {
+            StrategySelection::Specialized(winners[0])
+        } else {
+            StrategySelection::Ambiguous
         }
+    }
 
-        let Some(extractor) = matches.first() else {
-            return HostView {
-                target_id: Some(target.target_id.clone()),
-                application_id: target.application_id.clone(),
-                kind: HostKind::Unsupported,
-                availability: HostAvailability::Unsupported,
-                capabilities: Vec::new(),
-            };
+    fn classify_matches(target: &HostTargetSnapshot, selection: StrategySelection<'_>) -> HostView {
+        let extractor = match selection {
+            StrategySelection::Specialized(extractor) | StrategySelection::Generic(extractor) => {
+                extractor
+            }
+            StrategySelection::Ambiguous => {
+                return HostView {
+                    target_id: Some(target.target_id.clone()),
+                    application_id: target.application_id.clone(),
+                    kind: HostKind::Unsupported,
+                    strategy: None,
+                    strategy_priority: None,
+                    availability: HostAvailability::Ambiguous,
+                    capabilities: Vec::new(),
+                }
+            }
+            StrategySelection::None => {
+                return HostView {
+                    target_id: Some(target.target_id.clone()),
+                    application_id: target.application_id.clone(),
+                    kind: HostKind::Unsupported,
+                    strategy: None,
+                    strategy_priority: None,
+                    availability: HostAvailability::Unsupported,
+                    capabilities: Vec::new(),
+                }
+            }
         };
 
         let mut capabilities = extractor.capabilities(target);
@@ -265,32 +392,43 @@ impl HostExtractorRegistry {
             target_id: Some(target.target_id.clone()),
             application_id: target.application_id.clone(),
             kind: extractor.kind(),
+            strategy: Some(extractor.strategy_id().to_string()),
+            strategy_priority: Some(extractor.priority()),
             availability: HostAvailability::Available,
             capabilities,
         }
     }
 
+    pub fn classify(&self, target: &HostTargetSnapshot) -> HostView {
+        Self::classify_matches(target, self.select(target))
+    }
+
     pub fn capture(&self, request: HostCaptureRequest) -> HostCaptureResult {
-        let matches = self.matching(&request.target);
-        let host = self.classify(&request.target);
+        let selection = self.select(&request.target);
+        let host = Self::classify_matches(&request.target, selection);
 
         if !request.target.is_current() {
             return failed_result(request.capture_id, host, HostCaptureErrorCode::StaleTarget);
         }
-        if matches.len() > 1 {
-            return failed_result(
-                request.capture_id,
-                host,
-                HostCaptureErrorCode::AmbiguousTarget,
-            );
-        }
-        let Some(extractor) = matches.first() else {
-            return HostCaptureResult {
-                capture_id: request.capture_id,
-                host,
-                attachment: None,
-                error: None,
-            };
+        let extractor = match selection {
+            StrategySelection::Specialized(extractor) | StrategySelection::Generic(extractor) => {
+                extractor
+            }
+            StrategySelection::Ambiguous => {
+                return failed_result(
+                    request.capture_id,
+                    host,
+                    HostCaptureErrorCode::AmbiguousTarget,
+                )
+            }
+            StrategySelection::None => {
+                return HostCaptureResult {
+                    capture_id: request.capture_id,
+                    host,
+                    attachment: None,
+                    error: None,
+                }
+            }
         };
 
         let capabilities = extractor.capabilities(&request.target);
@@ -306,7 +444,15 @@ impl HostExtractorRegistry {
             Ok(extracted) => extracted,
             Err(code) => return failed_result(request.capture_id, host, code),
         };
-        let attachment = match normalize_attachment(&request, extractor.kind(), extracted) {
+        if !request.target.is_current() {
+            return failed_result(request.capture_id, host, HostCaptureErrorCode::StaleTarget);
+        }
+        let attachment = match normalize_attachment(
+            &request,
+            extractor.kind(),
+            extractor.strategy_id(),
+            extracted,
+        ) {
             Ok(attachment) => attachment,
             Err(code) => return failed_result(request.capture_id, host, code),
         };
@@ -327,6 +473,8 @@ pub fn classify_foreground_host() -> HostView {
             target_id: None,
             application_id: None,
             kind: HostKind::Unsupported,
+            strategy: None,
+            strategy_priority: None,
             availability: HostAvailability::Unavailable,
             capabilities: Vec::new(),
         },
@@ -363,6 +511,8 @@ fn unavailable_host_view() -> HostView {
         target_id: None,
         application_id: None,
         kind: HostKind::Unsupported,
+        strategy: None,
+        strategy_priority: None,
         availability: HostAvailability::Unavailable,
         capabilities: Vec::new(),
     }
@@ -422,6 +572,14 @@ fn sanitized_error(code: HostCaptureErrorCode) -> HostCaptureError {
             true,
         ),
         HostCaptureErrorCode::CaptureFailed => ("Host context capture failed.", true),
+        HostCaptureErrorCode::LocatorUnavailable => {
+            ("The host did not expose a reliable path locator.", true)
+        }
+        HostCaptureErrorCode::AmbiguousLocator => (
+            "The host exposed more than one possible path locator.",
+            true,
+        ),
+        HostCaptureErrorCode::InvalidPath => ("The host path could not be validated safely.", true),
     };
     HostCaptureError {
         code,
@@ -433,10 +591,11 @@ fn sanitized_error(code: HostCaptureErrorCode) -> HostCaptureError {
 fn normalize_attachment(
     request: &HostCaptureRequest,
     host: HostKind,
+    strategy: &str,
     extracted: ExtractedHostContext,
 ) -> Result<AsideHostAttachment, HostCaptureErrorCode> {
     if request.capture_id.is_empty()
-        || request.capture_id.len() > MAX_CONTEXT_ID_LENGTH
+        || request.capture_id.len() > context_limits().max_attachment_id_length
         || !request
             .capture_id
             .chars()
@@ -451,55 +610,91 @@ fn normalize_attachment(
     if extracted.expires_at <= now_millis() {
         return Err(HostCaptureErrorCode::Expired);
     }
-    validate_safe_text(&extracted.source, MAX_CONTEXT_SOURCE_LENGTH)
-        .map_err(|_| HostCaptureErrorCode::Malformed)?;
-    validate_safe_text(&extracted.summary, MAX_CONTEXT_SUMMARY_LENGTH)
-        .map_err(|_| HostCaptureErrorCode::Malformed)?;
+    validate_safe_text(
+        &extracted.source,
+        context_limits().max_attachment_source_length,
+    )
+    .map_err(|_| HostCaptureErrorCode::Malformed)?;
+    validate_safe_text(
+        &extracted.summary,
+        context_limits().max_attachment_summary_length,
+    )
+    .map_err(|_| HostCaptureErrorCode::Malformed)?;
     validate_blocks(&extracted.blocks)?;
+    validate_descriptors(&extracted.descriptors)?;
+    validate_safe_text(strategy, context_limits().max_attachment_source_length)
+        .map_err(|_| HostCaptureErrorCode::Malformed)?;
     let attachment = AsideHostAttachment {
         id: request.capture_id.clone(),
         host,
+        strategy: Some(strategy.to_string()),
         source: extracted.source,
         captured_at: extracted.captured_at,
         expires_at: extracted.expires_at,
         sensitivity: extracted.sensitivity,
         summary: extracted.summary,
         blocks: extracted.blocks,
+        descriptors: extracted.descriptors,
     };
     let serialized =
         serde_json::to_vec(&attachment).map_err(|_| HostCaptureErrorCode::Malformed)?;
-    if serialized.len() > MAX_CONTEXT_TOTAL_BYTES {
+    if serialized.len() > context_limits().max_total_bytes {
         return Err(HostCaptureErrorCode::Oversized);
     }
     Ok(attachment)
 }
 
+fn validate_descriptors(descriptors: &[PathDescriptor]) -> Result<(), HostCaptureErrorCode> {
+    if descriptors.len() > context_limits().max_descriptors {
+        return Err(HostCaptureErrorCode::Oversized);
+    }
+    for descriptor in descriptors {
+        validate_safe_text(&descriptor.path, context_limits().max_path_length)
+            .map_err(|_| HostCaptureErrorCode::InvalidPath)?;
+        if descriptor.path.is_empty() || !std::path::Path::new(&descriptor.path).is_absolute() {
+            return Err(HostCaptureErrorCode::InvalidPath);
+        }
+        let role_requires_directory = matches!(
+            descriptor.role,
+            PathRole::WorkspaceRoot | PathRole::Directory
+        );
+        let role_requires_file =
+            matches!(descriptor.role, PathRole::ActiveFile | PathRole::Document);
+        if (role_requires_directory && descriptor.kind != PathKind::Directory)
+            || (role_requires_file && descriptor.kind != PathKind::File)
+        {
+            return Err(HostCaptureErrorCode::InvalidPath);
+        }
+    }
+    Ok(())
+}
+
 fn validate_blocks(blocks: &[AsideContextBlock]) -> Result<(), HostCaptureErrorCode> {
-    if blocks.is_empty() || blocks.len() > MAX_CONTEXT_BLOCKS {
+    if blocks.is_empty() || blocks.len() > context_limits().max_blocks {
         return Err(HostCaptureErrorCode::Oversized);
     }
     for block in blocks {
         match block {
             AsideContextBlock::Text { label, text } => {
                 if let Some(label) = label {
-                    validate_safe_text(label, MAX_CONTEXT_SUMMARY_LENGTH)
+                    validate_safe_text(label, context_limits().max_block_label_length)
                         .map_err(|_| HostCaptureErrorCode::Malformed)?;
                 }
-                if text.len() > MAX_CONTEXT_TEXT_BYTES {
+                if text.len() > context_limits().max_text_bytes {
                     return Err(HostCaptureErrorCode::Oversized);
                 }
             }
             AsideContextBlock::Json { label, data } => {
                 if let Some(label) = label {
-                    validate_safe_text(label, MAX_CONTEXT_SUMMARY_LENGTH)
+                    validate_safe_text(label, context_limits().max_block_label_length)
                         .map_err(|_| HostCaptureErrorCode::Malformed)?;
                 }
                 let serialized =
                     serde_json::to_vec(data).map_err(|_| HostCaptureErrorCode::Malformed)?;
-                if serialized.len() > MAX_CONTEXT_JSON_BYTES {
+                if serialized.len() > context_limits().max_json_bytes {
                     return Err(HostCaptureErrorCode::Oversized);
                 }
-                if json_depth(data, 0) > MAX_CONTEXT_JSON_DEPTH {
+                if json_depth(data, 0) > context_limits().max_json_depth {
                     return Err(HostCaptureErrorCode::Oversized);
                 }
             }
@@ -538,12 +733,66 @@ mod tests {
 
     struct FauxExtractor {
         application_id: &'static str,
+        strategy_id: &'static str,
+        priority: u16,
         kind: HostKind,
         capabilities: Vec<HostCapability>,
         outcome: Result<ExtractedHostContext, HostCaptureErrorCode>,
     }
 
+    struct CountingExtractor {
+        id: &'static str,
+        priority: u16,
+        kind: HostKind,
+        application_id: Option<&'static str>,
+        calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+        outcome: Result<ExtractedHostContext, HostCaptureErrorCode>,
+    }
+
+    impl HostExtractor for CountingExtractor {
+        fn strategy_id(&self) -> &'static str {
+            self.id
+        }
+
+        fn priority(&self) -> u16 {
+            self.priority
+        }
+
+        fn kind(&self) -> HostKind {
+            self.kind
+        }
+
+        fn matches(&self, target: &HostTargetSnapshot) -> bool {
+            self.application_id
+                .map(|application_id| target.application_id.as_deref() == Some(application_id))
+                .unwrap_or(true)
+        }
+
+        fn capabilities(&self, _: &HostTargetSnapshot) -> Vec<HostCapability> {
+            vec![HostCapability::CaptureContext]
+        }
+
+        fn capture(
+            &self,
+            request: &HostCaptureRequest,
+        ) -> Result<ExtractedHostContext, HostCaptureErrorCode> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            self.outcome.clone().map(|mut context| {
+                context.captured_at = request.captured_at;
+                context
+            })
+        }
+    }
+
     impl HostExtractor for FauxExtractor {
+        fn strategy_id(&self) -> &'static str {
+            self.strategy_id
+        }
+
+        fn priority(&self) -> u16 {
+            self.priority
+        }
+
         fn kind(&self) -> HostKind {
             self.kind
         }
@@ -587,6 +836,7 @@ mod tests {
                 label: Some("page".to_string()),
                 data: json!({"title": "Example", "url": "https://example.test"}),
             }],
+            descriptors: Vec::new(),
         }
     }
 
@@ -594,6 +844,8 @@ mod tests {
     fn classifies_one_matching_extractor_and_rejects_ambiguity() {
         let first = FauxExtractor {
             application_id: "browser.exe",
+            strategy_id: "browser",
+            priority: 10,
             kind: HostKind::Browser,
             capabilities: vec![HostCapability::CaptureContext],
             outcome: Ok(successful_context()),
@@ -610,12 +862,16 @@ mod tests {
         let ambiguous = HostExtractorRegistry::new(vec![
             Box::new(FauxExtractor {
                 application_id: "browser.exe",
+                strategy_id: "browser-a",
+                priority: 10,
                 kind: HostKind::Browser,
                 capabilities: vec![HostCapability::CaptureContext],
                 outcome: Ok(successful_context()),
             }),
             Box::new(FauxExtractor {
                 application_id: "browser.exe",
+                strategy_id: "browser-b",
+                priority: 10,
                 kind: HostKind::Browser,
                 capabilities: vec![HostCapability::CaptureContext],
                 outcome: Ok(successful_context()),
@@ -633,6 +889,8 @@ mod tests {
     fn captures_one_bounded_attachment_and_strips_adapter_errors() {
         let extractor = FauxExtractor {
             application_id: "browser.exe",
+            strategy_id: "browser",
+            priority: 10,
             kind: HostKind::Browser,
             capabilities: vec![
                 HostCapability::CaptureContext,
@@ -649,6 +907,8 @@ mod tests {
 
         let failed = HostExtractorRegistry::new(vec![Box::new(FauxExtractor {
             application_id: "browser.exe",
+            strategy_id: "browser",
+            priority: 10,
             kind: HostKind::Browser,
             capabilities: vec![HostCapability::CaptureContext],
             outcome: Err(HostCaptureErrorCode::CaptureFailed),
@@ -670,11 +930,14 @@ mod tests {
             sensitivity: ContextSensitivity::LocalMetadata,
             blocks: vec![AsideContextBlock::Text {
                 label: None,
-                text: "x".repeat(MAX_CONTEXT_TEXT_BYTES + 1),
+                text: "x".repeat(context_limits().max_text_bytes + 1),
             }],
+            descriptors: Vec::new(),
         };
         let registry = HostExtractorRegistry::new(vec![Box::new(FauxExtractor {
             application_id: "explorer.exe",
+            strategy_id: "explorer",
+            priority: 30,
             kind: HostKind::Explorer,
             capabilities: vec![HostCapability::CaptureContext],
             outcome: Ok(oversized),
@@ -695,10 +958,11 @@ mod tests {
                 label: None,
                 text: "expired".to_string(),
             }],
+            descriptors: Vec::new(),
         };
         let mut expired_request = request(Some("reader.exe"));
         expired_request.captured_at = expired.captured_at;
-        let error = normalize_attachment(&expired_request, HostKind::PdfReader, expired)
+        let error = normalize_attachment(&expired_request, HostKind::PdfReader, "pdf", expired)
             .expect_err("expired attachment should be rejected");
         assert_eq!(error, HostCaptureErrorCode::Expired);
     }
@@ -732,6 +996,8 @@ mod tests {
             .map(|(application_id, kind, capability)| {
                 Box::new(FauxExtractor {
                     application_id,
+                    strategy_id: "faux",
+                    priority: 10,
                     kind: *kind,
                     capabilities: vec![HostCapability::CaptureContext, *capability],
                     outcome: Ok(successful_context()),
@@ -749,13 +1015,85 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_targets_never_invent_context() {
+    fn unknown_targets_use_the_generic_fallback_without_inventing_context() {
         let registry = HostExtractorRegistry::production();
         let result = registry.capture(request(Some("unknown.exe")));
-        assert_eq!(result.host.kind, HostKind::Unsupported);
-        assert_eq!(result.host.availability, HostAvailability::Unsupported);
+        assert_eq!(result.host.kind, HostKind::Generic);
+        assert_eq!(result.host.strategy.as_deref(), Some("generic_uia"));
+        assert_eq!(
+            result.error.as_ref().map(|error| error.code),
+            Some(HostCaptureErrorCode::Unavailable)
+        );
         assert!(result.attachment.is_none());
-        assert!(result.error.is_none());
+    }
+
+    #[test]
+    fn priority_wins_regardless_of_registration_order_and_only_winner_runs() {
+        let winner_calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let loser_calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let winner = CountingExtractor {
+            id: "vscode",
+            priority: 20,
+            kind: HostKind::VsCode,
+            application_id: Some("code.exe"),
+            calls: winner_calls.clone(),
+            outcome: Ok(successful_context()),
+        };
+        let loser = CountingExtractor {
+            id: "generic-looking-specialized",
+            priority: 50,
+            kind: HostKind::Generic,
+            application_id: Some("code.exe"),
+            calls: loser_calls.clone(),
+            outcome: Ok(successful_context()),
+        };
+        let registry = HostExtractorRegistry::with_generic(
+            vec![Box::new(loser), Box::new(winner)],
+            Box::new(CountingExtractor {
+                id: "fallback",
+                priority: u16::MAX,
+                kind: HostKind::Generic,
+                application_id: None,
+                calls: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+                outcome: Err(HostCaptureErrorCode::Unavailable),
+            }),
+        );
+
+        let result = registry.capture(request(Some("code.exe")));
+        assert_eq!(result.host.strategy.as_deref(), Some("vscode"));
+        assert_eq!(winner_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(loser_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn specialized_failure_is_returned_without_a_generic_retry() {
+        let specialized_calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let generic_calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let registry = HostExtractorRegistry::with_generic(
+            vec![Box::new(CountingExtractor {
+                id: "browser",
+                priority: 10,
+                kind: HostKind::Browser,
+                application_id: Some("chrome.exe"),
+                calls: specialized_calls.clone(),
+                outcome: Err(HostCaptureErrorCode::CaptureFailed),
+            })],
+            Box::new(CountingExtractor {
+                id: "fallback",
+                priority: u16::MAX,
+                kind: HostKind::Generic,
+                application_id: None,
+                calls: generic_calls.clone(),
+                outcome: Ok(successful_context()),
+            }),
+        );
+        let result = registry.capture(request(Some("chrome.exe")));
+        assert_eq!(
+            result.error.as_ref().map(|error| error.code),
+            Some(HostCaptureErrorCode::CaptureFailed)
+        );
+        assert_eq!(specialized_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(generic_calls.load(Ordering::SeqCst), 0);
     }
 
     #[test]
@@ -773,5 +1111,36 @@ mod tests {
                 .capabilities
                 .contains(&HostCapability::ChromiumUiaSemanticCapture));
         }
+    }
+
+    #[test]
+    fn descriptor_validation_enforces_count_and_role_kind_contract() {
+        let path = if cfg!(windows) {
+            "C:/workspace"
+        } else {
+            "/workspace"
+        };
+        let too_many = vec![
+            PathDescriptor {
+                role: PathRole::WorkspaceRoot,
+                path: path.to_string(),
+                kind: PathKind::Directory,
+            };
+            context_limits().max_descriptors + 1
+        ];
+        assert_eq!(
+            validate_descriptors(&too_many),
+            Err(HostCaptureErrorCode::Oversized)
+        );
+
+        let mismatch = [PathDescriptor {
+            role: PathRole::Document,
+            path: path.to_string(),
+            kind: PathKind::Directory,
+        }];
+        assert_eq!(
+            validate_descriptors(&mismatch),
+            Err(HostCaptureErrorCode::InvalidPath)
+        );
     }
 }

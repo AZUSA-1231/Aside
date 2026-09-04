@@ -80,6 +80,8 @@ pub struct HostCaptureResponse {
     pub result: HostCaptureResult,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub formatted_json: Option<String>,
 }
 
 #[derive(Default)]
@@ -182,8 +184,8 @@ fn set_agent_native_bounds(window: &WebviewWindow, bounds: Rect) -> Result<(), N
     #[cfg(target_os = "windows")]
     {
         let handle = agent_native_handle(window)?;
-        return platform::set_window_rect(handle, bounds)
-            .map_err(|error| native_error("window_bounds", error.to_string(), true));
+        platform::set_window_rect(handle, bounds)
+            .map_err(|error| native_error("window_bounds", error.to_string(), true))
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -441,10 +443,15 @@ fn capture_file_path(app: &AppHandle, capture_id: &str) -> Result<PathBuf, Nativ
     Ok(capture_directory.join(format!("{capture_id}.json")))
 }
 
+struct SavedCapture {
+    path: String,
+    formatted_json: String,
+}
+
 fn save_capture_file(
     app: &AppHandle,
     attachment: &crate::context::AsideHostAttachment,
-) -> Result<String, NativeError> {
+) -> Result<SavedCapture, NativeError> {
     let path = capture_file_path(app, &attachment.id)?;
     let value = serde_json::to_value(attachment).map_err(|_| {
         native_error(
@@ -453,9 +460,9 @@ fn save_capture_file(
             true,
         )
     })?;
-    let mut content = format_json(&value, 0, None).into_bytes();
-    content.push(b'\n');
-    fs::write(&path, content).map_err(|error| {
+    let mut formatted_json = format_json(&value, 0, None);
+    formatted_json.push('\n');
+    fs::write(&path, formatted_json.as_bytes()).map_err(|error| {
         let message = match error.kind() {
             io::ErrorKind::PermissionDenied => {
                 "The captured JSON file could not be written because access was denied."
@@ -464,7 +471,10 @@ fn save_capture_file(
         };
         native_error("host_capture_save", message, true)
     })?;
-    Ok(path.to_string_lossy().into_owned())
+    Ok(SavedCapture {
+        path: path.to_string_lossy().into_owned(),
+        formatted_json,
+    })
 }
 
 fn format_json(value: &serde_json::Value, level: usize, key: Option<&str>) -> String {
@@ -527,16 +537,20 @@ fn format_json(value: &serde_json::Value, level: usize, key: Option<&str>) -> St
 }
 
 fn capture_with_artifact(app: &AppHandle, result: HostCaptureResult) -> HostCaptureResponse {
-    let file_path = result.attachment.as_ref().and_then(|attachment| {
+    let saved = result.attachment.as_ref().and_then(|attachment| {
         match save_capture_file(app, attachment) {
-            Ok(path) => Some(path),
+            Ok(saved) => Some(saved),
             Err(error) => {
                 emit_error(app, error);
                 None
             }
         }
     });
-    HostCaptureResponse { result, file_path }
+    HostCaptureResponse {
+        result,
+        file_path: saved.as_ref().map(|capture| capture.path.clone()),
+        formatted_json: saved.map(|capture| capture.formatted_json),
+    }
 }
 
 fn emit_host_capture(app: &AppHandle, result: HostCaptureResponse) {

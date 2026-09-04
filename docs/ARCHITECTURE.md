@@ -1,7 +1,7 @@
 # Aside Architecture
 
 Status: living document  
-Last reviewed: 2026-08-30
+Last reviewed: 2026-09-03
 Platform: Windows  
 Repository policy: Cycle 1 MVP development stays on `main`
 
@@ -42,8 +42,10 @@ and explainable.
    does not require a context switch to a separate application.
 2. **One-gesture handoff**: the summon path captures the foreground target
    before Aside takes focus and stages eligible host context with minimal delay.
-3. **Host adapter over generic inspection**: each supported host exposes only a
-   typed capability set; Aside does not guess application content from pixels.
+3. **Strategy-selected host context**: target classification selects exactly one
+   capture strategy. A strategy may compose reusable transports internally, but
+   the router never performs a generic capture and then assembles a specialized
+   result afterward.
 4. **Explicit and staged capture**: captured context is visible, removable,
    bounded, short-lived, and sent to a provider only as part of a user prompt.
 5. **Reversible actions**: model-proposed changes are typed, target-bound,
@@ -63,12 +65,15 @@ and explainable.
 
 ```text
 User's current host application
-  | browser/VSCode companion or native host integration, when available
+  | stable target identity and one-shot strategy selection
   v
 Tauri application layer
-  | typed focus, capture, action, and window commands
+  | typed focus, capture, future action, and window commands
   +--> Focus and host router
-  +--> Host integration adapters
+  +--> Host strategy registry
+       +--> Browser strategy (bounded UIA + browser metadata)
+       +--> File/document path strategies (path locator only in the current slice)
+       +--> Generic UIA strategy (fallback when no specialized strategy matches)
   +--> Side/Workspace window orchestration
   +--> Optional local Insight subsystem
   v
@@ -112,7 +117,7 @@ The Rust application layer owns desktop orchestration:
 - foreground-window and monitor queries;
 - workspace snapshot capture, resizing, restoration, and errors;
 - the pre-focus target snapshot and host application classification;
-- routing capture and action requests to the matching host adapter;
+- routing capture and future action requests to the matching host strategy;
 - permission, target identity, timeout, and stale-target checks at the native
   boundary;
 - translation between native failures and typed application errors.
@@ -132,31 +137,68 @@ the minimum data needed by the product:
 - monitor identity and work area;
 - safe position and size operations.
 
-Raw `HWND` values and Windows-specific structs must not cross the Tauri IPC
 The adapter may also provide native primitives required by an approved host
 integration, but those primitives remain behind a host-specific interface.
 Raw `HWND` values, process handles, and Windows-specific structs must not cross
 the Tauri IPC or runtime boundaries. Return sanitized, serializable
 application data or an opaque target capability instead.
 
-### Host application adapters
+### Host application strategies
 
-A host adapter translates one application family into a stable Aside-owned
-contract. It owns:
+A host strategy translates one application family or fallback class into a stable
+Aside-owned contract. It owns:
 
 - matching a captured foreground target to the correct host instance;
 - declaring capabilities such as identify, capture, or action;
+- choosing and composing the transport used by its own capture method;
 - obtaining bounded context through the host's supported integration;
 - returning source, timestamp, expiry, sensitivity, and capability metadata;
 - preparing and applying typed actions against the captured target.
 
-Browser and VSCode content integrations may require an installed companion
-extension. Explorer and PDF integrations may use native or reader-specific
-interfaces. The transport is an implementation detail; all adapters expose
-the same typed capture and action boundary. An unsupported host reports its
-capabilities honestly and falls back to ordinary conversation. Aside never
-uses screen scraping, OCR, or generic accessibility traversal as an automatic
-adapter fallback.
+Browser, messaging, media, and game surfaces generally use the generic bounded
+UIA transport as their primary context source. The Browser strategy reuses that
+transport inside its own `capture` method and adds only narrow browser metadata
+such as URL, selected tab, and title. This is an internal composition detail of
+the Browser strategy, not a second router pass.
+
+File-oriented strategies (for example Explorer, PDF, Word, and Excel) prefer a
+validated document, item, or directory path. Explorer uses target-bound Windows
+Shell automation with bounded UIA fallback; document strategies use their
+host-specific metadata locators. They do not capture UIA layout merely because
+the application happens to expose UIA. In the current slice they return a path
+descriptor that is ready for a future agent workspace handoff; they do not yet
+connect that descriptor to Pi tools or change the runtime working directory.
+VSCode extension, bridge, and active-editor integration are deferred and its
+existing conservative UIA-only attempt remains unchanged.
+
+The separate `tools/host-research-probe.ps1` experiment may read real document
+content only after an operator supplies an exact HWND and PID and explicitly
+opts into full extraction. It revalidates the same window/process fingerprint,
+keeps UIA and Office COM objects inside the probe, and writes local artifacts
+outside the provider/session path. Research evidence can inform a later rich
+content decision, but it never widens the production attachment contract by
+itself.
+
+On Windows, a strategy may consume the shared `uia` transport for explicit,
+bounded UI Automation snapshots. The transport owns COM lifecycle, tree
+walking, node limits, normalization, and provider diagnostics, while each
+strategy owns application-specific matching, composition, and field extraction.
+A strategy that uses UIA receives a short-lived `UiaSession` only inside its
+capture call; it must not retain UIA elements, COM objects, or window handles.
+New application modules register a strategy in the native registry and do not
+add application branches to `uia.rs`.
+
+The registry selects one specialized strategy by deterministic priority. If no
+specialized strategy matches, it invokes the separate generic UIA fallback. The
+fallback is never included as a competing `matches = true` entry, and the
+router never merges results from two strategies. A specialized strategy that
+matches but fails reports its own bounded error; it does not silently downgrade
+to generic output.
+
+The transport is an implementation detail; all strategies expose the same
+typed capture and future action boundary. A target with no selected strategy
+or no usable UIA surface reports an honest unsupported/unavailable state. Aside never
+uses screen scraping, OCR, or unbounded accessibility traversal as a fallback.
 
 ### Agent Runtime
 
@@ -197,6 +239,13 @@ Windows, inspect the foreground window, or call host SDKs directly. Host action
 requests use Aside-defined typed tools or action messages; the Tauri/native
 boundary remains authoritative for permissions, target identity, and
 execution.
+
+The current Cycle 4 closeout does not wire Pi's coding-agent tools to a host
+workspace. A path descriptor may be captured and staged, but it must not mutate
+the Aside session directory or the process-wide Node working directory. When
+workspace support is enabled later, it must use a per-run/per-session execution
+environment supplied to Pi's existing tools; the durable Aside conversation
+store remains independent.
 
 ### Background insights
 
@@ -357,7 +406,8 @@ Allowed for the core product:
 - the official Tauri global-shortcut plugin;
 - native always-on-top, focus, position, and size operations;
 - minimal foreground-window, process identity, and maximized-state inspection;
-- explicitly invoked, bounded context capture through an approved host adapter;
+- explicitly invoked, bounded context capture through one selected host strategy
+  or the generic UIA fallback;
 - typed, target-bound host actions with preview and confirmation where needed;
 - explicit, narrowly scoped local file access for an enabled domain or host
   adapter;
@@ -369,7 +419,7 @@ Prohibited by default:
 - invisible or continuous capture of another application's content;
 - keyboard or mouse logging;
 - generic screen capture, OCR, or screen understanding;
-- generic Accessibility tree traversal as a content adapter;
+- unbounded Accessibility tree traversal as a content adapter;
 - browser cookies, credentials, passwords, or form contents;
 - arbitrary browser/editor injection or unreviewed code execution;
 - Desktop Shell or Explorer replacement;
@@ -424,6 +474,10 @@ The intended shape is:
 aside/
   docs/
     ARCHITECTURE.md
+    cycle-4-contextual-sidecar/
+      PRD.md
+      PLAN.md
+      ISSUES.md
     cycle-1-MVP/
       PRD.md
       PLANS.md
@@ -442,10 +496,14 @@ aside/
     stores/
     lib/
   agent-runtime/
+  shared/
+    context-limits.json       # shared cross-layer context budgets
   src-tauri/
     src/
       commands.rs
       context.rs       # one-shot capture boundary
+      uia.rs            # shared Windows UI Automation transport
+      chromium_uia.rs  # Chromium host strategy
       platform.rs
       runtime.rs
       workspace.rs
@@ -474,7 +532,9 @@ new capability must preserve the product identity:
    failure behavior.
 6. Update the architecture and the cycle-specific PRD before implementation.
 
-Features that require broad inspection, surveillance, Shell integration, or
-arbitrary computer control are separate product decisions, not routine
-extensions of this architecture. The Cycle 4 contextual sidecar boundary is
-specified in [its PRD](./cycle-4-contextual-sidecar/PRD.md).
+Features that require broad inspection, surveillance, broad Shell integration,
+or arbitrary computer control are separate product decisions, not routine
+extensions of this architecture. The read-only, target-bound Explorer locator
+is a narrow metadata transport; Explorer actions remain out of scope. The Cycle
+4 contextual sidecar boundary is specified in
+[its PRD](./cycle-4-contextual-sidecar/PRD.md).

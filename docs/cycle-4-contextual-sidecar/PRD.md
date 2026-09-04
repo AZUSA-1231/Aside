@@ -1,6 +1,7 @@
 # Cycle 4 Contextual Sidecar Product Requirements
 
-Status: active; P1 Chromium UIA capture completed, visual and other host transports deferred
+Status: complete (2026-09-04); Pi workspace wiring and rich host integrations
+remain deferred
 Platform: Windows desktop  
 Predecessor: [Cycle 3 Pi Implementation](../cycle-3-pi-implementation/PRD.md)
 
@@ -12,25 +13,54 @@ for host actions. It does not turn Aside into an OS-wide monitoring product.
 The long-lived ownership and privacy rules live in the
 [Architecture](../ARCHITECTURE.md). This document defines the Cycle 4 product
 behavior, scope, and acceptance criteria. Implementation order and execution
-records are intentionally not part of this document.
+records are intentionally not part of this document; the single execution order
+is recorded in the [Closeout Plan](./PLAN.md).
 
 ## 1. Objective
 
 Make Aside feel like a natural extension of the user's current application.
 The user should be able to summon a compact Side rail from a browser, Windows
 Explorer, VSCode, or a PDF reader, have Aside identify the current host, stage
-the relevant bounded context, ask a question, and receive help without
-copying, pasting, opening a second full-size application, or manually
-explaining where they are.
+the relevant bounded context or validated path descriptor, and keep the
+conversation usable without copying, pasting, opening a second full-size
+application, or manually explaining where they are. Rich file assistance is
+enabled only when a later workspace integration is available.
 
-When a supported host exposes a safe action capability, Aside should also be
-able to turn the agent's suggestion into a typed preview and apply it to the
-same host target after the user confirms it.
+Host actions, browser visual capture, and Pi coding-agent workspace wiring are
+future capabilities. This closeout only establishes the typed boundaries that
+keep those capabilities possible without making them part of the current
+capture path.
 
 For Chromium browsers, Windows UI Automation (UIA) is the default capture
-transport. A local browser visual-capture setting can opt in to one bounded
-window image paired with the UIA result; it is disabled by default and never
-creates a background capture lifecycle.
+transport. The Browser strategy owns the composition of that shared transport
+with browser-only metadata. A bounded visual capture setting may be added in a
+later scope; it is not shipped or required for this closeout.
+
+## Closeout decision (2026-09-03)
+
+Cycle 4 closes on one coherent strategy-selection and path-discovery boundary.
+The router first selects exactly one specialized strategy by stable application
+identity and deterministic priority. Only that strategy is executed. A strategy
+may reuse the shared UIA transport internally; the router never performs a
+generic capture and then assembles a specialized result.
+
+Browser is a specialized strategy whose own capture method composes the generic
+bounded UIA snapshot with narrow browser metadata such as URL, selected tab, and
+title. Applications without a specialized strategy use the generic UIA strategy
+as a fallback, so ordinary UIA-exposing surfaces such as messaging, media, and
+game interfaces remain useful.
+
+File-oriented strategies (VSCode, Explorer, PDF, Word, and Excel where a safe
+locator is available) prioritize locating a document, item, or workspace path.
+They do not feed UI layout to the agent just because the host exposes UIA. This
+closeout returns a validated path descriptor that is ready for a future Pi
+workspace handoff. It does not yet connect Pi's coding-agent tools, change the
+runtime working directory, or copy file contents into prompt context.
+
+The existing Aside session directory and conversation transcript are separate
+from a future host workspace. A later workspace integration must replace the
+per-run execution root without using `process.chdir()` or moving durable session
+storage.
 
 The central product loop is:
 
@@ -41,8 +71,8 @@ User works in a host application
   -> Aside identifies the host and stages eligible context
   -> user asks a question in the Side rail
   -> Pi reasons over the staged context
-  -> Aside shows an answer or a typed action preview
-  -> user confirms an allowed action when required
+  -> Aside shows an answer using the staged reference context
+  -> future host actions, if enabled, use a separate typed preview/confirmation path
 ```
 
 ## 2. User Problem
@@ -61,45 +91,43 @@ not a license for Aside to continuously inspect the desktop.
 ### 3.1 Browser assistance
 
 The user is reading a page, invokes Aside, and asks for a summary or an answer
-about the current page. Aside identifies the browser instance and stages the
-selected tab, page title, and a compact semantic view of the page through the
-browser's UIA surface. The semantic view is built from user-facing node roles,
-names, and screen bounds; it does not include a raw document text range. With browser
-visual capture enabled in settings, the same one-shot capture also stages a
-bounded image of that browser window. The user can remove the attachment before
-submitting the prompt.
+about the current page. The Browser strategy identifies the browser instance,
+performs the generic bounded UIA capture inside its own method, and adds the
+selected tab, page title, and sanitized URL. The semantic view is built from
+user-facing node roles, names, and screen bounds; it does not include a raw
+document text range. Browser visual capture remains a future opt-in feature and
+is not part of this closeout.
 
 ### 3.2 Explorer assistance
 
-The user is working in Windows Explorer, invokes Aside, and asks to understand
-or organize the current folder. Aside identifies the current directory and
-selected items through the Explorer adapter. File metadata can be staged by
-default; file contents are read only through an explicit, bounded capture or
-action flow. A proposed rename, move, or other supported change is previewed
-before execution.
+The user is working in Windows Explorer and invokes Aside. The Explorer
+strategy locates and validates the current directory and selected item paths.
+The result is a path descriptor for a future agent workspace handoff; this
+closeout does not read file contents or perform file actions.
 
-### 3.3 VSCode assistance
+### 3.3 VSCode assistance (deferred)
 
-The user is editing a project, invokes Aside, and asks about the current file,
-selection, workspace, or diagnostics. A VSCode integration supplies only the
-declared bounded context. A proposed edit is represented as a target-bound
-workspace change, displayed as a preview, and applied through the host's own
-edit mechanism after confirmation.
+VSCode is a deferred host integration for this closeout. The existing
+conservative UIA-only path attempt remains unchanged, but Aside does not add an
+extension, named-pipe/localhost bridge, or active-editor integration here. A
+future implementation must prove per-window binding before promoting workspace
+or active-file descriptors.
 
 ### 3.4 PDF reader assistance
 
-The user is reading a PDF, invokes Aside, and asks about the current document
-or selected text. Aside identifies the reader and document when the adapter
-can do so. Reader-specific integrations may provide selected text or bounded
-document context. A generic screen, OCR, or accessibility fallback is not
-used when no reader adapter is available.
+The user is reading a PDF, Word document, or spreadsheet and invokes Aside.
+The document strategy identifies and validates the current document path when
+the host exposes a reliable locator. The path is returned as a future
+workspace/file target; document parsing, selected-text capture, and
+reader-specific actions are deferred.
 
 ### 3.5 Unsupported host fallback
 
 The user invokes Aside from an unsupported application. The Side rail appears
-with ordinary conversation available. Aside reports that no contextual host
-adapter is available without blocking the conversation or trying to inspect
-the application generically.
+with ordinary conversation available. If the window exposes a usable bounded UIA
+surface, the generic UIA strategy provides a one-shot reference snapshot. If UIA
+is unavailable or yields no usable data, Aside reports an honest unavailable
+state without guessing from a title or reading pixels.
 
 ## 4. Scope
 
@@ -109,42 +137,40 @@ the application generically.
   one-window lifecycle.
 - A foreground target snapshot taken before Aside receives focus, containing a
   sanitized host identity and an opaque native target capability.
-- Host classification based on stable application identity and declared
-  adapter capabilities, rather than window title matching alone.
-- An Aside-owned host adapter contract for identification, capture, and typed
-  actions.
-- A Chromium UIA capture path for browser identity, selected-tab metadata, and
-  a compact semantic page tree containing user-facing node roles, names, and
-  screen bounds when the browser exposes those semantics.
-- A user-controlled Chromium visual-capture setting that can pair one bounded
-  per-window image with the UIA attachment for the same capture invocation.
+- Host strategy selection based on stable application identity and deterministic
+  priority, rather than window title matching alone. Exactly one strategy is
+  executed for each target.
+- An Aside-owned host strategy contract for identification, capture, and future
+  action capabilities.
+- A reusable bounded UIA transport and a generic UIA strategy for applications
+  without a specialized strategy.
+- A Browser strategy that composes the generic UIA transport internally and adds
+  browser identity, selected-tab metadata, active URL, and title.
+- Path-only strategies for Explorer and document applications (PDF, Word, and
+  Excel where a reliable locator is available), returning validated path
+  descriptors without reading file contents. VSCode bridge work is deferred;
+  its existing conservative UIA-only attempt is unchanged.
+- A future-ready workspace target contract that can later be mapped to Pi's
+  existing coding-agent tools, without wiring those tools in this closeout.
 - A one-shot capture result that stages bounded context without introducing a
   long-lived host-state lifecycle or blocking the prompt surface.
 - A compact, user-visible representation of the current host and staged
   context, including source and expiry information sufficient for removal or
   cancellation.
-- Browser, Explorer, VSCode, and PDF-reader adapter paths at the capability
-  level described by the matrix below. Support is per adapter and does not
-  imply universal support for every browser or PDF reader.
 - Integration with the existing Cycle 3 Aside turn-context and Pi provider
   projection. Host context remains reference data, not a system instruction.
-- A typed host-action seam with target validation, preview, confirmation,
-  cancellation, timeout, and failure reporting.
-- At least one end-to-end low-risk host modification path in the first
-  supported adapter, with all other host actions allowed to remain read-only
-  until their contracts are reviewed.
-- Clear degradation when an adapter is missing, permission is unavailable,
-  the host changes, or the captured context expires.
+- Clear degradation when a strategy or transport is missing, permission is
+  unavailable, the host changes, or the captured context expires.
 
 ### Host capability matrix
 
 | Host | Cycle 4 context target | Action boundary |
 | --- | --- | --- |
-| Browser | Browser identity, selected-tab metadata, active URL/title, and a compact UIA semantic tree of node roles, names, and bounds; optional bounded image of the same browser window when visual capture is enabled | No arbitrary injection, credentials, cookies, or form data; browser mutation is outside the first action slice unless separately approved |
-| Windows Explorer | Current directory, selected item identity, and bounded file metadata; explicit file reads only when requested | Typed file operations such as a reversible rename or move may be proposed and must be previewed and confirmed |
-| VSCode | Workspace root, active file, explicit selection, and bounded diagnostics or file content through an approved extension | Typed workspace edit preview and confirmation through the host edit mechanism |
-| PDF reader | Reader/document identity and selected text or bounded document context when a reader-specific adapter provides it | No generic screen-based editing; actions require a separate reader capability |
-| Other application | Sanitized foreground identity and declared unsupported state | No action capability |
+| Browser | Browser identity, selected-tab metadata, active URL/title, and a compact UIA semantic tree of node roles, names, and bounds | No browser mutation, credentials, cookies, or form data |
+| Windows Explorer | Current directory and selected item paths as validated path descriptors | No file action or content read in this closeout |
+| VSCode | Existing conservative UIA-only path attempt; bridge integration deferred | No editor action or content read in this closeout |
+| PDF, Word, Excel | Current document path when a reliable locator is available | No document parsing or mutation in this closeout |
+| Other application | Sanitized foreground identity plus a bounded generic UIA snapshot when available | No action capability |
 
 ### Explicitly not included
 
@@ -153,19 +179,22 @@ the application generically.
   Insight subsystem.
 - Continuous polling of the foreground application or automatic capture of
   every application the user visits.
-- Continuous or monitor-wide screen capture, OCR, generic screen understanding,
-  or generic accessibility traversal. The target-bound Chromium UIA and
-  opt-in per-window visual capture described in this PRD are narrow,
-  user-initiated exceptions.
-- Visual capture for Explorer, VSCode, PDF readers, or unsupported hosts through
-  a generic screen fallback.
+- Continuous or monitor-wide screen capture, OCR, or generic screen
+  understanding.
+- Browser visual capture, screenshots, and image attachments in the closeout
+  slice. They remain a separate future capability.
+- Generic UIA traversal that is unbounded, automatic, or performed outside the
+  one-shot strategy selected for the invocation target. The bounded generic UIA
+  strategy is explicitly included as the fallback for this cycle.
 - Browser passwords, cookies, credentials, form contents, or unrestricted DOM
   extraction.
 - Raw UIA `TextPattern` document ranges, visible ranges, text-selection ranges,
   character counts, name/value lengths, or diagnostic hashes in agent context.
-- Universal content extraction from arbitrary PDF readers.
-- Arbitrary shell commands, process control, code execution, or computer-use
-  automation.
+- Universal content extraction from arbitrary PDF readers, Word, or Excel
+  documents.
+- Pi coding-agent workspace activation and registration of coding-agent tools.
+- File content reads, arbitrary shell commands, process control, code execution,
+  or computer-use automation.
 - Silent host changes, background file changes, or an action that is not bound
   to the target from which the user invoked Aside.
 - A session browser, cloud sync, multi-user host state, or automatic promotion
@@ -177,7 +206,7 @@ the application generically.
 
 The existing summon shortcut remains the primary entry point. Aside records
 the foreground target before showing or focusing its own window. For a host
-with an enabled adapter and an already-approved low-risk capture capability,
+with an enabled strategy and an already-approved low-risk capture capability,
 the summon gesture both opens the rail and stages the default context.
 
 If a host requires a first-time permission or an explicit deeper capture, the
@@ -185,19 +214,13 @@ rail still opens immediately and presents one clear capture action. Aside must
 not wait for a slow extension response before becoming usable and must not
 silently broaden permissions to preserve the appearance of speed.
 
-For Chromium, the local `browser_visual_capture_enabled` setting controls only
-the visual augmentation of a user-initiated browser capture:
-
-- When disabled (the default), the attachment contains UIA-derived metadata and
-  the normalized semantic node tree, but no image is taken.
-- When enabled, the same one-shot invocation captures the original browser
-  window and packages its bounded visual block together with the UIA blocks in
-  one attachment. It never captures the monitor or another window.
-- Changing the setting does not capture anything by itself. It takes effect on
-  the next explicit browser capture click and does not start polling.
-- If the visual capability is unavailable or denied, valid UIA context remains
-  usable and Aside shows a recoverable visual-capture status; it does not
-  silently widen the target to a monitor screenshot.
+The native router resolves the specialized strategy before any capture work. A
+Browser match invokes only the Browser strategy, whose method may call the
+shared UIA transport and then add browser metadata. A VSCode, Explorer, or
+document match invokes only its path strategy. When no specialized strategy
+matches, the router invokes the bounded Generic UIA strategy. A specialized
+capture failure is reported as that strategy's failure; it is not silently
+replaced by a second generic result.
 
 When Aside is already visible in Workspace mode, its `Capture` button reuses
 the split host window and performs another one-shot UIA query without leaving
@@ -215,10 +238,10 @@ dragging files or copying information between them. The UI shows each source
 host and a compact summary before the prompt is submitted. The user can remove
 an individual attachment, cancel a capture, or continue with no context.
 
-When a browser visual block is present, the attachment preview identifies both
-the UIA and visual sources and shows a bounded image preview or equivalent
-visual indicator. Removing the attachment removes both parts together; the
-visual block is not retained independently from the UIA capture.
+When a path descriptor is present, the attachment preview shows the host,
+resource role, and validated path. The descriptor is reference metadata for a
+future workspace handoff; it is not a file copy and does not cause the runtime
+to read or modify the path in this closeout.
 
 The combined staged context must remain within the Cycle 3 prompt/context
 limits. If another capture would exceed the limit, Aside rejects that new
@@ -237,14 +260,12 @@ not launch an external JSON editor by default. The stored representation keeps
 the outer structure readable while placing each semantic `nodes` tuple on one
 line.
 
-### 5.3 Answer and action
+### 5.3 Answer and deferred action
 
-The agent may answer using the staged reference context. If it proposes a host
-change, the runtime and adapter produce a typed action preview. The preview
-identifies the target and the intended change in product terms. Confirmation is
-required for changes that are destructive, ambiguous, external, or difficult
-to reverse. The adapter revalidates the target immediately before applying the
-change.
+The agent may answer using the staged reference context. Host actions and Pi
+coding-agent file mutations are outside this closeout. A future action path must
+remain typed, target-bound, previewed, confirmed, and revalidated immediately
+before execution.
 
 ### 5.4 Focus and target races
 
@@ -269,7 +290,7 @@ snapshot containing, when available:
 
 - an opaque target identity and process/application identity;
 - the target monitor and window state;
-- the host classification result and adapter capability state;
+- the host classification result and strategy capability state;
 - a native-held opaque capability used to revalidate later operations.
 
 Raw window handles, process handles, native structs, and credentials must not
@@ -278,33 +299,54 @@ cross the Tauri or runtime boundary.
 ### FR-4.3 Host classification
 
 Aside must classify the invocation target using a stable application identity
-and an adapter registry. Classification must distinguish at least browser,
-Explorer, VSCode, PDF reader, and unsupported host states. Unknown, ambiguous,
-or inaccessible targets must use the unsupported fallback rather than guessing
-from a title or reading pixels.
+and an ordered strategy registry. The registry selects one specialized strategy
+by deterministic priority; ties are an explicit ambiguity. If no specialized
+strategy matches, it selects the Generic UIA strategy as a separate fallback.
+The fallback is not a competing `matches = true` entry. Classification must
+distinguish browser, Explorer, VSCode, document, generic, and unavailable host
+states without guessing from a title or reading pixels as a substitute for a
+validated path.
 
-### FR-4.4 Host adapter contract
+### FR-4.4 Host strategy contract
 
-Each adapter must declare and enforce its own capabilities. The common contract
+Each strategy must declare and enforce its own capabilities. The common contract
 must cover:
 
 - target matching and capability discovery;
+- deterministic priority and one-strategy selection;
 - explicit context capture with bounded output;
 - source, capture time, expiry, and sensitivity metadata;
-- typed action proposal and preview, when supported;
+- optional validated path/workspace descriptors;
 - cancellation, timeout, stale-target, permission, and failure results.
 
-The adapter transport may be native, a browser extension, a VSCode extension,
-or a reader-specific integration. The transport must not change the
+A path/workspace descriptor is a small reference object, not a file payload:
+
+```json
+{
+  "role": "workspace_root | active_file | directory | selected_item | document",
+  "path": "C:/a/canonical/absolute/path",
+  "kind": "file | directory"
+}
+```
+
+The locator must return an absolute, canonical path, validate its type and
+existence at capture time, and enforce the shared length and character limits.
+The descriptor contains no file bytes, native handles, credentials, or implicit
+permission to access the resource. A later workspace integration may use the
+same descriptor as its execution-root input.
+
+The strategy transport may be the shared UIA module, a native shell/document
+API, or a future companion integration. A strategy may compose transports only
+inside its own capture method. The transport must not change the
 Aside-owned product contract.
 
 ### FR-4.5 Capture semantics
 
 Capture must be user-initiated through the summon/capture interaction. The
-adapter may stage low-risk default context when permission has already been
+strategy may stage low-risk default context when permission has already been
 granted, but restricted content requires an explicit capability decision.
 Capture is one-shot and must not create a background host-state lifecycle. The
-initial Side rail remains usable while an adapter call is being completed.
+initial Side rail remains usable while a strategy call is being completed.
 
 Each successful capture appends an attachment to the current task. The runtime
 must validate the combined attachment projection and reject oversized,
@@ -314,12 +356,12 @@ limits, the new attachment is rejected and existing attachments remain
 unchanged. Cycle 4 inherits the Cycle 3 context limits unless a later
 architecture decision changes them.
 
-For a Chromium target, the capture method is determined by the local visual
-capture setting. The disabled path performs UIA queries only. The enabled path
-performs one target-bound window capture and combines the bounded image with
-the UIA result before attachment validation. A visual capture failure may
-produce a valid UIA-only attachment plus a recoverable status, but it must not
-capture a wider screen area or replace an existing attachment.
+For a target selected by the Browser strategy, the strategy performs the
+bounded UIA capture and browser metadata composition itself. For a target
+selected by a path strategy, the strategy performs path discovery and validation
+itself. For an unrecognized target, the Generic UIA strategy performs one
+bounded snapshot. The router never runs two strategies for one capture and never
+assembles their outputs after the fact.
 
 ### FR-4.6 Provider projection and isolation
 
@@ -329,22 +371,21 @@ become a system prompt, tool instruction, or coding-agent repository context.
 The same collection may be used by provider turns caused by one request, but
 it must not be duplicated or leak into a later request.
 
-Captured host content, native target capabilities, adapter credentials, and raw
+Captured host content, native target capabilities, transport credentials, and raw
 host payloads must not be persisted in the durable conversation by default.
 Session history may retain the user's prompt and the assistant's finalized
 response according to Cycle 3 policy, but not an implicit copy of the host
 attachment.
 
-The Aside-owned context contract must represent a visual block separately from
-text and JSON blocks. A visual block is bounded image data or an equivalent
-provider image reference, is labelled as untrusted local content, and follows
-the same attachment expiry, removal, aggregate-budget, and non-persistence
-rules. React and Pi must not receive a native capture handle or an unbounded
-pixel buffer.
+Path descriptors are reference metadata and must be validated before staging.
+They may be shown to the user and carried across the native boundary for a
+future workspace handoff, but they are not file contents, native handles, or
+implicit permission to read or mutate the path. React and Pi must not receive
+raw native target objects.
 
-### FR-4.7 Browser adapter
+### FR-4.7 Browser strategy
 
-The browser adapter must expose only the declared browser capability. Its
+The Browser strategy must expose only the declared browser capability. Its
 default transport is a one-shot Windows UIA query against the invocation
 window. At minimum it must identify the browser, selected tab, active URL and
 title when the user invokes contextual assistance. It must also normalize the
@@ -385,57 +426,45 @@ must be removed before provider projection. The implementation still measures
 serialized byte size internally to enforce context limits; the measurement is
 not emitted as context.
 
-The local `browser_visual_capture_enabled` setting is disabled by default. If
-it is disabled, the browser attachment contains UIA blocks only. If it is
-enabled, the adapter captures the same invocation browser window once through
-an approved per-window Windows capture API and packages the bounded visual
-block with the UIA blocks in the same attachment. It must prefer the browser
-document region when a reliable UIA bounding rectangle is available and must
-never widen the capture to the monitor or another window.
+The browser strategy may later gain an explicitly approved visual capability,
+but visual capture, OCR, DOM extraction, CDP control, browser automation, and
+background capture are outside this closeout.
 
-The visual setting does not enable OCR, DOM extraction, CDP control, browser
-automation, or background capture. An unavailable visual API, protected
-surface, stale target, or denied permission produces a recoverable visual
-capability result while preserving valid UIA context.
-
-The adapter must not expose passwords, cookies, auth tokens, form contents, or
+The strategy must not expose passwords, cookies, auth tokens, form contents, or
 unbounded browsing history. Failure to connect to an extension or CDP endpoint
 must not disable the UIA path; those transports remain optional enhancements
 for browser surfaces that UIA cannot represent.
 
-### FR-4.8 Explorer adapter
+### FR-4.8 Explorer path strategy
 
-The Explorer adapter must identify the current directory and selected items
-without requiring the user to paste a path. File metadata and paths are
-sensitive context and must be visibly staged and bounded. File contents require
-an explicit read operation with a size limit.
+The Explorer strategy must identify the current directory and selected items
+without requiring the user to paste a path. It must canonicalize and validate
+each returned path, identify whether it is a file or directory, and stage only
+the bounded path descriptor in this closeout. File contents and file actions are
+deferred.
 
-Any file modification must be represented as a typed operation against the
-captured target and must provide a preview, confirmation, and recoverable
-failure path. The agent must not receive arbitrary shell access as a shortcut
-for Explorer actions.
+### FR-4.9 VSCode path strategy (deferred)
 
-### FR-4.9 VSCode adapter
+The VSCode workspace/active-editor locator is deferred from this closeout. If
+the feature is resumed, an approved extension or bridge must identify and
+validate the target window before staging workspace-root, active-file, or
+resource descriptors. Editor layout, selection, diagnostics, file content, and
+edits remain out of scope.
 
-The VSCode adapter must identify the workspace and active editor context
-through an approved host integration. It may provide the explicit selection,
-bounded current-file content, and diagnostics declared by the adapter.
+### FR-4.10 Document path strategy
 
-Edits must use a typed workspace operation or the host's native edit mechanism.
-The agent must not write arbitrary files without a target-bound preview and
-user confirmation.
+The document strategy covers PDF, Word, and Excel applications when a reliable
+current-document locator is available. It must validate the document path and
+stage it as a file resource descriptor. Parsing, selected-text capture, OCR,
+screenshots, and mutation are deferred. If no reliable locator exists, the
+strategy reports unavailable rather than inferring a path from an arbitrary
+window title.
 
-### FR-4.10 PDF-reader adapter
+### FR-4.11 Future host action boundary
 
-The PDF path must distinguish reader identification from document-content
-capture. A known reader adapter may provide document metadata, current page,
-selected text, or another bounded source it explicitly supports. An unknown
-reader must not trigger OCR, screenshots, or generic accessibility reads.
-
-### FR-4.11 Host action boundary
-
-Pi tool execution may request a typed host action, but the model cannot execute
-native operations directly. The action path is:
+Host actions are outside this closeout. When enabled in a later scope, Pi tool
+execution may request a typed host action, but the model cannot execute native
+operations directly. The action path remains:
 
 ```text
 Pi action request
@@ -447,17 +476,19 @@ Pi action request
   -> Pi continues or reports the result
 ```
 
-The first Cycle 4 implementation must complete one low-risk, reversible action
-end to end. Other adapters may expose capture-only capabilities until their
-action semantics are reviewed.
+No host action is required for the Cycle 4 closeout. A later action slice must
+complete one low-risk, reversible operation end to end before exposing broader
+mutations.
 
 ### FR-4.12 Runtime and protocol integration
 
 The Tauri/runtime boundary must carry Aside-owned host identity, one-shot
-capture results including bounded visual blocks, context attachments, action
-previews, and sanitized results. React must not construct provider messages,
-native handles, or Pi tool calls. Existing Cycle 3 streaming, cancellation,
-session, and error behavior must remain intact.
+capture results, path/workspace descriptors, context attachments, and typed
+future-capability status. React must not construct provider messages, native
+handles, or Pi tool calls. Existing Cycle 3 streaming, cancellation, session,
+and error behavior must remain intact. Browser visual blocks, host-action
+previews, and Pi coding-agent tools are deferred payloads and are not required
+on this boundary in the closeout slice.
 
 ### FR-4.13 Background insight separation
 
@@ -472,21 +503,26 @@ prompt completion.
 | Operation | Required response |
 | --- | --- |
 | Foreground lookup | Open Aside with ordinary conversation or a clear unavailable state; never act on an unknown target |
-| Host classification | Show the supported host and capabilities, or use the unsupported fallback |
+| Host classification | Show the selected specialized strategy and capabilities, or invoke the bounded Generic UIA fallback when no specialized strategy matches |
+| Specialized strategy capture | Keep the Side rail usable, show the strategy result or a recoverable strategy-specific error, and do not run a second strategy after a match fails |
+| Generic UIA capture | Return one bounded semantic snapshot when UIA is usable; otherwise report unavailable without guessing from a title or reading pixels |
+| Path discovery | Show a validated path descriptor when a reliable locator exists; report locator-unavailable when it does not and never infer a path from an arbitrary title |
 | Context capture | Keep the Side rail usable, show the result or a recoverable error, and preserve any valid partial capability without inventing content |
 | Permission denied | Explain the missing capability and continue without the restricted context |
 | Provider request | Preserve the user prompt and keep the staged context from leaking into later requests |
-| Host target closes or changes | Cancel or reject the capture/action and leave the new target untouched |
-| Action fails | Show a sanitized result, do not claim success, and keep the preview/history state coherent |
-| Adapter process is unavailable | Degrade to ordinary conversation and keep the runtime alive |
+| Host target closes or changes | Cancel or reject the capture and leave the new target untouched |
+| Future host action fails | Show a sanitized result, do not claim success, and keep the preview/history state coherent; host actions are not shipped in this closeout |
+| Strategy or transport is unavailable | Degrade to the next valid product state (Generic UIA only when no specialized strategy matched, otherwise an honest unavailable/error state) and keep the runtime alive |
 
-### FR-4.15 Browser visual-capture setting
+### FR-4.15 Deferred browser visual-capture setting
 
-Aside must expose a local setting named `browser_visual_capture_enabled` with a
-default value of `false`.
+The previously considered local setting `browser_visual_capture_enabled` is a
+future capability, not a Cycle 4 closeout requirement. No setting, image
+capture API, or visual attachment is enabled by the current implementation.
+If this capability is resumed later, its contract remains:
 
 - `false` means a browser capture acquires no pixels and sends only the UIA
-  attachment blocks permitted by the browser adapter.
+  attachment blocks permitted by the Browser strategy.
 - `true` means each explicit browser capture acquires one bounded image from
   the invocation browser window and packages it with the UIA blocks as one
   ordered attachment before provider projection.
@@ -511,20 +547,17 @@ default value of `false`.
   action: summon, context staged, prompt entry. No copy/paste should be
   required.
 - Context size, content type, lifetime, and provider projection remain bounded
-  and deterministic. A large host document must be summarized, truncated by an
-  explicit policy, or rejected; it must not expand the prompt silently.
-- When browser visual capture is disabled, no browser pixels are acquired. When
-  enabled, image dimensions, encoded bytes, crop region, and provider image
-  capability are bounded before the visual block is staged.
-- Every capture and action is associated with one invocation target. A late
-  capture result may add its own validated attachment to the still-active
-  composer, but it cannot overwrite or remove another attachment, redirect to
-  a newer target, or modify another host.
-- Adapter failure, timeout, or crash must not terminate the Tauri shell or Pi
-  runtime.
-- Host capabilities and staged data must be testable with deterministic faux
-  adapters. Tests must cover capture isolation, stale-target rejection,
-  action confirmation, and fallback behavior.
+  and deterministic. A path descriptor is metadata only; this slice never
+  expands it into file content or an implicit tool request.
+- Every capture is associated with one invocation target. A late capture result
+  may add its own validated attachment to the still-active composer, but it
+  cannot overwrite or remove another attachment or redirect to a newer target.
+- Strategy or transport failure, timeout, or crash must not terminate the
+  Tauri shell or Pi runtime.
+- Host capabilities, strategy selection, path descriptors, and staged data must
+  be testable with deterministic faux strategies. Tests must cover capture
+  isolation, stale-target rejection, deterministic priority, no cross-strategy
+  merging, path validation, and Generic UIA fallback behavior.
 - Existing Cycle 2 window, shortcut, Pin, Side, and Workspace behavior remains
   unchanged.
 
@@ -534,62 +567,60 @@ default value of `false`.
 | --- | --- | --- |
 | C4-01 | Invoke Aside from a supported browser | The target is captured before Aside takes focus; the rail appears immediately and shows the browser capability state |
 | C4-02 | Capture browser identity, selected-tab metadata, title, and the normalized UIA semantic tree repeatedly | Each bounded capture is visible as an ordered staged attachment, all retained attachments reach the current provider request within the aggregate limit, and they are absent from a later request unless captured again |
-| C4-03 | Invoke Aside from Windows Explorer | The current directory and selected item metadata are identified without manual path entry; unsupported content remains uncaptured |
-| C4-04 | Propose an Explorer or VSCode low-risk change | A typed target-bound preview is shown and the change occurs only after confirmation |
-| C4-05 | Invoke Aside from VSCode | Workspace, active file, selection, or diagnostics appear only when the approved adapter declares and supplies them; the conversation remains usable when it does not |
-| C4-06 | Invoke Aside from a supported PDF reader | Reader/document identity and supported selected or bounded context are handled through the adapter; no generic OCR or screenshot fallback runs |
-| C4-07 | Invoke Aside from an unsupported or ambiguous application | Aside opens as an ordinary conversation surface without guessing, scraping, or blocking |
+| C4-03 | Invoke Aside from Windows Explorer | The current directory and selected item paths are identified and validated without manual path entry; file contents and actions remain uncaptured |
+| C4-04 | Invoke Aside from a target matching more than one specialized strategy | Deterministic priority selects exactly one strategy; no generic result or second specialized result is merged into the attachment |
+| C4-05 | Invoke Aside from VSCode (deferred) | No new VSCode extension, bridge, or active-editor integration is delivered in this closeout; the existing conservative UIA-only attempt remains unchanged |
+| C4-06 | Invoke Aside from PDF, Word, or Excel | A reliable current-document path is identified and staged as a document descriptor; if no locator is available, the strategy reports unavailable without title guessing |
+| C4-07 | Invoke Aside from an unsupported application that exposes UIA | Aside opens as an ordinary conversation surface and the bounded Generic UIA strategy stages one semantic snapshot without guessing, scraping pixels, or blocking |
 | C4-08 | Remove or let one capture expire | The provider does not receive the removed or expired attachment but may receive the remaining attachments, and the durable session contains no implicit host-context copy |
-| C4-09 | Change or close the original host after summon | Late capture or action results are rejected or cancelled; no new foreground application is read or modified |
-| C4-10 | Deny an adapter permission or stop its companion integration | Aside reports a recoverable capability error and keeps prompt, streaming, cancellation, and retry available |
+| C4-09 | Change or close the original host after summon | Late capture results are rejected or cancelled; no new foreground application is read or modified |
+| C4-10 | Deny a strategy capability or make its transport unavailable | Aside reports a recoverable strategy-specific capability error and keeps prompt, streaming, cancellation, and retry available; it does not silently run another strategy after a match |
 | C4-11 | Inspect the runtime and Tauri boundaries | React and Pi receive only Aside-owned serialized contracts; no `HWND`, provider secret, raw adapter payload, or direct Windows API crosses the boundary |
 | C4-12 | Inspect background behavior | Application inventory and usage analysis are absent from the Pi tool registry, prompt context, and summon critical path |
 | C4-13 | Repeat summon/hide/capture quickly | The single Side rail remains coherent, valid captures accumulate without mixing target data, late results cannot overwrite existing attachments, and no stale context appears in the next request |
-| C4-14 | Measure normal summon latency | Foreground snapshot and host classification meet the 100 ms p95 target, and each capture remains a bounded one-shot operation without polling |
-| C4-15 | Capture from Chromium with `browser_visual_capture_enabled = false` | UIA context is staged and no browser pixels are acquired, persisted, or sent to the provider |
-| C4-16 | Capture from Chromium with `browser_visual_capture_enabled = true` | One bounded image from the invocation browser window is packaged with the UIA blocks in the same attachment; monitor pixels, other windows, and later browser state are absent |
+| C4-14 | Measure normal summon latency | Foreground snapshot, identity classification, and strategy selection meet the 100 ms p95 target, and each capture remains a bounded one-shot operation without polling |
+| C4-15 | Inspect a successful Explorer or document capture | The attachment contains a validated path descriptor only; it is ready for a future workspace handoff but does not connect Pi tools, change `cwd`, or read file contents |
 
-## 9. Open Product Decisions
+## 9. Decision Ledger
 
-These decisions must be resolved by the implementation plans or recorded as
-explicit temporary choices before the related host capability is shipped:
+The following decisions are closed for this cycle:
 
-The browser visual-capture default is resolved for this PRD: the setting is
-local, named `browser_visual_capture_enabled`, and defaults to `false`. The
-enabled path sends a bounded image together with the same capture's UIA blocks;
-OCR is not part of that setting.
+- The router selects exactly one specialized strategy by stable identity and
+  deterministic priority. Generic UIA is a separate fallback, used only when
+  no specialized strategy matches.
+- Browser capture is owned by the Browser strategy, which may compose bounded
+  Generic UIA with browser metadata inside its own `capture()` method.
+- Explorer, PDF, Word, and Excel strategies are path-first. They return
+  validated file or directory descriptors and do not read content, capture
+  layout, or mutate the host. VSCode bridge and active-editor work are deferred.
+- A workspace descriptor is an explicit future handoff contract. This closeout
+  does not connect Pi coding-agent tools, alter the Aside session directory, or
+  call `process.chdir()`.
+- Browser visual capture, host actions, file reads, document parsing, and
+  provider-side workspace activation are deferred rather than acceptance
+  requirements.
 
-The default Chromium UIA payload is also resolved: use the page `Document`
-content tree as the source, represent user-facing semantic nodes with
-`role/name/bounds`, and omit raw document text ranges and diagnostic
-length/hash fields. The `Name` value is a visibility-filtered accessibility
-label, not a guarantee that every character was rendered literally. Bounds are
-serialized as the compact `{x, y, width, height}` screen rectangle returned by
-UIA.
+The following are intentionally deferred product decisions for a later scope:
 
-| Decision | Why it matters |
-| --- | --- |
-| Which low-risk context fields each host may stage on the existing summon shortcut | Determines the default capability set while preserving the one-gesture handoff |
-| Which browser and PDF integrations are officially supported first | Host APIs, packaging, permissions, and maintenance cost vary by application family |
-| Which Windows Graphics Capture consent and document-region crop behavior to ship | Determines whether the visual block can remain target-bound without exposing browser chrome or unrelated pixels |
-| Maximum visual dimensions, encoded bytes, and provider image constraints | Keeps the optional visual block within the aggregate context budget and predictable provider costs |
-| Whether the first write slice targets Explorer or VSCode | Determines the first action schema, preview UI, and native/extension implementation |
-| Which context sources are shown in full versus represented by a compact summary | Balances inspection speed, provider cost, and sensitive-content exposure |
-| Whether provider submission needs a per-attachment confirmation or only visible staged state | Determines how seamless capture remains while making remote data flow clear |
-| Default expiry and retry behavior for slow adapter captures | Determines how stale host context is prevented during a long conversation |
+- Which browser visual-capture API, consent flow, crop rule, and image budget
+  should be shipped.
+- Which host action or file mutation, if any, should be implemented first.
+- How a validated workspace descriptor should be mapped to Pi's existing
+  coding-agent tools without coupling durable Aside sessions to execution
+  roots.
 
 ## 10. Release Boundary
 
-Cycle 4 is complete when the contextual sidecar path works through the common
-focus, capture, projection, and action contracts; at least one supported host
-can provide useful bounded context without copy/paste; at least one low-risk
-host modification is previewed and confirmed end to end; unsupported hosts
-degrade cleanly; and the Cycle 2/3 surface, runtime, and session behavior
-remain intact.
+Cycle 4 is complete when the common focus/capture/projection path selects one
+strategy deterministically, Browser internally composes bounded UIA with its
+metadata, unmatched hosts receive a bounded Generic UIA attempt, and Explorer,
+PDF, Word, and Excel targets can return validated path descriptors when reliable
+locators exist. The descriptor must be visible and serializable for a future
+workspace handoff, but Pi workspace wiring is explicitly outside this closeout.
 
-Universal support for every browser, editor, Explorer state, or PDF reader is
-not a Cycle 4 requirement. Each host adapter must declare its actual
-capabilities. Chromium visual capture is limited to the explicit local setting
-and the invocation window; unsupported capabilities must remain unavailable
-rather than being approximated through generic surveillance, monitor capture,
-or screen automation.
+Cycle 4 also requires clean degradation for unavailable UIA, missing path
+locators, stale targets, and strategy failures, while preserving the existing
+Cycle 2/3 rail, runtime, and session behavior. Universal support for every
+browser, editor, Explorer state, or document reader is not required; each
+strategy declares its real capabilities and never substitutes title guessing,
+screen scraping, OCR, or unbounded traversal.

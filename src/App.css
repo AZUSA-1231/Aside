@@ -245,6 +245,60 @@ textarea:focus-visible {
   background: #cfe5dc;
 }
 
+.capture-button:disabled {
+  color: #78908a;
+  background: #e7efeb;
+  cursor: wait;
+}
+
+.capture-status {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+  color: #849890;
+  font-size: 9px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.capture-status-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #9aaca4;
+}
+
+.capture-status.capturing {
+  color: #8c6a38;
+}
+
+.capture-status.capturing .capture-status-dot {
+  background: #c28a39;
+  animation: blink 900ms steps(1) infinite;
+}
+
+.capture-status.captured {
+  color: #2c7869;
+}
+
+.capture-status.captured .capture-status-dot {
+  background: #3ca888;
+}
+
+.capture-status.failed,
+.capture-status.unavailable {
+  color: #a25b49;
+}
+
+.capture-status.failed .capture-status-dot,
+.capture-status.unavailable .capture-status-dot {
+  background: #c17762;
+}
+
 .conversation {
   min-height: 0;
   flex: 1;
@@ -528,6 +582,49 @@ h1 {
   color: #9aaba3;
   font-size: 9px;
   line-height: 12px;
+}
+
+.attachment-copy .attachment-strategy {
+  color: #55736b;
+  font-weight: 750;
+}
+
+.attachment-descriptors {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 6px;
+  border-top: 1px solid #dceae2;
+}
+
+.attachment-descriptor {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  color: #6b8178;
+  font-size: 9px;
+  line-height: 13px;
+}
+
+.descriptor-role {
+  flex: 0 0 auto;
+  color: #55736b;
+  font-weight: 750;
+}
+
+.attachment-descriptor code {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: #71877e;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 9px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .attachment-remove {
@@ -822,7 +919,8 @@ h1 {
   }
 
   .shortcut-hint,
-  .status-divider {
+  .status-divider,
+  .capture-status {
     display: none;
   }
 }

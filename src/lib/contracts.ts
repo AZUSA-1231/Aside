@@ -54,7 +54,10 @@ export type AsideHostKind =
   | "browser"
   | "explorer"
   | "vscode"
-  | "pdf_reader";
+  | "pdf_reader"
+  | "word"
+  | "excel"
+  | "generic";
 export type AsideHostAvailability =
   | "available"
   | "unsupported"
@@ -63,32 +66,56 @@ export type AsideHostAvailability =
 export type AsideHostCapability =
   | "identify"
   | "capture_context"
+  | "generic_uia_semantic_capture"
   | "chromium_uia_semantic_capture"
   | "browser_url_title"
   | "explorer_metadata"
   | "vscode_workspace"
-  | "pdf_document";
+  | "pdf_document"
+  | "word_document"
+  | "excel_document"
+  | "path_descriptor";
 export type AsideContextSensitivity =
   | "public"
   | "local_metadata"
   | "local_content"
   | "restricted";
 
+export type AsidePathRole =
+  | "workspace_root"
+  | "active_file"
+  | "directory"
+  | "selected_item"
+  | "document";
+export type AsidePathKind = "file" | "directory";
+
+export interface AsidePathDescriptor {
+  role: AsidePathRole;
+  path: string;
+  kind: AsidePathKind;
+}
+
 export interface AsideHostAttachment {
   id: string;
   host: AsideHostKind;
+  /** Optional for attachments produced by an older desktop build. */
+  strategy?: string;
   source: string;
   capturedAt: number;
   expiresAt: number;
   sensitivity: AsideContextSensitivity;
   summary: string;
   blocks: AsideContextBlock[];
+  /** Optional for attachments produced before path descriptors were added. */
+  descriptors?: AsidePathDescriptor[];
 }
 
 export interface HostView {
   targetId?: string;
   applicationId?: string;
   kind: AsideHostKind | "unsupported";
+  strategy?: string;
+  strategyPriority?: number;
   availability: AsideHostAvailability;
   capabilities: AsideHostCapability[];
 }
@@ -105,6 +132,9 @@ export type HostCaptureErrorCode =
   | "oversized"
   | "expired"
   | "stale_target"
+  | "locator_unavailable"
+  | "ambiguous_locator"
+  | "invalid_path"
   | "capture_failed";
 
 export interface HostCaptureError {
@@ -118,6 +148,7 @@ export interface HostCaptureResult {
   host: HostView;
   attachment?: AsideHostAttachment;
   filePath?: string;
+  formattedJson?: string;
   error?: HostCaptureError;
 }
 

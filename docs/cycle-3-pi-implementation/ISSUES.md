@@ -241,8 +241,9 @@ on repeated provider turns, making isolation and provider tests ambiguous.
 Use shared defaults of 8 blocks, 8 KiB text, 16 KiB JSON, 24 KiB total, and JSON
 depth 4. Project a non-empty envelope as exactly one synthetic user message
 immediately before the active prompt, with a fixed reference-data marker and
-deterministic block serialization. Limits are runtime constants and cannot be
-raised per flow.
+deterministic block serialization. The values live in
+`shared/context-limits.json`, are consumed as immutable runtime constants, and
+cannot be raised per flow.
 
 ### Follow-up
 

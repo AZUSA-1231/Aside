@@ -1,16 +1,20 @@
-export const MAX_CONTEXT_BLOCKS = 8;
-export const MAX_CONTEXT_ATTACHMENTS = 8;
-export const MAX_CONTEXT_TEXT_BYTES = 8 * 1024;
-export const MAX_CONTEXT_JSON_BYTES = 16 * 1024;
-export const MAX_CONTEXT_TOTAL_BYTES = 24 * 1024;
-export const MAX_CONTEXT_JSON_DEPTH = 4;
-export const MAX_FLOW_ID_LENGTH = 128;
-export const MAX_FLOW_KIND_LENGTH = 48;
-export const MAX_FLOW_LABEL_LENGTH = 160;
-export const MAX_BLOCK_LABEL_LENGTH = 160;
-export const MAX_ATTACHMENT_SOURCE_LENGTH = 160;
-export const MAX_ATTACHMENT_SUMMARY_LENGTH = 240;
-export const MAX_ATTACHMENT_ID_LENGTH = 128;
+import limits from "../../shared/context-limits.json" with { type: "json" };
+
+export const MAX_CONTEXT_BLOCKS = limits.maxBlocks;
+export const MAX_CONTEXT_ATTACHMENTS = limits.maxAttachments;
+export const MAX_CONTEXT_TEXT_BYTES = limits.maxTextBytes;
+export const MAX_CONTEXT_JSON_BYTES = limits.maxJsonBytes;
+export const MAX_CONTEXT_TOTAL_BYTES = limits.maxTotalBytes;
+export const MAX_CONTEXT_DESCRIPTORS = limits.maxDescriptors;
+export const MAX_CONTEXT_JSON_DEPTH = limits.maxJsonDepth;
+export const MAX_FLOW_ID_LENGTH = limits.maxFlowIdLength;
+export const MAX_FLOW_KIND_LENGTH = limits.maxFlowKindLength;
+export const MAX_FLOW_LABEL_LENGTH = limits.maxFlowLabelLength;
+export const MAX_BLOCK_LABEL_LENGTH = limits.maxBlockLabelLength;
+export const MAX_ATTACHMENT_SOURCE_LENGTH = limits.maxAttachmentSourceLength;
+export const MAX_ATTACHMENT_SUMMARY_LENGTH = limits.maxAttachmentSummaryLength;
+export const MAX_ATTACHMENT_ID_LENGTH = limits.maxAttachmentIdLength;
+export const MAX_PATH_LENGTH = limits.maxPathLength;
 
 export const ASIDE_CONTEXT_MESSAGE_ROLE = "aside_context";
 export const ASIDE_CONTEXT_START = "[Aside reference context]";
@@ -19,7 +23,23 @@ export const ASIDE_CONTEXT_END = "[/Aside reference context]";
 const textEncoder = new TextEncoder();
 const identifierPattern = /^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/;
 const kindPattern = /^[a-z][a-z0-9_-]*$/;
-const hostKinds = new Set(["browser", "explorer", "vscode", "pdf_reader"]);
+const hostKinds = new Set([
+  "browser",
+  "explorer",
+  "vscode",
+  "pdf_reader",
+  "word",
+  "excel",
+  "generic",
+]);
+const pathRoles = new Set([
+  "workspace_root",
+  "active_file",
+  "directory",
+  "selected_item",
+  "document",
+]);
+const pathKinds = new Set(["file", "directory"]);
 const sensitivityKinds = new Set([
   "public",
   "local_metadata",
@@ -57,7 +77,7 @@ function assertKeys(value, allowed, field) {
 function assertLabel(value, field, maxLength) {
   if (
     typeof value !== "string" ||
-    value.length > maxLength ||
+    byteLength(value) > maxLength ||
     /[\u0000-\u001f\u007f]/.test(value)
   ) {
     invalid(field);
@@ -198,6 +218,41 @@ function validateTimestamp(value, field) {
   return value;
 }
 
+function validatePathDescriptor(descriptor, field) {
+  assertObject(descriptor, field);
+  assertKeys(descriptor, new Set(["role", "path", "kind"]), field);
+  if (typeof descriptor.role !== "string" || !pathRoles.has(descriptor.role)) {
+    invalid(`${field}.role`);
+  }
+  if (
+    typeof descriptor.path !== "string" ||
+    descriptor.path.length === 0 ||
+    byteLength(descriptor.path) > MAX_PATH_LENGTH ||
+    /[\u0000-\u001f\u007f]/.test(descriptor.path) ||
+    !/^(?:[A-Za-z]:[\\/]|\\\\)/.test(descriptor.path)
+  ) {
+    invalid(`${field}.path`);
+  }
+  if (typeof descriptor.kind !== "string" || !pathKinds.has(descriptor.kind)) {
+    invalid(`${field}.kind`);
+  }
+  const roleRequiresDirectory =
+    descriptor.role === "workspace_root" || descriptor.role === "directory";
+  const roleRequiresFile =
+    descriptor.role === "active_file" || descriptor.role === "document";
+  if (
+    (roleRequiresDirectory && descriptor.kind !== "directory") ||
+    (roleRequiresFile && descriptor.kind !== "file")
+  ) {
+    invalid(`${field}.kind`);
+  }
+  return {
+    role: descriptor.role,
+    path: descriptor.path,
+    kind: descriptor.kind,
+  };
+}
+
 function validateAttachment(attachment, index, now) {
   const field = `attachments[${index}]`;
   assertObject(attachment, field);
@@ -212,6 +267,8 @@ function validateAttachment(attachment, index, now) {
       "sensitivity",
       "summary",
       "blocks",
+      "strategy",
+      "descriptors",
     ]),
     field,
   );
@@ -250,6 +307,25 @@ function validateAttachment(attachment, index, now) {
   if (!Array.isArray(attachment.blocks) || attachment.blocks.length === 0) {
     invalid(`${field}.blocks`);
   }
+  const strategy = attachment.strategy ?? attachment.host;
+  if (
+    typeof strategy !== "string" ||
+    strategy.length === 0 ||
+    strategy.length > MAX_ATTACHMENT_SOURCE_LENGTH ||
+    !kindPattern.test(strategy)
+  ) {
+    invalid(`${field}.strategy`);
+  }
+  if (
+    attachment.descriptors !== undefined &&
+    (!Array.isArray(attachment.descriptors) ||
+      attachment.descriptors.length > MAX_CONTEXT_DESCRIPTORS)
+  ) {
+    invalid(`${field}.descriptors`);
+  }
+  const descriptors = (attachment.descriptors ?? []).map((descriptor, descriptorIndex) =>
+    validatePathDescriptor(descriptor, `${field}.descriptors[${descriptorIndex}]`),
+  );
 
   const blocks = attachment.blocks.map((block, blockIndex) =>
     validateBlock(block, `${index}.${blockIndex}`),
@@ -258,12 +334,14 @@ function validateAttachment(attachment, index, now) {
   return {
     id: attachment.id,
     host: attachment.host,
+    strategy,
     source: attachment.source,
     capturedAt,
     expiresAt,
     sensitivity: attachment.sensitivity,
     summary: attachment.summary,
     blocks,
+    descriptors,
   };
 }
 
@@ -294,12 +372,16 @@ function serializeProjection(flow, blocks, attachments) {
       : {
           attachments: attachments.map((attachment) => ({
             host: attachment.host,
+            strategy: attachment.strategy,
             source: attachment.source,
             capturedAt: attachment.capturedAt,
             expiresAt: attachment.expiresAt,
             sensitivity: attachment.sensitivity,
             summary: attachment.summary,
             blocks: attachment.blocks.map(serializeBlock),
+            ...(attachment.descriptors.length === 0
+              ? {}
+              : { descriptors: attachment.descriptors }),
           })),
         }),
   };

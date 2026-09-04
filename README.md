@@ -46,10 +46,20 @@ The first implementation focuses on the desktop and window experience:
 4. Detection of the current foreground window and its maximized state.
 5. Workspace Mode on the active display, including state capture and restore.
 6. A thin Agent Runtime package built on Pi's `pi-agent-core` and `pi-ai`.
+7. Explicit, bounded host-context capture through the shared Windows UI
+   Automation (UIA) layer and registered application strategies. Browser
+   capture owns its UIA-plus-metadata composition; applications without a
+   specialized strategy use the bounded Generic UIA fallback. File-oriented
+   strategies can locate Explorer, PDF, Word, and Excel paths without reading
+   file contents. VSCode bridge and active-editor integration are deferred.
 
 The current repository contains the MVP shell, window behavior, workspace
-behavior, and initial agent runtime implementation. Further work will be
-added incrementally.
+behavior, agent runtime, and the Cycle 4 host-capture closeout. The production
+boundary is bounded UIA for browsers and unmatched UIA hosts, plus validated
+path descriptors for Explorer and supported document hosts. An opt-in local
+research probe can measure real Word, Excel, PDF-reader, VSCode, and Explorer
+capabilities without entering the provider path. Pi workspace wiring, VSCode
+bridge integration, and rich production extraction are deliberately deferred.
 
 ## Provider configuration
 
@@ -71,10 +81,15 @@ server. `.env.local` is ignored by Git. Packaged builds also look for
 
 ## Explicit non-goals for the first version
 
-- Windows Desktop Shell or Explorer integration.
+- Broad Windows Desktop Shell integration or Explorer actions. Cycle 4 includes
+  a read-only, target-bound Explorer path locator; file contents, file actions,
+  VSCode bridge integration, and Pi workspace wiring remain deferred.
 - A true Windows Widget implementation.
 - Browser extensions or application injection.
-- DOM access, OCR, screen understanding, or accessibility APIs.
+- DOM access, OCR, screen understanding, or unbounded/generic accessibility
+  scraping. Approved strategies may use the shared UIA transport for explicit,
+  bounded context capture, including the Generic UIA fallback when no
+  specialized strategy matches.
 - Game-exclusive fullscreen and browser F11 fullscreen support.
 - Broad keyboard or mouse surveillance.
 - A large office-suite assistant with many unrelated workflows.
@@ -100,6 +115,15 @@ server. `.env.local` is ignored by Git. Packaged builds also look for
 - [Cycle 3 implementation plans](docs/cycle-3-pi-implementation/PLANS.md)
   and [issues log](docs/cycle-3-pi-implementation/ISSUES.md) track delivery
   and unexpected implementation decisions.
+- [Cycle 4 contextual sidecar PRD](docs/cycle-4-contextual-sidecar/PRD.md)
+  defines deterministic host-strategy selection, Generic UIA fallback, browser
+  composition, and path-first file-host capture.
+- [Cycle 4 closeout plan](docs/cycle-4-contextual-sidecar/PLAN.md) is the
+  single execution order for the closeout; Pi workspace wiring and rich host
+  integrations are explicitly deferred.
+- [Real host research probe](docs/cycle-4-contextual-sidecar/research/host-research-probe.md)
+  documents the explicit HWND/PID-bound full-extraction experiment. Its local
+  artifacts are research data, not prompt or session state.
 
 ## Development prerequisites
 

@@ -1,8 +1,13 @@
 mod chromium_uia;
 mod commands;
 mod context;
+mod explorer_shell;
+mod file_hosts;
+mod generic_uia;
+mod path;
 mod platform;
 mod runtime;
+mod uia;
 mod workspace;
 
 use commands::AppState;
@@ -36,7 +41,7 @@ pub fn run() {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 let state = window.state::<AppState>();
-                let _ = commands::hide_agent_internal(&window.app_handle(), state.inner());
+                let _ = commands::hide_agent_internal(window.app_handle(), state.inner());
             }
         })
         .invoke_handler(tauri::generate_handler![

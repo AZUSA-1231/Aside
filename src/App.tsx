@@ -26,16 +26,23 @@ import {
 import type {
   AgentState,
   AsideHostAttachment,
+  AsidePathDescriptor,
+  HostView,
   HostCaptureResult,
   NativeError,
   RuntimeEvent,
   RuntimeHistoryMessage,
 } from "./lib/contracts";
-import { canAppendHostAttachment, createHostTurnContext } from "./lib/context";
+import {
+  canAppendHostAttachment,
+  createHostTurnContext,
+  normalizeHostAttachment,
+} from "./lib/context";
 import { isDesktopRuntime, nativeClient, toNativeError } from "./lib/ipc";
 import "./App.css";
 
 type ChatMessageStatus = "complete" | "streaming" | "cancelled" | "error";
+type CaptureStatus = "idle" | "capturing" | "captured" | "unavailable" | "failed";
 
 interface ChatMessage {
   id: string;
@@ -88,46 +95,49 @@ function attachmentExpiry(expiresAt: number): string {
   })}`;
 }
 
-function formatCaptureJson(value: unknown, level = 0, key?: string): string {
-  if (value === null || typeof value !== "object") {
-    const serialized = JSON.stringify(value);
-    return serialized === undefined ? "null" : serialized;
+function hostKindLabel(host: HostView["kind"]): string {
+  switch (host) {
+    case "pdf_reader":
+      return "PDF reader";
+    case "vscode":
+      return "VS Code";
+    case "generic":
+      return "Generic UIA";
+    case "unsupported":
+      return "Unsupported host";
+    default:
+      return host.charAt(0).toUpperCase() + host.slice(1);
   }
+}
 
-  const indent = "  ".repeat(level);
-  const childIndent = "  ".repeat(level + 1);
-
-  if (Array.isArray(value)) {
-    if (value.length === 0) return "[]";
-    if (key === "fields") return JSON.stringify(value);
-    if (key === "nodes") {
-      return `[
-${value
-  .map((node) => `${childIndent}${JSON.stringify(node)}`)
-  .join(",\n")}
-${indent}]`;
-    }
-    return `[
-${value
-  .map((item) => `${childIndent}${formatCaptureJson(item, level + 1)}`)
-  .join(",\n")}
-${indent}]`;
+function captureStatusLabel(status: CaptureStatus): string {
+  switch (status) {
+    case "capturing":
+      return "Capturing";
+    case "captured":
+      return "Captured";
+    case "failed":
+      return "Capture failed";
+    case "unavailable":
+      return "Unavailable";
+    default:
+      return "Capture ready"
   }
+}
 
-  const entries = Object.entries(value as Record<string, unknown>);
-  if (entries.length === 0) return "{}";
-  return `{
-${entries
-  .map(
-    ([entryKey, entryValue]) =>
-      `${childIndent}${JSON.stringify(entryKey)}: ${formatCaptureJson(
-        entryValue,
-        level + 1,
-        entryKey,
-      )}`,
-  )
-  .join(",\n")}
-${indent}}`;
+function pathRoleLabel(descriptor: AsidePathDescriptor): string {
+  switch (descriptor.role) {
+    case "workspace_root":
+      return "Workspace"
+    case "active_file":
+      return "Active file"
+    case "selected_item":
+      return "Selected"
+    case "document":
+      return "Document"
+    default:
+      return "Directory"
+  }
 }
 
 function toChatMessage(message: RuntimeHistoryMessage): ChatMessage {
@@ -145,17 +155,25 @@ function App() {
   const [draft, setDraft] = useState("");
   const [attachments, setAttachments] = useState<AsideHostAttachment[]>([]);
   const [capturePaths, setCapturePaths] = useState<Record<string, string>>({});
+  const [captureJson, setCaptureJson] = useState<Record<string, string>>({});
+  const [captureStatus, setCaptureStatus] = useState<CaptureStatus>("idle");
+  const [captureHost, setCaptureHost] = useState<HostView | null>(null);
   const [previewAttachment, setPreviewAttachment] =
     useState<AsideHostAttachment | null>(null);
   const [nativeError, setNativeError] = useState<NativeError | null>(null);
   const [activeRun, setActiveRun] = useState<ActiveRun | null>(null);
   const [runtimeReady, setRuntimeReady] = useState(false);
   const activeRunRef = useRef<ActiveRun | null>(null);
+  // Late one-shot capture results must not leak into a later prompt.
+  const captureDiscardBeforeRef = useRef(-1);
   const attachmentsRef = useRef<AsideHostAttachment[]>([]);
   const historyHydratedRef = useRef(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const setCurrentRun = useCallback((run: ActiveRun | null) => {
+    if (run === null && activeRunRef.current !== null) {
+      captureDiscardBeforeRef.current = Date.now();
+    }
     activeRunRef.current = run;
     setActiveRun(run);
   }, []);
@@ -288,6 +306,9 @@ function App() {
         attachmentsRef.current = [];
         setAttachments([]);
         setCapturePaths({});
+        setCaptureJson({});
+        setCaptureStatus("idle");
+        setCaptureHost(null);
         setPreviewAttachment(null);
       } catch (error) {
         const normalized = toNativeError(error, "conversation", true);
@@ -296,6 +317,76 @@ function App() {
       }
     },
     [failRun, messages, setCurrentRun, updateAssistant],
+  );
+
+  const appendCaptureResult = useCallback(
+    (result: HostCaptureResult, fallbackMessage?: string): void => {
+      const attachment = result.attachment
+        ? normalizeHostAttachment(result.attachment)
+        : undefined;
+      if (result.host) setCaptureHost(result.host);
+      if (
+        !attachment ||
+        attachment.capturedAt <= captureDiscardBeforeRef.current ||
+        activeRunRef.current !== null
+      ) {
+        if (!attachment && result.error) {
+          setCaptureStatus("failed");
+          setNativeError({
+            operation: "host_capture",
+            recoverable: result.error.recoverable,
+            message: result.error.message,
+          });
+        } else if (
+          !attachment &&
+          fallbackMessage &&
+          activeRunRef.current === null
+        ) {
+          setCaptureStatus("unavailable");
+          setNativeError({
+            operation: "host_capture",
+            recoverable: true,
+            message: fallbackMessage,
+          });
+        }
+        return;
+      }
+
+      const current = attachmentsRef.current;
+      if (!canAppendHostAttachment(current, attachment)) {
+        setNativeError({
+          operation: "host_capture",
+          recoverable: true,
+          message: "That context would exceed the prompt limit. Remove an attachment first.",
+        });
+        return;
+      }
+
+      const next = [...current, attachment];
+      setCaptureStatus("captured");
+      attachmentsRef.current = next;
+      setAttachments(next);
+      if (result.filePath) {
+        setCapturePaths((paths) => ({
+          ...paths,
+          [attachment.id]: result.filePath!,
+        }));
+      } else {
+        setNativeError({
+          operation: "host_capture_save",
+          recoverable: true,
+          message: "Context was captured, but its JSON file could not be saved.",
+        });
+      }
+      if (result.formattedJson) {
+        setCaptureJson((json) => ({
+          ...json,
+          [attachment.id]: result.formattedJson!,
+        }));
+      }
+      if (result.filePath) setNativeError(null);
+    },
+    [],
   );
 
   useEffect(() => {
@@ -392,44 +483,7 @@ function App() {
         else runtimeUnlisten = unlisten;
       });
     void nativeClient
-      .onHostCapture((result: HostCaptureResult) => {
-        if (!result.attachment) {
-          if (result.error) {
-            setNativeError({
-              operation: "host_capture",
-              recoverable: result.error.recoverable,
-              message: result.error.message,
-            });
-          }
-          return;
-        }
-
-        const current = attachmentsRef.current;
-        if (!canAppendHostAttachment(current, result.attachment)) {
-          setNativeError({
-            operation: "host_capture",
-            recoverable: true,
-            message: "That context would exceed the prompt limit. Remove an attachment first.",
-          });
-          return;
-        }
-        const next = [...current, result.attachment];
-        attachmentsRef.current = next;
-        setAttachments(next);
-        if (result.filePath) {
-          setCapturePaths((paths) => ({
-            ...paths,
-            [result.attachment!.id]: result.filePath!,
-          }));
-        } else {
-          setNativeError({
-            operation: "host_capture_save",
-            recoverable: true,
-            message: "Context was captured, but its JSON file could not be saved.",
-          });
-        }
-        if (result.filePath) setNativeError(null);
-      })
+      .onHostCapture(appendCaptureResult)
       .then((unlisten) => {
         if (disposed) unlisten();
         else hostCaptureUnlisten = unlisten;
@@ -442,7 +496,7 @@ function App() {
       runtimeUnlisten?.();
       hostCaptureUnlisten?.();
     };
-  }, [failRun, hydrateHistory, setCurrentRun, updateAssistant]);
+  }, [appendCaptureResult, failRun, hydrateHistory, setCurrentRun, updateAssistant]);
 
   useEffect(() => {
     if (agentState.visibility === "visible") {
@@ -501,48 +555,19 @@ function App() {
   }, [setCurrentRun]);
 
   const handleCapture = useCallback(async () => {
+    if (activeRunRef.current) return;
+    setCaptureStatus("capturing");
     try {
       const result = await nativeClient.captureActiveHostContext();
-      if (!result.attachment) {
-        setNativeError({
-          operation: "host_capture",
-          recoverable: result.error?.recoverable ?? true,
-          message:
-            result.error?.message ??
-            "The current application does not provide supported context.",
-        });
-        return;
-      }
-
-      const current = attachmentsRef.current;
-      if (!canAppendHostAttachment(current, result.attachment)) {
-        setNativeError({
-          operation: "host_capture",
-          recoverable: true,
-          message: "That context would exceed the prompt limit. Remove an attachment first.",
-        });
-        return;
-      }
-      const next = [...current, result.attachment];
-      attachmentsRef.current = next;
-      setAttachments(next);
-      if (result.filePath) {
-        setCapturePaths((paths) => ({
-          ...paths,
-          [result.attachment!.id]: result.filePath!,
-        }));
-      } else {
-        setNativeError({
-          operation: "host_capture_save",
-          recoverable: true,
-          message: "Context was captured, but its JSON file could not be saved.",
-        });
-      }
-      if (result.filePath) setNativeError(null);
+      appendCaptureResult(
+        result,
+        "The current application does not provide supported context.",
+      );
     } catch (error) {
+      setCaptureStatus("failed");
       setNativeError(toNativeError(error, "host_capture", true));
     }
-  }, []);
+  }, [appendCaptureResult]);
 
   const removeAttachment = useCallback((attachmentId: string) => {
     const next = attachmentsRef.current.filter(
@@ -554,6 +579,11 @@ function App() {
       const nextPaths = { ...paths };
       delete nextPaths[attachmentId];
       return nextPaths;
+    });
+    setCaptureJson((json) => {
+      const nextJson = { ...json };
+      delete nextJson[attachmentId];
+      return nextJson;
     });
     setPreviewAttachment((current) =>
       current?.id === attachmentId ? null : current,
@@ -571,6 +601,7 @@ function App() {
 
   const modeLabel = agentState.surface === "workspace" ? "Workspace" : "Side";
   const shortcutLabel = isDesktopRuntime() ? "Ctrl + Alt + A" : "Desktop app shortcut";
+  const captureStrategy = captureHost?.strategy;
 
   return (
     <main className={`app-shell ${agentState.surface}-surface`}>
@@ -635,11 +666,19 @@ function App() {
           type="button"
           aria-label="Capture current host context"
           title="Capture current host context"
+          disabled={Boolean(activeRun) || captureStatus === "capturing"}
+          aria-busy={captureStatus === "capturing"}
           onClick={() => void handleCapture()}
         >
           <ScanSearch size={15} />
           <span>Capture</span>
         </button>
+        <span className={`capture-status ${captureStatus}`} aria-live="polite">
+          <span className="capture-status-dot" aria-hidden="true" />
+          {captureStatusLabel(captureStatus)}
+          {captureHost && ` | ${hostKindLabel(captureHost.kind)}`}
+          {captureStrategy && ` | ${captureStrategy}`}
+        </span>
         {agentState.surface === "workspace" && (
           <button
             className="workspace-exit"
@@ -740,11 +779,15 @@ function App() {
           <div className="attachment-list">
             {attachments.map((attachment) => {
               const filePath = capturePaths[attachment.id];
+              const formattedJson = captureJson[attachment.id];
               return (
                 <article className="attachment-item" key={attachment.id}>
                   <div className="attachment-copy">
                     <strong>{attachment.source}</strong>
                     <span>{attachment.summary}</span>
+                    <small className="attachment-strategy">
+                      {hostKindLabel(attachment.host)} · {attachment.strategy ?? attachment.host}
+                    </small>
                     <small>{attachmentExpiry(attachment.expiresAt)}</small>
                   </div>
                   {filePath && (
@@ -767,7 +810,7 @@ function App() {
                   >
                     <X size={13} />
                   </button>
-                  {filePath && (
+                  {formattedJson && (
                     <button
                       className="attachment-file-row"
                       type="button"
@@ -776,8 +819,18 @@ function App() {
                       onClick={() => setPreviewAttachment(attachment)}
                     >
                       <FileJson size={12} />
-                      <span>{filePath}</span>
+                      <span>{filePath ?? "Preview captured JSON"}</span>
                     </button>
+                  )}
+                  {(attachment.descriptors ?? []).length > 0 && (
+                    <div className="attachment-descriptors" aria-label="Path references">
+                      {(attachment.descriptors ?? []).map((descriptor) => (
+                        <div className="attachment-descriptor" key={`${descriptor.role}:${descriptor.path}`}>
+                          <span className="descriptor-role">{pathRoleLabel(descriptor)}</span>
+                          <code title={descriptor.path}>{descriptor.path}</code>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </article>
               );
@@ -815,7 +868,10 @@ function App() {
                 <X size={14} />
               </button>
             </div>
-            <pre>{formatCaptureJson(previewAttachment)}</pre>
+            <pre>
+              {captureJson[previewAttachment.id] ??
+                "The captured JSON preview is unavailable."}
+            </pre>
           </section>
         </div>
       )}

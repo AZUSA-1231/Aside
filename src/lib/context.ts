@@ -2,12 +2,11 @@ import type {
   AsideHostAttachment,
   AsideTurnContext,
 } from "./contracts";
+import limits from "../../shared/context-limits.json";
 
-export const MAX_CONTEXT_BLOCKS = 8;
-export const MAX_CONTEXT_ATTACHMENTS = 8;
-export const MAX_CONTEXT_TEXT_BYTES = 8 * 1024;
-export const MAX_CONTEXT_JSON_BYTES = 16 * 1024;
-export const MAX_CONTEXT_TOTAL_BYTES = 24 * 1024;
+export const MAX_CONTEXT_BLOCKS = limits.maxBlocks;
+export const MAX_CONTEXT_ATTACHMENTS = limits.maxAttachments;
+export const MAX_CONTEXT_TOTAL_BYTES = limits.maxTotalBytes;
 
 const contextStart = "[Aside reference context]";
 const contextInstruction =
@@ -29,21 +28,39 @@ function serializeBlock(block: AsideHostAttachment["blocks"][number]): unknown {
       };
 }
 
+export function normalizeHostAttachment(
+  attachment: AsideHostAttachment,
+): AsideHostAttachment & {
+  strategy: string;
+  descriptors: NonNullable<AsideHostAttachment["descriptors"]>;
+} {
+  return {
+    ...attachment,
+    strategy: attachment.strategy ?? attachment.host,
+    descriptors: attachment.descriptors ?? [],
+  };
+}
+
 function projectionBytes(attachments: AsideHostAttachment[]): number {
+  const normalizedAttachments = attachments.map(normalizeHostAttachment);
   const payload = {
     flow: { id: "current-task", kind: "conversation" },
     blocks: [],
-    ...(attachments.length === 0
+    ...(normalizedAttachments.length === 0
       ? {}
       : {
-          attachments: attachments.map((attachment) => ({
+          attachments: normalizedAttachments.map((attachment) => ({
             host: attachment.host,
+            strategy: attachment.strategy,
             source: attachment.source,
             capturedAt: attachment.capturedAt,
             expiresAt: attachment.expiresAt,
             sensitivity: attachment.sensitivity,
             summary: attachment.summary,
             blocks: attachment.blocks.map(serializeBlock),
+            ...(attachment.descriptors.length === 0
+              ? {}
+              : { descriptors: attachment.descriptors }),
           })),
         }),
   };
@@ -60,7 +77,7 @@ export function canAppendHostAttachment(
   current: AsideHostAttachment[],
   next: AsideHostAttachment,
 ): boolean {
-  const attachments = [...current, next];
+  const attachments = [...current, next].map(normalizeHostAttachment);
   const blockCount = attachments.reduce(
     (total, attachment) => total + attachment.blocks.length,
     0,
@@ -79,6 +96,6 @@ export function createHostTurnContext(
   return {
     flow: { id: "current-task", kind: "conversation" },
     blocks: [],
-    attachments,
+    attachments: attachments.map(normalizeHostAttachment),
   };
 }

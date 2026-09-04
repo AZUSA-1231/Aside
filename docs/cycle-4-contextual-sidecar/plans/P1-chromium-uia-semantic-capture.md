@@ -5,7 +5,8 @@ Completed: 2026-09-02
 Depends on: [P0 - One-Shot Host Context Capture](./P0-one-shot-context-capture.md),
 [Chromium UIA and Screen Capture Study](../research/chromium-uia-screen-capture.md),
 and [Chromium UIA Depth Study](../research/chromium-uia-depth-study.md)  
-Unblocks: optional Chromium visual augmentation and later browser transports
+Unblocks: optional Chromium visual augmentation and the shared strategy
+closeout plan
 
 Source requirements: [Cycle 4 PRD](../PRD.md), especially FR-4.5, FR-4.6,
 FR-4.7, FR-4.14, FR-4.15, C4-01, C4-02, C4-09, C4-10, and C4-14.
@@ -70,6 +71,11 @@ The extractor is stateless. It must not retain UIA elements, COM objects,
 HWNDs, process handles, active-tab state, or previous tree results between
 captures. A second click performs a new query and appends a new attachment in
 the existing composer collection.
+
+The frontend also treats a capture completion as belonging to the prompt that
+was active when it was staged. Results for that prompt that arrive while a
+provider run is active, or after that run has ended, are discarded so an
+asynchronous summon capture cannot become context for a later request.
 
 UIA traversal may take materially longer than the side rail's visibility
 operation. The shortcut path should snapshot the target first, hand that
@@ -267,8 +273,15 @@ silently replace an older attachment or send a partially validated JSON value.
 
 ### Native and IPC ownership
 
-- `src-tauri/src/chromium_uia.rs` owns COM/UIA initialization, browser
-  matching, metadata extraction, bounded traversal, and semantic normalization.
+- `src-tauri/src/uia.rs` owns the reusable Windows UIA transport: COM
+  initialization and teardown, Content/Control view walking, traversal limits,
+  node snapshots, role mapping, pattern reads, normalization primitives, and
+  provider/truncation diagnostics. A session is short-lived and is usable only
+  inside one adapter capture call.
+- `src-tauri/src/chromium_uia.rs` owns Chromium matching, browser metadata
+  extraction, address-bar policy, page-root selection, and the Chromium
+  semantic capture policy. It must not add generic UIA traversal or COM
+  lifecycle code.
 - `src-tauri/src/context.rs` registers the stateless Chromium extractor,
   carries the sanitized metadata block, and keeps P0 validation and expiry
   behavior authoritative.
@@ -291,12 +304,18 @@ element/pattern reference before returning. The `windows` crate feature set is
 limited to Foundation, System COM, and UI Accessibility; no browser automation
 package is needed.
 
+Future Explorer, VSCode, document, and other host strategies should implement
+their own modules and call the shared `uia` transport where appropriate; they
+should not add application branches to `uia.rs` or expose raw UIA objects
+through the context, IPC, or runtime contracts. The unified Cycle 4 closeout
+plan defines the path-first strategies and the separate Generic UIA fallback.
+
 ### Failure behavior
 
 | Condition | Result |
 | --- | --- |
 | Missing pre-focus invocation target | Recoverable `no_host_target` error; never query Aside as the host |
-| Non-Chromium process or unsupported browser surface | Honest unsupported result; no generic tree walk and no successful attachment |
+| Non-Chromium process or unsupported browser surface | This Browser strategy does not match; the router may select a path strategy or the separate bounded Generic UIA fallback |
 | UIA initialization failure | Unavailable host result with a sanitized recoverable error and no successful attachment; do not emit `quality=unavailable` inside metadata |
 | Selected tab unavailable | Continue with page/metadata fallback, set `tabName=null`, lower quality |
 | URL value unavailable or unsafe | Set `url=null`, preserve other metadata and semantic nodes, and lower quality |
@@ -445,5 +464,6 @@ The focused tests must cover:
 - CDP and browser extension active-tab bridges;
 - browser automation or invoke/set-value/select actions;
 - full page text, visible-range text, or explicit highlighted-text capture;
-- Explorer, VSCode, and PDF-reader production transports;
+- Explorer, VSCode, and PDF-reader rich/content transports; path-only
+  strategies are covered by the unified Cycle 4 closeout plan;
 - configurable user-facing quality profiles beyond the bounded native defaults.

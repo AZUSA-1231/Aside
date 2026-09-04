@@ -430,6 +430,52 @@ test("filters expired host attachments and enforces the aggregate block limit", 
   );
 });
 
+test("normalizes legacy host attachments and validates descriptor role kinds", () => {
+  const legacy = validateTurnContext(
+    {
+      flow: { id: "legacy-attachment", kind: "conversation" },
+      blocks: [],
+      attachments: [
+        hostAttachment({
+          id: "legacy-capture",
+          host: "vscode",
+          source: "Legacy VSCode",
+          text: "workspace metadata",
+        }),
+      ],
+    },
+    Date.now(),
+  );
+  assert.equal(legacy.attachments[0].strategy, "vscode");
+  assert.deepEqual(legacy.attachments[0].descriptors, []);
+
+  assert.throws(
+    () =>
+      validateTurnContext({
+        flow: { id: "bad-descriptor", kind: "conversation" },
+        blocks: [],
+        attachments: [
+          {
+            ...hostAttachment({
+              id: "bad-descriptor-capture",
+              host: "word",
+              source: "Word",
+              text: "metadata",
+            }),
+            descriptors: [
+              {
+                role: "document",
+                path: "C:/work/report.docx",
+                kind: "directory",
+              },
+            ],
+          },
+        ],
+      }),
+    /descriptors\[0\]\.kind/,
+  );
+});
+
 test("reuses one context projection across repeated provider turns", async () => {
   const faux = fauxProvider({ tokensPerSecond: 1000 });
   const providerContexts = [];
