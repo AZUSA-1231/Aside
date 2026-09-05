@@ -121,6 +121,14 @@ server. `.env.local` is ignored by Git. Packaged builds also look for
 - [Cycle 4 closeout plan](docs/cycle-4-contextual-sidecar/PLAN.md) is the
   single execution order for the closeout; Pi workspace wiring and rich host
   integrations are explicitly deferred.
+- [Cycle 5 agent capability PRD](docs/cycle-5-agent-capability/PRD.md) defines
+  the bounded workspace task-agent scope, tool capability model, permission
+  policy, skill boundary, and acceptance criteria.
+- [Cycle 5 execution plan](docs/cycle-5-agent-capability/PLAN.md) is the
+  cross-plan execution index; its detailed work packages live under
+  `docs/cycle-5-agent-capability/plans/`.
+- [Cycle 5 issues log](docs/cycle-5-agent-capability/ISSUES.md) records the
+  implementation decisions and exceptions for that delivery.
 - [Real host research probe](docs/cycle-4-contextual-sidecar/research/host-research-probe.md)
   documents the explicit HWND/PID-bound full-extraction experiment. Its local
   artifacts are research data, not prompt or session state.
