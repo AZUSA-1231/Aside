@@ -1,6 +1,6 @@
 # P3 - Permission-Gated Writes and Verification
 
-Status: planning
+Status: implemented (2026-09-05)
 Depends on: P2 - Capability Registry and Bounded Read Tools
 Unblocks: P4 - Skills and Resource Loading
 Source requirements: Cycle 5 PRD sections 6, 7, 9, 11, 12, 14, and 16.4
@@ -97,3 +97,27 @@ Run the permission and write tests with a temporary or in-memory workspace,
 then run runtime tests, typecheck, and Rust tests. Inspect the filesystem after
 every negative case to prove that denial, expiry, stale identity, and cancel
 performed no mutation.
+
+## Verification
+
+- `node --test agent-runtime/test/workspace-write-tools.test.mjs` passed: 10
+  tests.
+- `npm.cmd run runtime:test` passed: 53 tests.
+- `npm.cmd run typecheck` passed.
+- `npm.cmd run build` passed.
+- `cargo fmt --manifest-path src-tauri/Cargo.toml --check` passed.
+- `cargo check --manifest-path src-tauri/Cargo.toml` passed.
+- `cargo test --manifest-path src-tauri/Cargo.toml` passed: 30 tests.
+- `node --check` passed for the permission, write, workspace, runtime, and
+  affected test modules; `git diff --check` passed.
+- Faux temporary-workspace coverage proves exact permission correlation,
+  bounded previews, allow/deny/cancel/expiry behavior, duplicate and
+  mismatched responses, stale existing and newly-created targets, sequential
+  independent approvals, atomic rename cleanup, JSON parse validation, and
+  post-write verification.
+- An approved filesystem `rename` failure is reported as
+  `filesystem_permission_denied`/`failed`; it is kept distinct from the
+  user's `permission_denied` decision and never claims a successful write.
+- The default activated registry now exposes the four P2 read tools plus
+  `workspace.write` and `workspace.edit`; no shell, process, network, or host
+  capability was added. `vendor/pi-full/` remains ignored and untracked.

@@ -1,4 +1,5 @@
 import { constants } from "node:fs";
+import { randomUUID } from "node:crypto";
 import {
   access,
   lstat,
@@ -8,6 +9,7 @@ import {
   realpath,
   rename,
   stat,
+  unlink,
   writeFile,
 } from "node:fs/promises";
 import {
@@ -133,7 +135,7 @@ function normalizeRelativePath(rootPath, targetPath) {
   return value;
 }
 
-function mapFsError(error, path) {
+function mapFsError(error, path, options = {}) {
   if (error instanceof WorkspaceError) return error;
   const code = error?.code;
   const mapped =
@@ -142,7 +144,7 @@ function mapFsError(error, path) {
       : code === "ENOENT" || code === "ENOTDIR"
       ? "not_found"
       : code === "EACCES" || code === "EPERM"
-        ? "permission_denied"
+        ? (options.mutation === true ? "filesystem_permission_denied" : "permission_denied")
         : code === "EISDIR"
           ? "is_directory"
           : code === "ENAMETOOLONG"
@@ -150,7 +152,7 @@ function mapFsError(error, path) {
             : "filesystem_error";
   return new WorkspaceError(
     mapped,
-    mapped === "permission_denied"
+    mapped === "permission_denied" || mapped === "filesystem_permission_denied"
       ? "The workspace resource could not be accessed because permission was denied."
       : mapped === "aborted"
         ? "The workspace operation was cancelled."
@@ -255,6 +257,7 @@ function backendWithDefaults(fileSystem = {}) {
     realpath: fileSystem.realpath ?? realpath,
     rename: fileSystem.rename ?? rename,
     stat: fileSystem.stat ?? stat,
+    unlink: fileSystem.unlink ?? unlink,
     writeFile: fileSystem.writeFile ?? writeFile,
   };
 }
@@ -475,8 +478,16 @@ export function createWorkspaceEnvironment({ state, fileSystem } = {}) {
     if (comparisonPath(current.canonical_path) !== comparisonPath(resolved.canonical_path)) {
       throw new WorkspaceError("stale_target", "The target changed and must be selected again.", resolved.addressed_path);
     }
-    if (options.requireIdentity !== false && resolved.identity && current.identity && !sameWorkspaceIdentity(resolved.identity, current.identity)) {
-      throw new WorkspaceError("stale_target", "The target changed and must be selected again.", resolved.addressed_path);
+    if (options.expectMissing === true && current.exists) {
+      throw new WorkspaceError("stale_target", "The prepared new target now exists and must be reviewed again.", resolved.addressed_path);
+    }
+    if (options.requireIdentity !== false) {
+      if (resolved.identity && !current.identity) {
+        throw new WorkspaceError("stale_target", "The prepared target no longer exists.", resolved.addressed_path);
+      }
+      if (resolved.identity && current.identity && !sameWorkspaceIdentity(resolved.identity, current.identity)) {
+        throw new WorkspaceError("stale_target", "The target changed and must be selected again.", resolved.addressed_path);
+      }
     }
     return current;
   }
@@ -624,6 +635,9 @@ export function createWorkspaceEnvironment({ state, fileSystem } = {}) {
     },
     async writeText(addressedPath, text, options = {}) {
       const resolved = await resolvePath(addressedPath, { expectedKind: "file", allowMissing: true });
+      if (typeof text !== "string" || !Number.isSafeInteger(options.maxBytes) || options.maxBytes <= 0) {
+        throw new WorkspaceError("invalid_limit", "A positive text write limit is required.", addressedPath);
+      }
       if (byteLength(text) > options.maxBytes) {
         throw new WorkspaceError("result_too_large", "The workspace write exceeds the content limit.", addressedPath);
       }
@@ -634,6 +648,56 @@ export function createWorkspaceEnvironment({ state, fileSystem } = {}) {
         });
       } catch (error) {
         throw mapFsError(error, addressedPath);
+      }
+      return resolvePath(addressedPath, { expectedKind: "file" });
+    },
+    async writeTextAtomic(addressedPath, text, options = {}) {
+      if (typeof text !== "string" || !Number.isSafeInteger(options.maxBytes) || options.maxBytes <= 0) {
+        throw new WorkspaceError("invalid_limit", "A positive text write limit is required.", addressedPath);
+      }
+      if (byteLength(text) > options.maxBytes) {
+        throw new WorkspaceError("result_too_large", "The workspace write exceeds the content limit.", addressedPath);
+      }
+      if (options.signal?.aborted) {
+        throw new WorkspaceError("aborted", "The workspace operation was cancelled.", addressedPath);
+      }
+      const prepared = options.expected ?? await resolvePath(addressedPath, {
+        expectedKind: "file",
+        allowMissing: true,
+      });
+      const current = await revalidate(prepared, {
+        expectedKind: "file",
+        allowMissing: true,
+        expectMissing: options.expectMissing === true,
+      });
+      const parent = await existingResource(backend, nativePath.dirname(current.canonical_path), "directory");
+      if (!isWithin(rootPath, parent.canonicalPath)) {
+        throw new WorkspaceError("scope_escape", "The write parent is outside the active workspace.", addressedPath);
+      }
+      const temporaryPath = nativePath.join(parent.canonicalPath, `.aside-write-${randomUUID()}.tmp`);
+      let temporaryCreated = false;
+      try {
+        await backend.writeFile(temporaryPath, text, {
+          encoding: "utf8",
+          signal: options.signal,
+        });
+        temporaryCreated = true;
+        if (options.signal?.aborted) {
+          throw new WorkspaceError("aborted", "The workspace operation was cancelled.", addressedPath);
+        }
+        if (options.beforeRename) await options.beforeRename(current);
+        await backend.rename(temporaryPath, current.canonical_path);
+        temporaryCreated = false;
+      } catch (error) {
+        throw mapFsError(error, addressedPath, { mutation: true });
+      } finally {
+        if (temporaryCreated) {
+          try {
+            await backend.unlink(temporaryPath);
+          } catch {
+            // Best-effort cleanup; the write result remains failed.
+          }
+        }
       }
       return resolvePath(addressedPath, { expectedKind: "file" });
     },

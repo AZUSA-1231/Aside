@@ -9,6 +9,7 @@ import {
 } from "./agent-contracts.mjs";
 import { WorkspaceError } from "./workspace.mjs";
 
+const textEncoder = new TextEncoder();
 const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
 
 export const DEFAULT_WORKSPACE_TOOL_LIMITS = Object.freeze({
@@ -261,9 +262,9 @@ export class DocumentAdapterError extends Error {
 const defaultTextAdapter = Object.freeze({
   id: "text",
   formats: Object.freeze(["text", "markdown"]),
-  write: false,
+  write: true,
   maxReadBytes: DEFAULT_WORKSPACE_TOOL_LIMITS.maxReadBytes,
-  maxExpandedBytes: DEFAULT_WORKSPACE_TOOL_LIMITS.maxOutputBytes,
+  maxExpandedBytes: DEFAULT_WORKSPACE_TOOL_LIMITS.maxReadBytes,
   async read({ bytes, path }) {
     return {
       format: extensionOf(path) === ".md" || extensionOf(path) === ".markdown"
@@ -278,7 +279,7 @@ const defaultTextAdapter = Object.freeze({
 const defaultJsonAdapter = Object.freeze({
   id: "json",
   formats: Object.freeze(["json"]),
-  write: false,
+  write: true,
   maxReadBytes: DEFAULT_WORKSPACE_TOOL_LIMITS.maxReadBytes,
   maxExpandedBytes: DEFAULT_WORKSPACE_TOOL_LIMITS.maxJsonExpandedBytes,
   async read({ bytes, path, limits }) {
@@ -412,7 +413,7 @@ export const WORKSPACE_READ_TOOL_SCHEMAS = Object.freeze({
   }),
 });
 
-async function readDocument({ workspace, documentRegistry, limits }, path, format, signal, maxBytes = limits.maxReadBytes) {
+export async function readDocument({ workspace, documentRegistry, limits }, path, format, signal, maxBytes = limits.maxReadBytes) {
   throwIfAborted(signal, path);
   const resolved = await workspace.resolvePath(path, { expectedKind: "file" });
   const adapter = documentRegistry.select(path, format ?? "auto");
@@ -432,7 +433,51 @@ async function readDocument({ workspace, documentRegistry, limits }, path, forma
     signal,
   });
   const document = await adapter.read({ bytes: bytes.bytes, path, limits });
-  return { resolved: bytes, adapter, document };
+  if (!document || typeof document !== "object" || typeof document.text !== "string") {
+    throw new DocumentAdapterError(
+      "invalid_document",
+      "The document adapter returned an invalid text representation.",
+      path,
+    );
+  }
+  const maxExpandedBytes = Number.isSafeInteger(adapter.maxExpandedBytes)
+    ? adapter.maxExpandedBytes
+    : limits.maxReadBytes;
+  if (byteLength(document.text) > maxExpandedBytes) {
+    throw new DocumentAdapterError(
+      "document_too_large",
+      "The expanded document exceeds the adapter limit.",
+      path,
+      { expanded_bytes: byteLength(document.text), max_bytes: maxExpandedBytes },
+    );
+  }
+  return { resolved: bytes, adapter, document, raw_text: decodeUtf8(bytes.bytes, path) };
+}
+
+export async function validateDocumentText({ documentRegistry, limits, path, format = "auto", text }) {
+  if (typeof text !== "string") {
+    throw new WorkspaceError("invalid_argument", "Document content must be text.", path);
+  }
+  const adapter = documentRegistry.select(path, format);
+  if (!adapter || adapter.write !== true) {
+    throw new WorkspaceError(
+      "unsupported_format",
+      "The document format cannot be written by the active adapter.",
+      path,
+    );
+  }
+  const bytes = textEncoder.encode(text);
+  const maxBytes = Number.isSafeInteger(adapter.maxReadBytes)
+    ? adapter.maxReadBytes
+    : limits.maxReadBytes;
+  if (bytes.byteLength > maxBytes) {
+    throw new WorkspaceError("result_too_large", "The document content exceeds the write limit.", path, {
+      size: bytes.byteLength,
+      max_bytes: maxBytes,
+    });
+  }
+  const document = await adapter.read({ bytes, path, limits });
+  return { adapter, document, bytes };
 }
 
 function selectLines(text, offset, limit) {

@@ -30,6 +30,8 @@ import {
   resolveTaskWorkspace,
 } from "./workspace.mjs";
 import { createWorkspaceReadTools } from "./workspace-tools.mjs";
+import { createWorkspaceWriteTools } from "./workspace-write-tools.mjs";
+import { PermissionBroker } from "./permission-broker.mjs";
 
 export const MAX_REQUEST_ID_LENGTH = 128;
 export const MAX_PROMPT_LENGTH = 20_000;
@@ -137,6 +139,13 @@ function normalizeToolSet(tools) {
   return createAsideToolRegistry(tools ?? []);
 }
 
+function createDefaultWorkspaceTools() {
+  return [
+    ...createWorkspaceReadTools(),
+    ...createWorkspaceWriteTools(),
+  ];
+}
+
 function normalizeSystemPolicy(policy) {
   if (policy === undefined || policy === null || policy === "") return "";
   return assertSafeText(policy, "system_policy", MAX_SYSTEM_POLICY_BYTES);
@@ -185,13 +194,24 @@ function emitToolEvent(send, run, event) {
       event.result,
       run.limits.maxToolResultBytes,
     );
+    const resultStatus = [
+      "denied",
+      "cancelled",
+      "expired",
+      "invalidated",
+      "unsupported",
+    ].includes(result.details?.status)
+      ? result.details.status
+      : event.isError
+        ? "failed"
+        : "succeeded";
     send({
       type: "tool_result",
       request_id: run.request_id,
       task_id: run.task_id,
       tool_call_id: sanitizeRuntimeText(event.toolCallId, 160).text,
       tool: sanitizeRuntimeText(event.toolName, 96).text,
-      status: event.isError ? "failed" : "succeeded",
+      status: resultStatus,
       text: toolResultText(result),
       details: result.details,
       truncated: result.truncated,
@@ -257,7 +277,7 @@ export async function createConfiguredAgent({
   const apiUrl = normalizeAsideApiUrl(getAsideConfigValue(values, "ASIDE_API_URL"));
   const model = apiUrl ? { ...configuredModel, baseUrl: apiUrl } : configuredModel;
   const normalizedLimits = normalizeAgentLimits(limits);
-  const registry = normalizeToolSet(tools ?? createWorkspaceReadTools());
+  const registry = normalizeToolSet(tools ?? createDefaultWorkspaceTools());
   const normalizedSystemPolicy = normalizeSystemPolicy(systemPolicy);
   const systemPrompt = [DEFAULT_SYSTEM_PROMPT, normalizedSystemPolicy]
     .filter((value) => typeof value === "string" && value.trim().length > 0)
@@ -303,12 +323,19 @@ export async function createConversationRuntime({
   now = Date.now,
   workspaceHint: configuredWorkspaceHint,
   workspaceFileSystem,
+  permissionBroker,
   environment = process.env,
   configCwd = process.cwd(),
 } = {}) {
   const send = emit ?? (() => undefined);
   const normalizedLimits = normalizeAgentLimits(limits);
   const normalizedSystemPolicy = normalizeSystemPolicy(systemPolicy);
+  const runtimePermissionBroker = permissionBroker ?? new PermissionBroker({
+    emit: send,
+    now,
+    maxPendingMs: normalizedLimits.maxPendingPermissionMs,
+  });
+  runtimePermissionBroker.setEmitter?.(send);
   const requestedRegistry = tools === undefined
     ? undefined
     : normalizeToolSet(tools);
@@ -333,7 +360,7 @@ export async function createConversationRuntime({
   if (requestedRegistry) conversationAgent.state.tools = requestedRegistry.tools;
   const initialTools = conversationAgent.state.tools ?? [];
   const baseRegistry = requestedRegistry ?? normalizeToolSet(
-    initialTools.length > 0 ? initialTools : createWorkspaceReadTools(),
+    initialTools.length > 0 ? initialTools : createDefaultWorkspaceTools(),
   );
   let activeRegistry = baseRegistry.filter(
     ({ descriptor }) => descriptor.scope !== "workspace",
@@ -366,9 +393,11 @@ export async function createConversationRuntime({
         try {
           const implementation = typeof tool.createForRun === "function"
             ? await tool.createForRun({
-                taskRun: run,
-                workspace: run?.environment,
-                workspaceState: run?.workspace,
+              taskRun: run,
+              workspace: run?.environment,
+              workspaceState: run?.workspace,
+              permissionBroker: runtimePermissionBroker,
+              emit: send,
               })
             : tool;
           if (!implementation || typeof implementation.execute !== "function") {
@@ -809,11 +838,20 @@ export async function createConversationRuntime({
   function cancel(requestId) {
     if (!active || active.request_id !== requestId) return;
     active.cancel_requested = true;
+    runtimePermissionBroker.cancelForRun?.({
+      requestId: active.request_id,
+      taskId: active.task_id,
+    }, "aborted");
     conversationAgent.abort();
+  }
+
+  function resolvePermission(permissionId, decision, identity = {}) {
+    return runtimePermissionBroker.resolve(permissionId, decision, identity);
   }
 
   function dispose() {
     disposed = true;
+    runtimePermissionBroker.dispose?.();
     unsubscribe?.();
     active = null;
   }
@@ -829,6 +867,11 @@ export async function createConversationRuntime({
     limits: configured.limits,
     setWorkspace,
     clearWorkspace,
+    resolvePermission,
+    permissionBroker: runtimePermissionBroker,
+    get pendingPermissions() {
+      return runtimePermissionBroker.snapshot?.() ?? [];
+    },
     get activeTaskRun() {
       return snapshotTaskRun(active);
     },

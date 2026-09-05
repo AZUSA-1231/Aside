@@ -184,7 +184,7 @@ test("returns typed unsupported, scope, missing, limit, and cancellation results
   }
 });
 
-test("the default runtime exposes read tools only after workspace activation", async () => {
+test("the default runtime exposes workspace tools only after workspace activation", async () => {
   const root = await fixture();
   try {
     const faux = fauxProvider({ tokensPerSecond: 1_000 });
@@ -213,7 +213,14 @@ test("the default runtime exposes read tools only after workspace activation", a
     await runtime.prompt("default-read-request", "read notes");
     assert.deepEqual(
       events.find((event) => event.type === "run_started").tools.map((tool) => tool.name),
-      ["workspace.list", "workspace.search", "workspace.stat", "workspace.read"],
+      [
+        "workspace.list",
+        "workspace.search",
+        "workspace.stat",
+        "workspace.read",
+        "workspace.write",
+        "workspace.edit",
+      ],
     );
     assert.ok(events.some((event) => event.type === "tool_result" && event.status === "succeeded"));
     assert.equal(events.at(-1).type, "completed");

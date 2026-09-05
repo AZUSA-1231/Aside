@@ -33,6 +33,7 @@ or when a decision changes a contract, ownership boundary, or release scope.
 | C5-I008 | accepted | Pi integration | Keep `vendor/pi` as the runtime and use `vendor/pi-full` selectively as reviewed source reference; do not import its unfinished harness or coding-agent authority model. | PLAN, P0-P5 |
 | C5-I009 | accepted | Workspace | Follow existing symlink/junction targets only when their canonical target remains inside the active workspace; reject canonical escapes and resolve missing targets through an in-workspace canonical parent. | P1, P2, P3 |
 | C5-I010 | accepted | Read capabilities | Use an Aside-owned workspace registry with bounded UTF-8/Markdown and JSON adapters; return typed unsupported and limit results instead of falling back to shell or generic parsing. | P2, P3, P5 |
+| C5-I011 | accepted | Write errors | Keep a filesystem mutation failure distinct from the user's permission denial so approved writes cannot report a false authorization result. | P3, P5, P6 |
 
 ## C5-I001 - Keep One Coordination Plan
 
@@ -385,3 +386,36 @@ P3 must reuse the same adapter registry and environment revalidation for write
 previews, edits, saves, and verification. P5 must preserve the registry and
 typed result shapes across the JSONL boundary without persisting unbounded file
 content.
+
+## C5-I011 - Distinguish User Denial from Filesystem Mutation Failure
+
+Status: accepted
+Discovered: P3 atomic write verification
+Affected: P3, P5, and P6
+Requirements: C5-21 through C5-25, C5-33, and C5-39
+
+### Fact
+
+The workspace environment already used `permission_denied` for an `EACCES` or
+`EPERM` failure while resolving or reading a resource. Reusing that code for
+an atomic rename failure after the user selected `allow` would make the tool
+result look like a user denial even though the permission decision was
+accepted.
+
+### Impact
+
+The Side surface and the model could mislabel an approved operation as a
+denial, and a failed atomic write could be mistaken for a successful or
+re-authorizable operation.
+
+### Decision
+
+Atomic mutation paths map backend access failures to
+`filesystem_permission_denied` (with overall `failed` status), while the
+permission broker continues to use `permission_denied` only for the explicit
+user `deny` decision. Both paths remain bounded and return no success claim.
+
+### Follow-up
+
+P5 must preserve the distinction through JSONL/IPC, and P6 must display
+approved-but-failed writes as failures rather than denials or completions.
