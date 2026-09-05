@@ -11,7 +11,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "runtime:test": "node --test agent-runtime/test/runtime.test.mjs agent-runtime/test/session.test.mjs agent-runtime/test/protocol.test.mjs agent-runtime/test/config.test.mjs agent-runtime/test/agent-contracts.test.mjs",
+    "runtime:test": "node --test agent-runtime/test/runtime.test.mjs agent-runtime/test/session.test.mjs agent-runtime/test/protocol.test.mjs agent-runtime/test/config.test.mjs agent-runtime/test/agent-contracts.test.mjs agent-runtime/test/workspace.test.mjs",
     "pi:build": "npm run build --workspace=@earendil-works/pi-telemetry && npm run build --workspace=@earendil-works/pi-ai && npm run build --workspace=@earendil-works/pi-agent-core",
     "chromium:probe": "node tools/chromium-cdp-probe.mjs",
     "tauri": "tauri",

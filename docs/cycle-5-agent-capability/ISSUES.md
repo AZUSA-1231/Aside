@@ -31,6 +31,7 @@ or when a decision changes a contract, ownership boundary, or release scope.
 | C5-I006 | accepted | Permission | The runtime broker, not React or model instructions, owns exact-operation permission state. | P3, P5, P6 |
 | C5-I007 | accepted | Evidence | Keep verification evidence in plan files and this log during delivery; create no duplicate verification file for the planning baseline. | PLAN, P6 |
 | C5-I008 | accepted | Pi integration | Keep `vendor/pi` as the runtime and use `vendor/pi-full` selectively as reviewed source reference; do not import its unfinished harness or coding-agent authority model. | PLAN, P0-P5 |
+| C5-I009 | accepted | Workspace | Follow existing symlink/junction targets only when their canonical target remains inside the active workspace; reject canonical escapes and resolve missing targets through an in-workspace canonical parent. | P1, P2, P3 |
 
 ## C5-I001 - Keep One Coordination Plan
 
@@ -319,3 +320,30 @@ skill, error, diff, and event-handling ideas and make P1-P5 less precise.
 - P5 may reuse request correlation, authoritative snapshots, transient
   progress, and framing-limit principles, but continues to implement them in
   Aside JSONL rather than importing Pi protocol/client/server.
+
+## C5-I009 - Canonical Reparse-Point Policy
+
+Status: accepted
+Discovered: P1 workspace boundary implementation
+Affected: P1, P2, P3
+Requirements: PRD sections 5.3-5.4, 7.5, and C5-09/C5-10
+
+### Fact
+
+Windows junctions/reparse points and POSIX symlinks can make a lexically
+contained path resolve outside the selected workspace. A missing write target
+does not have a canonical target yet, so its parent must be resolved before
+the target is admitted.
+
+### Decision
+
+Aside follows an existing resource to its canonical target and requires that
+target to remain inside the canonical workspace. A canonical escape returns a
+typed `scope_escape` result with no filesystem effect. A missing target is
+represented only by an in-workspace canonical parent plus its final basename;
+P3 must revalidate that parent and exact target before any write.
+
+### Follow-up
+
+P2 read tools and P3 write tools must use the same environment methods and
+retain this policy in their negative-case tests.

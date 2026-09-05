@@ -1,6 +1,6 @@
 # Cycle 5 Agent Capability Execution Plan
 
-Status: executing P1; P0 accepted on 2026-09-05
+Status: executing P2; P0 and P1 accepted on 2026-09-05
 Scope decision: 2026-09-05; `vendor/pi-full` reference review included
 Source requirements: [Cycle 5 PRD](./PRD.md)
 Long-lived constraints: [Project Architecture](../ARCHITECTURE.md)
@@ -139,12 +139,14 @@ P5 -> P6 Side surface, regression, and release verification
 
 ## Current Checkpoint
 
-P0 is accepted: the runtime now publishes Aside-owned task/tool contracts,
-bounded lifecycle events, sequential tool execution, and deterministic faux
-coverage while retaining the low-level Pi Agent boundary. P1 is the active
-checkpoint and will establish the per-run workspace environment before any
-filesystem capability is exposed. The `pi-full` review expands the
-implementation references but does not change the runtime boundary.
+P0 and P1 are accepted: the runtime now publishes Aside-owned task/tool
+contracts, bounded lifecycle events, sequential tool execution, and
+deterministic faux coverage while retaining the low-level Pi Agent boundary.
+P1 also resolves one explicit per-task workspace, keeps addressed and
+canonical paths distinct, rejects containment escapes, and withholds
+workspace-scoped tools until activation. P2 is the active checkpoint and will
+add the bounded read-only workspace capabilities. The `pi-full` review expands
+the implementation references but does not change the runtime boundary.
 
 At each checkpoint, update the affected child plan from `planning` to
 `implemented` only after its exit criteria and checks have passed. Record a

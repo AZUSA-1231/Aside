@@ -1,6 +1,6 @@
 # P1 - Task Run and Workspace Boundary
 
-Status: planning
+Status: implemented (2026-09-05)
 Depends on: P0 - Runtime Contracts and Pi Loop Boundary
 Unblocks: P2 - Capability Registry and Bounded Read Tools
 Source requirements: Cycle 5 PRD sections 3, 5, 10, 12, and 14
@@ -80,3 +80,21 @@ shell capability.
 Run runtime workspace tests on Windows, plus typecheck and the Rust regression
 tests that cover Cycle 4 descriptor serialization. Inspect the process for
 any `process.chdir()` use before closing this plan.
+
+## Verification
+
+- `npm.cmd run runtime:test` passed: 38 tests.
+- `npm.cmd run typecheck` passed.
+- `node --check` passed for the workspace and runtime modules and tests.
+- The runtime exposes no workspace-scoped tools until a valid workspace is
+  resolved, and the resolved state is emitted before `run_started`.
+- Relative and absolute target paths are checked lexically and again through
+  canonical paths. Existing symlink/junction targets are followed only when
+  their resolved target remains inside the canonical workspace; an escape is
+  rejected. Missing targets resolve only through a canonical in-workspace
+  parent for later write preparation.
+- The active workspace is retained as TaskRun state and can be explicitly
+  selected or cleared through the runtime API. Session storage and
+  `process.cwd()` remain unchanged.
+- `rg "process\\.chdir" agent-runtime src src-tauri` found no implementation
+  use.

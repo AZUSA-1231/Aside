@@ -24,6 +24,11 @@ import {
   truncateText,
   snapshotTaskRun,
 } from "./agent-contracts.mjs";
+import {
+  WorkspaceError,
+  normalizeWorkspaceHint,
+  resolveTaskWorkspace,
+} from "./workspace.mjs";
 
 export const MAX_REQUEST_ID_LENGTH = 128;
 export const MAX_PROMPT_LENGTH = 20_000;
@@ -55,6 +60,36 @@ export function sanitizeError(error) {
     .replace(/(?:key|token|secret)[-_][A-Za-z0-9._-]{8,}/gi, "[redacted]")
     .replace(/https?:\/\/[^\s]+/gi, "[provider endpoint]")
     .slice(0, 280);
+}
+
+function workspaceEventState(state) {
+  if (!state || state.status !== "resolved") return undefined;
+  return {
+    status: state.status,
+    source: state.source,
+    addressed_path: state.addressed_path,
+    canonical_path: state.canonical_path,
+    kind: state.kind,
+    ...(state.expires_at === undefined ? {} : { expires_at: state.expires_at }),
+    ...(state.target
+      ? {
+          target: {
+            role: state.target.role,
+            addressed_path: state.target.addressed_path,
+            canonical_path: state.target.canonical_path,
+            relative_path: state.target.relative_path,
+            kind: state.target.kind,
+          },
+        }
+      : {}),
+  };
+}
+
+function workspaceErrorEvent(error) {
+  return {
+    code: error?.code ?? "workspace_error",
+    message: sanitizeError(error),
+  };
 }
 
 export function isUnsuccessfulAssistantMessage(message) {
@@ -260,10 +295,13 @@ export async function createConversationRuntime({
   agent,
   onRunSettled,
   tools,
+  toolFactory,
   systemPolicy = "",
   limits = DEFAULT_AGENT_LIMITS,
   taskId,
   now = Date.now,
+  workspaceHint: configuredWorkspaceHint,
+  workspaceFileSystem,
   environment = process.env,
   configCwd = process.cwd(),
 } = {}) {
@@ -289,10 +327,14 @@ export async function createConversationRuntime({
   const conversationAgent = configured.agent;
   let active = null;
   let disposed = false;
+  let selectedWorkspace;
+  let previousWorkspace;
   if (requestedRegistry) conversationAgent.state.tools = requestedRegistry.tools;
   const initialTools = conversationAgent.state.tools;
-  const runtimeRegistry = requestedRegistry ?? normalizeToolSet(initialTools);
-  configured.registry = runtimeRegistry;
+  const baseRegistry = requestedRegistry ?? normalizeToolSet(initialTools);
+  let activeRegistry = baseRegistry.filter(
+    ({ descriptor }) => descriptor.scope !== "workspace",
+  );
   conversationAgent.toolExecution = "sequential";
 
   function wrapRuntimeTool(tool) {
@@ -319,7 +361,22 @@ export async function createConversationRuntime({
           }, remainingToolMs);
         });
         try {
-          const execution = tool.execute(toolCallId, params, controller.signal, onUpdate);
+          const implementation = typeof tool.createForRun === "function"
+            ? await tool.createForRun({
+                taskRun: run,
+                workspace: run?.environment,
+                workspaceState: run?.workspace,
+              })
+            : tool;
+          if (!implementation || typeof implementation.execute !== "function") {
+            throw new Error("The tool did not provide a run-scoped implementation.");
+          }
+          const execution = implementation.execute(
+            toolCallId,
+            params,
+            controller.signal,
+            onUpdate,
+          );
           return await Promise.race([execution, timeout]);
         } catch (error) {
           if (timedOut) {
@@ -340,7 +397,27 @@ export async function createConversationRuntime({
       },
     };
   }
-  conversationAgent.state.tools = runtimeRegistry.tools.map(wrapRuntimeTool);
+
+  function installRegistry(registry) {
+    activeRegistry = registry;
+    conversationAgent.state.tools = registry.tools.map(wrapRuntimeTool);
+  }
+
+  async function registryForRun(run, resolution) {
+    const candidateTools = toolFactory
+      ? await toolFactory({
+          taskRun: run,
+          workspace: resolution.environment,
+          workspaceState: resolution.state,
+        })
+      : baseRegistry.tools;
+    const registry = normalizeToolSet(candidateTools ?? []);
+    return resolution.environment
+      ? registry
+      : registry.filter(({ descriptor }) => descriptor.scope !== "workspace");
+  }
+
+  installRegistry(activeRegistry);
 
   const baseTransformContext = conversationAgent.transformContext;
   const baseConvertToLlm = conversationAgent.convertToLlm;
@@ -387,6 +464,16 @@ export async function createConversationRuntime({
       return {
         block: true,
         reason: "The task reached its concurrent-tool limit.",
+        terminate: true,
+      };
+    }
+    const registered = activeRegistry.get(context.toolCall.name);
+    if (registered?.descriptor.scope === "workspace" && !run.environment) {
+      run.limit_code = "workspace_required";
+      run.limit_message = "Select a workspace before using file capabilities.";
+      return {
+        block: true,
+        reason: run.limit_message,
         terminate: true,
       };
     }
@@ -554,9 +641,14 @@ export async function createConversationRuntime({
     }
   });
 
-  send({ type: "ready", provider: configured.provider, model: configured.model });
+  send({
+    type: "ready",
+    provider: configured.provider,
+    model: configured.model,
+    tools: activeRegistry.describe(),
+  });
 
-  async function prompt(requestId, text, context) {
+  async function prompt(requestId, text, context, workspaceHint) {
     const validationError = validatePromptInput(requestId, text);
     if (validationError) {
       send({
@@ -605,14 +697,44 @@ export async function createConversationRuntime({
       status: "running",
     });
     active = run;
-    send({
-      type: "run_started",
-      request_id: requestId,
-      task_id: run.task_id,
-      limits: run.limits,
-      tools: runtimeRegistry.describe(),
-    });
     try {
+      const resolution = await resolveTaskWorkspace({
+        context: normalizedContext,
+        workspaceHint: workspaceHint ?? configuredWorkspaceHint ?? selectedWorkspace,
+        previousWorkspace,
+        fileSystem: workspaceFileSystem,
+        now: now(),
+      });
+      run.workspace = resolution.state.status === "resolved"
+        ? workspaceEventState(resolution.state)
+        : undefined;
+      run.environment = resolution.environment;
+      if (resolution.state.status === "resolved") {
+        previousWorkspace = resolution.state;
+        send({
+          type: "workspace_resolved",
+          request_id: requestId,
+          task_id: run.task_id,
+          workspace: workspaceEventState(resolution.state),
+        });
+      } else {
+        send({
+          type: "workspace_unresolved",
+          request_id: requestId,
+          task_id: run.task_id,
+          code: resolution.state.code,
+          message: resolution.state.message,
+        });
+      }
+      installRegistry(await registryForRun(run, resolution));
+      send({
+        type: "run_started",
+        request_id: requestId,
+        task_id: run.task_id,
+        limits: run.limits,
+        tools: activeRegistry.describe(),
+        ...(run.workspace ? { workspace: run.workspace } : {}),
+      });
       await conversationAgent.prompt(text);
       if (!run.settled && active === run) {
         await settle(run, "completed");
@@ -627,7 +749,54 @@ export async function createConversationRuntime({
       }
     } finally {
       if (active === run) active = null;
+      installRegistry(
+        baseRegistry.filter(({ descriptor }) => descriptor.scope !== "workspace"),
+      );
     }
+  }
+
+  async function setWorkspace(ownerTaskId, workspaceHint) {
+    if (ownerTaskId !== undefined && ownerTaskId !== (taskId ?? ownerTaskId)) {
+      throw new WorkspaceError("workspace_mismatch", "The workspace belongs to another task.");
+    }
+    if (active) {
+      throw new WorkspaceError("workspace_busy", "The workspace cannot change while a task is running.");
+    }
+    const normalized = normalizeWorkspaceHint(workspaceHint);
+    if (!normalized) {
+      throw new WorkspaceError("invalid_workspace", "A workspace selection is required.");
+    }
+    const resolution = await resolveTaskWorkspace({
+      workspaceHint: normalized,
+      fileSystem: workspaceFileSystem,
+      now: now(),
+    });
+    if (!resolution.environment) {
+      throw new WorkspaceError(
+        resolution.state.code,
+        resolution.state.message,
+      );
+    }
+    selectedWorkspace = normalized;
+    previousWorkspace = resolution.state;
+    send({
+      type: "workspace_resolved",
+      task_id: ownerTaskId ?? taskId,
+      workspace: workspaceEventState(resolution.state),
+    });
+    return workspaceEventState(resolution.state);
+  }
+
+  function clearWorkspace(ownerTaskId) {
+    if (ownerTaskId !== undefined && ownerTaskId !== (taskId ?? ownerTaskId)) {
+      throw new WorkspaceError("workspace_mismatch", "The workspace belongs to another task.");
+    }
+    if (active) {
+      throw new WorkspaceError("workspace_busy", "The workspace cannot change while a task is running.");
+    }
+    selectedWorkspace = undefined;
+    previousWorkspace = undefined;
+    send({ type: "workspace_cleared", task_id: ownerTaskId ?? taskId });
   }
 
   function cancel(requestId) {
@@ -647,8 +816,12 @@ export async function createConversationRuntime({
     cancel,
     dispose,
     agent: conversationAgent,
-    registry: runtimeRegistry,
+    get registry() {
+      return activeRegistry;
+    },
     limits: configured.limits,
+    setWorkspace,
+    clearWorkspace,
     get activeTaskRun() {
       return snapshotTaskRun(active);
     },

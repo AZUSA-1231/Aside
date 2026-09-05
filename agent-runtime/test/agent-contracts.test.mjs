@@ -99,6 +99,7 @@ test("continues the same Pi loop across two registered tool results", async () =
     agent: makeAgent(faux, tools),
     emit: (event) => events.push(event),
     taskId: "task-1",
+    workspaceHint: process.cwd(),
   });
 
   await runtime.prompt("request-1", "inspect both values");
@@ -128,6 +129,7 @@ test("tool limits fail closed with one terminal event", async () => {
     agent: makeAgent(faux, [tool]),
     emit: (event) => events.push(event),
     limits: { maxToolCalls: 1 },
+    workspaceHint: process.cwd(),
   });
 
   await runtime.prompt("request-limit", "read once");

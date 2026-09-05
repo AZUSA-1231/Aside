@@ -221,7 +221,7 @@ export function createAsideToolRegistry(tools = []) {
     if (
       typeof tool.name !== "string" ||
       tool.name !== descriptor.name ||
-      typeof tool.execute !== "function" ||
+      (typeof tool.execute !== "function" && typeof tool.createForRun !== "function") ||
       !tool.parameters
     ) {
       invalid(`tools.${descriptor.name}`);
