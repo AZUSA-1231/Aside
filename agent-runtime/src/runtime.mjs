@@ -29,6 +29,7 @@ import {
   normalizeWorkspaceHint,
   resolveTaskWorkspace,
 } from "./workspace.mjs";
+import { createWorkspaceReadTools } from "./workspace-tools.mjs";
 
 export const MAX_REQUEST_ID_LENGTH = 128;
 export const MAX_PROMPT_LENGTH = 20_000;
@@ -220,7 +221,7 @@ export async function createConfiguredAgent({
   initialMessages = [],
   transformContext,
   sessionId,
-  tools = [],
+  tools,
   systemPolicy = "",
   limits = DEFAULT_AGENT_LIMITS,
   environment = process.env,
@@ -256,7 +257,7 @@ export async function createConfiguredAgent({
   const apiUrl = normalizeAsideApiUrl(getAsideConfigValue(values, "ASIDE_API_URL"));
   const model = apiUrl ? { ...configuredModel, baseUrl: apiUrl } : configuredModel;
   const normalizedLimits = normalizeAgentLimits(limits);
-  const registry = normalizeToolSet(tools);
+  const registry = normalizeToolSet(tools ?? createWorkspaceReadTools());
   const normalizedSystemPolicy = normalizeSystemPolicy(systemPolicy);
   const systemPrompt = [DEFAULT_SYSTEM_PROMPT, normalizedSystemPolicy]
     .filter((value) => typeof value === "string" && value.trim().length > 0)
@@ -330,8 +331,10 @@ export async function createConversationRuntime({
   let selectedWorkspace;
   let previousWorkspace;
   if (requestedRegistry) conversationAgent.state.tools = requestedRegistry.tools;
-  const initialTools = conversationAgent.state.tools;
-  const baseRegistry = requestedRegistry ?? normalizeToolSet(initialTools);
+  const initialTools = conversationAgent.state.tools ?? [];
+  const baseRegistry = requestedRegistry ?? normalizeToolSet(
+    initialTools.length > 0 ? initialTools : createWorkspaceReadTools(),
+  );
   let activeRegistry = baseRegistry.filter(
     ({ descriptor }) => descriptor.scope !== "workspace",
   );
@@ -490,11 +493,15 @@ export async function createConversationRuntime({
       ...context.result,
       ...(baseResult ?? {}),
     };
+    const resultDetails = candidate.details;
+    const resultIsError =
+      candidate.isError === true ||
+      ["failed", "unsupported", "cancelled"].includes(resultDetails?.status);
     const bounded = boundedToolResult(candidate, normalizedLimits.maxToolResultBytes);
     return {
       content: bounded.content,
       details: bounded.details,
-      isError: baseResult?.isError ?? context.isError,
+      isError: Boolean(baseResult?.isError ?? context.isError) || resultIsError,
       ...(bounded.terminate || baseResult?.terminate ? { terminate: true } : {}),
     };
   };

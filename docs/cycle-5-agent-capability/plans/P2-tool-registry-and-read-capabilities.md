@@ -1,6 +1,6 @@
 # P2 - Capability Registry and Bounded Read Tools
 
-Status: planning
+Status: implemented (2026-09-05)
 Depends on: P1 - Task Run and Workspace Boundary
 Unblocks: P3 - Permission-Gated Writes and Verification
 Source requirements: Cycle 5 PRD sections 4, 5, 6, 9, 11, and 16.3/16.6
@@ -94,3 +94,22 @@ the implementation must call P1's environment and preserve the Aside-owned
 Run runtime faux-provider/tool tests, typecheck, and the complete Rust test
 suite. Inspect the active tool list in a test TaskRun and confirm every entry
 has all required effect, scope, replay, and display fields.
+
+## Verification
+
+- `node --test agent-runtime/test/workspace-tools.test.mjs` passed: 5 tests.
+- `npm.cmd run runtime:test` passed: 43 tests.
+- `npm.cmd run typecheck` passed.
+- `npm.cmd run build` passed.
+- `cargo fmt --manifest-path src-tauri/Cargo.toml --check` passed.
+- `cargo check --manifest-path src-tauri/Cargo.toml` passed.
+- `cargo test --manifest-path src-tauri/Cargo.toml` passed: 30 tests.
+- `node --check` passed for the changed runtime modules and P2 tests.
+- `git diff --check` passed.
+- The active registry exposes exactly `workspace.list`, `workspace.search`,
+  `workspace.stat`, and `workspace.read` after workspace activation; no shell,
+  process, network, or host tool is registered.
+- Faux filesystem coverage proves text/Markdown and JSON reads, recursive
+  explicit search, bounded list/read output, typed unsupported/escape/missing/
+  limit/cancel results, schema rejection, and default runtime integration.
+- `vendor/pi-full/` remains ignored and untracked.

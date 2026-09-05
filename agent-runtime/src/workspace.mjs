@@ -137,7 +137,9 @@ function mapFsError(error, path) {
   if (error instanceof WorkspaceError) return error;
   const code = error?.code;
   const mapped =
-    code === "ENOENT" || code === "ENOTDIR"
+    code === "ABORT_ERR" || error?.name === "AbortError"
+      ? "aborted"
+      : code === "ENOENT" || code === "ENOTDIR"
       ? "not_found"
       : code === "EACCES" || code === "EPERM"
         ? "permission_denied"
@@ -150,6 +152,8 @@ function mapFsError(error, path) {
     mapped,
     mapped === "permission_denied"
       ? "The workspace resource could not be accessed because permission was denied."
+      : mapped === "aborted"
+        ? "The workspace operation was cancelled."
       : mapped === "not_found"
         ? "The workspace resource was not found."
         : "The workspace resource could not be accessed.",
@@ -507,6 +511,43 @@ export function createWorkspaceEnvironment({ state, fileSystem } = {}) {
     }
   }
 
+  async function readBytes(addressedPath, options = {}) {
+    const maxBytes = options.maxBytes;
+    if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) {
+      throw new WorkspaceError("invalid_limit", "A positive binary read limit is required.");
+    }
+    if (options.signal?.aborted) {
+      throw new WorkspaceError("aborted", "The workspace operation was cancelled.", addressedPath);
+    }
+    const resolved = await resolvePath(addressedPath, { expectedKind: "file" });
+    if (resolved.identity.size > maxBytes) {
+      throw new WorkspaceError("result_too_large", "The workspace file exceeds the read limit.", addressedPath, {
+        size: resolved.identity.size,
+        max_bytes: maxBytes,
+      });
+    }
+    try {
+      const value = await backend.readFile(resolved.canonical_path, {
+        signal: options.signal,
+      });
+      const bytes = value instanceof Uint8Array
+        ? value
+        : textEncoder.encode(String(value));
+      if (options.signal?.aborted) {
+        throw new WorkspaceError("aborted", "The workspace operation was cancelled.", addressedPath);
+      }
+      if (bytes.byteLength > maxBytes) {
+        throw new WorkspaceError("result_too_large", "The workspace file exceeds the read limit.", addressedPath, {
+          size: bytes.byteLength,
+          max_bytes: maxBytes,
+        });
+      }
+      return { ...resolved, bytes };
+    } catch (error) {
+      throw mapFsError(error, addressedPath);
+    }
+  }
+
   async function listDirectory(addressedPath = ".", options = {}) {
     const maxEntries = options.maxEntries;
     if (!Number.isSafeInteger(maxEntries) || maxEntries <= 0) {
@@ -519,11 +560,13 @@ export function createWorkspaceEnvironment({ state, fileSystem } = {}) {
     } catch (error) {
       throw mapFsError(error, addressedPath);
     }
-    if (entries.length > maxEntries) {
-      entries = entries.slice(0, maxEntries);
-    }
+    const truncated = entries.length > maxEntries;
+    if (truncated) entries = entries.slice(0, maxEntries);
     const values = [];
     for (const entry of entries) {
+      if (options.signal?.aborted) {
+        throw new WorkspaceError("aborted", "The workspace operation was cancelled.", addressedPath);
+      }
       const childAddressed = nativePath.join(resolved.relative_path === "." ? "" : resolved.relative_path, entry.name) || entry.name;
       const childAbsolute = assertWithinWorkspace(childAddressed);
       let child;
@@ -545,7 +588,7 @@ export function createWorkspaceEnvironment({ state, fileSystem } = {}) {
       }
       if (child.kind === "file" || child.kind === "directory") values.push(child);
     }
-    return { ...resolved, entries: values, truncated: entries.length >= maxEntries };
+    return { ...resolved, entries: values, truncated };
   }
 
   async function assertCurrent() {
@@ -564,6 +607,7 @@ export function createWorkspaceEnvironment({ state, fileSystem } = {}) {
     revalidate,
     statPath,
     readText,
+    readBytes,
     listDirectory,
     assertCurrent,
     async exists(addressedPath) {

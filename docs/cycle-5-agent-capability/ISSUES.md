@@ -32,6 +32,7 @@ or when a decision changes a contract, ownership boundary, or release scope.
 | C5-I007 | accepted | Evidence | Keep verification evidence in plan files and this log during delivery; create no duplicate verification file for the planning baseline. | PLAN, P6 |
 | C5-I008 | accepted | Pi integration | Keep `vendor/pi` as the runtime and use `vendor/pi-full` selectively as reviewed source reference; do not import its unfinished harness or coding-agent authority model. | PLAN, P0-P5 |
 | C5-I009 | accepted | Workspace | Follow existing symlink/junction targets only when their canonical target remains inside the active workspace; reject canonical escapes and resolve missing targets through an in-workspace canonical parent. | P1, P2, P3 |
+| C5-I010 | accepted | Read capabilities | Use an Aside-owned workspace registry with bounded UTF-8/Markdown and JSON adapters; return typed unsupported and limit results instead of falling back to shell or generic parsing. | P2, P3, P5 |
 
 ## C5-I001 - Keep One Coordination Plan
 
@@ -347,3 +348,40 @@ P3 must revalidate that parent and exact target before any write.
 
 P2 read tools and P3 write tools must use the same environment methods and
 retain this policy in their negative-case tests.
+
+## C5-I010 - Bounded Read Capability Contract
+
+Status: accepted
+Discovered: P2 read capability implementation
+Affected: P2, P3, and P5
+Requirements: PRD sections 6.1-6.3, 9.3, 11.2, 14, and C5-13 through C5-18
+
+### Fact
+
+The low-level Pi Agent accepts tool schemas and execution implementations, but
+it does not define Aside's workspace path policy, document format policy, or
+bounded result shape. Pi-full provides useful line/byte truncation and typed
+filesystem ideas, while its coding-agent read tool also includes image and
+fixed-cwd assumptions that are outside this cycle.
+
+### Impact
+
+Passing through a generic file reader would make unsupported binary/structured
+formats ambiguous, allow output bounds to diverge between tools, and make the
+model-visible capability list differ from the runtime authority.
+
+### Decision
+
+P2 owns an Aside registry containing only `workspace.list`,
+`workspace.search`, `workspace.stat`, and `workspace.read`. The tools use P1's
+run-scoped environment, bounded UTF-8 text/Markdown and JSON adapters, explicit
+search traversal, canonical path results, and typed bounded failure details.
+Known unsupported binary/structured extensions and invalid UTF-8 return an
+unsupported result; no shell, process, or unsafe parser fallback exists.
+
+### Follow-up
+
+P3 must reuse the same adapter registry and environment revalidation for write
+previews, edits, saves, and verification. P5 must preserve the registry and
+typed result shapes across the JSONL boundary without persisting unbounded file
+content.

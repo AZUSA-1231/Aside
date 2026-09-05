@@ -33,6 +33,15 @@ const effects = new Set(["read", "write", "external"]);
 const scopes = new Set(["workspace", "host", "application", "none"]);
 const replayPolicies = new Set(["safe", "non_replayable"]);
 const identifierPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
+const schemaTypes = new Set([
+  "array",
+  "boolean",
+  "integer",
+  "null",
+  "number",
+  "object",
+  "string",
+]);
 
 export class AsideContractError extends Error {
   constructor(message, code = "invalid_contract") {
@@ -50,6 +59,48 @@ function isPlainObject(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
+}
+
+function isToolSchema(value, depth = 0) {
+  if (!isPlainObject(value) || depth > 8) return false;
+
+  if (typeof value.type === "string") {
+    if (!schemaTypes.has(value.type)) return false;
+    if (value.properties !== undefined) {
+      if (!isPlainObject(value.properties)) return false;
+      if (
+        Object.values(value.properties).some(
+          (property) => !isToolSchema(property, depth + 1),
+        )
+      ) {
+        return false;
+      }
+    }
+    if (value.items !== undefined && !isToolSchema(value.items, depth + 1)) {
+      return false;
+    }
+    if (
+      value.required !== undefined &&
+      (!Array.isArray(value.required) ||
+        value.required.some((field) => typeof field !== "string"))
+    ) {
+      return false;
+    }
+    if (value.enum !== undefined && !Array.isArray(value.enum)) return false;
+    return true;
+  }
+
+  for (const key of ["allOf", "anyOf", "oneOf"]) {
+    if (
+      value[key] !== undefined &&
+      Array.isArray(value[key]) &&
+      value[key].length > 0 &&
+      value[key].every((variant) => isToolSchema(variant, depth + 1))
+    ) {
+      return true;
+    }
+  }
+  return "const" in value || (Array.isArray(value.enum) && value.enum.length > 0);
 }
 
 export function byteLength(value) {
@@ -81,7 +132,7 @@ function redactText(value) {
 }
 
 function redactValue(value, depth = 0) {
-  if (depth > 4) return "[nested value omitted]";
+  if (depth > 8) return "[nested value omitted]";
   if (typeof value === "string") return redactText(value);
   if (value === null || typeof value === "number" || typeof value === "boolean") {
     return value;
@@ -222,9 +273,9 @@ export function createAsideToolRegistry(tools = []) {
       typeof tool.name !== "string" ||
       tool.name !== descriptor.name ||
       (typeof tool.execute !== "function" && typeof tool.createForRun !== "function") ||
-      !tool.parameters
+      !isToolSchema(tool.parameters)
     ) {
-      invalid(`tools.${descriptor.name}`);
+      invalid(`tools.${descriptor.name}`, "must include a valid execution boundary and parameter schema");
     }
     if (byName.has(descriptor.name)) {
       throw new AsideContractError(
