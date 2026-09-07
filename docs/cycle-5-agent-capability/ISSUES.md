@@ -34,6 +34,7 @@ or when a decision changes a contract, ownership boundary, or release scope.
 | C5-I009 | accepted | Workspace | Follow existing symlink/junction targets only when their canonical target remains inside the active workspace; reject canonical escapes and resolve missing targets through an in-workspace canonical parent. | P1, P2, P3 |
 | C5-I010 | accepted | Read capabilities | Use an Aside-owned workspace registry with bounded UTF-8/Markdown and JSON adapters; return typed unsupported and limit results instead of falling back to shell or generic parsing. | P2, P3, P5 |
 | C5-I011 | accepted | Write errors | Keep a filesystem mutation failure distinct from the user's permission denial so approved writes cannot report a false authorization result. | P3, P5, P6 |
+| C5-I012 | accepted | Workspace | Keep test identities distinguishable: same-size/same-ms rewrites and inode reuse can make `sameWorkspaceIdentity` match across a real replacement, so deterministic tests must vary size and mtime. | P1, P3, P4 |
 
 ## C5-I001 - Keep One Coordination Plan
 
@@ -419,3 +420,42 @@ user `deny` decision. Both paths remain bounded and return no success claim.
 
 P5 must preserve the distinction through JSONL/IPC, and P6 must display
 approved-but-failed writes as failures rather than denials or completions.
+
+## C5-I012 - Test Identities Must Stay Distinguishable Across Replacement
+
+Status: accepted
+Discovered: pre-P4 stability run
+Affected: P1, P3, and P4
+Requirements: C5-10, C5-24, and the PLAN deterministic-test rule
+
+### Fact
+
+`agent-runtime/test/workspace.test.mjs` ("revalidates a prepared target and
+detects replacement") intermittently failed: roughly 2 of 7 runs reported no
+`stale_target` after an unlink/recreate. The fixture wrote `"original"` and
+`"replaced"` — both 8 bytes — so size could not distinguish them, and a
+rewrite inside the same millisecond collides under `Math.trunc(mtimeMs)`.
+NTFS can also reuse the inode after unlink + recreate. When every field in
+`sameWorkspaceIdentity` matches, the real replacement correctly looks
+identical to the prepared identity.
+
+### Impact
+
+The quality gate was not deterministic. P3's stale-target revalidation (a
+permission-safety property) and P4's resource revalidation both rely on the
+same identity comparison, so the evidence base needed a stable fix before P4
+started.
+
+### Decision
+
+Keep `sameWorkspaceIdentity` semantics unchanged. Deterministic tests must
+make replacement observations distinguishable: vary content length and set
+explicit mtimes with `utimes`. The affected test now uses a longer replacement
+body and epoch mtime, and 10 consecutive runs plus the full runtime suite
+pass.
+
+### Follow-up
+
+If a future cycle needs stronger same-size detection (for example content
+hash in the identity), record it as a contract change there; this cycle keeps
+the stat-based identity and its documented limits.

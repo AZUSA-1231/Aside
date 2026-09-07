@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, symlink, unlink, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, symlink, unlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import test from "node:test";
@@ -140,8 +140,12 @@ test("revalidates a prepared target and detects replacement", async () => {
     const prepared = await resolution.environment.resolvePath("notes.txt", {
       expectedKind: "file",
     });
+    // Distinct sizes and explicit mtimes so the replacement cannot collide
+    // with the original identity (same-ms rewrites and inode reuse otherwise
+    // make sameWorkspaceIdentity match and skip stale_target).
     await unlink(file);
-    await writeFile(file, "replaced", "utf8");
+    await writeFile(file, "replaced-with-different-length-content", "utf8");
+    await utimes(file, new Date(0), new Date(0));
     await assert.rejects(
       resolution.environment.revalidate(prepared, { expectedKind: "file" }),
       (error) => error instanceof WorkspaceError && error.code === "stale_target",
