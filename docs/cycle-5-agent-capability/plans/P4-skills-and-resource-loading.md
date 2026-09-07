@@ -1,6 +1,6 @@
 # P4 - Skills and Resource Loading
 
-Status: planning
+Status: implemented (2026-09-07)
 Depends on: P2 - Capability Registry and Bounded Read Tools and P3 - Permission-Gated Writes and Verification
 Unblocks: P5 - Session, IPC, and Protocol Integration
 Source requirements: Cycle 5 PRD sections 3, 4, 8, 9, 10, 14, and 16.5
@@ -79,3 +79,31 @@ not assume a coding-only repository.
 Run skill-loader and runtime isolation tests with faux resources. Inspect the
 model-visible tool list before and after activation to prove it is unchanged
 unless a separately reviewed registry decision made the change.
+
+## Verification
+
+- `node --test agent-runtime/test/skill-loader.test.mjs` passed: 15 tests
+  covering valid layout, malformed frontmatter, invalid name/description,
+  oversize and encoding diagnostics, duplicate/source priority, explicit
+  resource policy, missing roots, ignore files, expected-tool validation, the
+  bounded manifest, and the per-source skill cap.
+- `node --test agent-runtime/test/skill-runtime.test.mjs` passed: 8 tests
+  covering ready-event publication, activation/clear, unknown-skill rejection,
+  non-array `skills` rejection, transient instruction projection with a clean
+  agent transcript, an unchanged tool registry after activation, an
+  unregistered `host.execute` call blocked with a failed tool result,
+  workspace-tool unavailability without a resolved workspace, and a
+  skill-invoked write that still requires the runtime permission broker.
+- `npm.cmd run runtime:test` passed: 76 tests (the pre-P4 53 plus the new 23).
+- `npm.cmd run typecheck` and `npm.cmd run build` passed.
+- `cargo fmt --manifest-path src-tauri/Cargo.toml --check`, `cargo check`, and
+  `cargo test --manifest-path src-tauri/Cargo.toml` passed: 30 tests.
+- `node --check` passed for the loader, runtime, context, session, and both new
+  test modules; `git diff --check` passed. The full runtime suite passed across
+  three consecutive runs.
+- The default production path (`createConfiguredAgent`) loads the three bundled
+  `SKILL.md` skills and appends a bounded `<available_skills>` manifest to the
+  system prompt; the model-visible list is unchanged by activation.
+- Built-in skills: `agent-runtime/skills/inspect-summarize`,
+  `revise-document`, and `transform-report`, each bounded and referencing only
+  the registered `workspace.*` tools.

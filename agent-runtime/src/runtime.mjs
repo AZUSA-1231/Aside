@@ -1,6 +1,7 @@
 import { Agent } from "@earendil-works/pi-agent-core/aside";
 import { createModels, defaultProviderAuthContext } from "@earendil-works/pi-ai";
 import {
+  buildSkillProjection,
   projectAsideContext,
   toProviderMessages,
   validateTurnContext,
@@ -11,6 +12,7 @@ import {
   normalizeAsideApiUrl,
 } from "./config.mjs";
 import {
+  AsideContractError,
   DEFAULT_AGENT_LIMITS,
   assertSafeText,
   boundedToolResult,
@@ -24,6 +26,13 @@ import {
   truncateText,
   snapshotTaskRun,
 } from "./agent-contracts.mjs";
+import {
+  DEFAULT_BUILTIN_SKILLS_ROOT,
+  buildSkillManifest,
+  loadSkills,
+  skillEvent,
+  skillEventList,
+} from "./skill-loader.mjs";
 import {
   WorkspaceError,
   normalizeWorkspaceHint,
@@ -237,6 +246,40 @@ function validatePromptInput(requestId, text) {
   return null;
 }
 
+async function loadRuntimeSkills(skills, skillLoader) {
+  if (skills !== undefined) {
+    if (!Array.isArray(skills)) {
+      throw new AsideContractError(
+        'The runtime field "skills" must be an array.',
+        "invalid_skills",
+      );
+    }
+    return { skills, diagnostics: [] };
+  }
+  const loaded = await (skillLoader ?? (() =>
+    loadSkills({ builtinRoot: DEFAULT_BUILTIN_SKILLS_ROOT })))();
+  return {
+    skills: Array.isArray(loaded?.skills) ? loaded.skills : [],
+    diagnostics: Array.isArray(loaded?.diagnostics) ? loaded.diagnostics : [],
+  };
+}
+
+function normalizeSkillOptions(skills, skillDiagnostics) {
+  if (skills !== undefined && !Array.isArray(skills)) {
+    throw new AsideContractError(
+      'The runtime field "skills" must be an array.',
+      "invalid_skills",
+    );
+  }
+  if (skillDiagnostics !== undefined && !Array.isArray(skillDiagnostics)) {
+    throw new AsideContractError(
+      'The runtime field "skill_diagnostics" must be an array.',
+      "invalid_skills",
+    );
+  }
+  return { skills, skillDiagnostics };
+}
+
 export async function createConfiguredAgent({
   initialMessages = [],
   transformContext,
@@ -246,6 +289,8 @@ export async function createConfiguredAgent({
   limits = DEFAULT_AGENT_LIMITS,
   environment = process.env,
   configCwd = process.cwd(),
+  skills,
+  skillLoader,
 } = {}) {
   const configuration = await loadAsideConfig({
     cwd: configCwd,
@@ -279,7 +324,13 @@ export async function createConfiguredAgent({
   const normalizedLimits = normalizeAgentLimits(limits);
   const registry = normalizeToolSet(tools ?? createDefaultWorkspaceTools());
   const normalizedSystemPolicy = normalizeSystemPolicy(systemPolicy);
-  const systemPrompt = [DEFAULT_SYSTEM_PROMPT, normalizedSystemPolicy]
+  const loadedSkills = await loadRuntimeSkills(skills, skillLoader);
+  const skillManifestText = buildSkillManifest(loadedSkills.skills);
+  const systemPrompt = [
+    DEFAULT_SYSTEM_PROMPT,
+    normalizedSystemPolicy,
+    skillManifestText,
+  ]
     .filter((value) => typeof value === "string" && value.trim().length > 0)
     .join("\n\n");
 
@@ -308,6 +359,8 @@ export async function createConfiguredAgent({
     model: model.id,
     registry,
     limits: normalizedLimits,
+    skills: loadedSkills.skills,
+    skillDiagnostics: loadedSkills.diagnostics,
   };
 }
 
@@ -326,6 +379,8 @@ export async function createConversationRuntime({
   permissionBroker,
   environment = process.env,
   configCwd = process.cwd(),
+  skills,
+  skillDiagnostics,
 } = {}) {
   const send = emit ?? (() => undefined);
   const normalizedLimits = normalizeAgentLimits(limits);
@@ -339,11 +394,14 @@ export async function createConversationRuntime({
   const requestedRegistry = tools === undefined
     ? undefined
     : normalizeToolSet(tools);
+  normalizeSkillOptions(skills, skillDiagnostics);
   const configured = agent
     ? {
         ...describeAgent(agent),
         registry: requestedRegistry ?? normalizeToolSet([]),
         limits: normalizedLimits,
+        skills: skills ?? [],
+        skillDiagnostics: skillDiagnostics ?? [],
       }
     : await createConfiguredAgent({
         environment,
@@ -351,8 +409,11 @@ export async function createConversationRuntime({
         tools,
         systemPolicy: normalizedSystemPolicy,
         limits: normalizedLimits,
+        skills,
       });
   const conversationAgent = configured.agent;
+  const runtimeSkills = configured.skills ?? [];
+  let activeSkillName;
   let active = null;
   let disposed = false;
   let selectedWorkspace;
@@ -461,7 +522,10 @@ export async function createConversationRuntime({
       ? await baseTransformContext(messages, signal)
       : messages;
     const run = active;
-    return projectAsideContext(transformed, run?.context, run?.text);
+    const skillProjection = run?.active_skill
+      ? buildSkillProjection(run.active_skill, run.skill_instructions)
+      : undefined;
+    return projectAsideContext(transformed, run?.context, run?.text, skillProjection);
   };
   conversationAgent.convertToLlm = async (messages) =>
     baseConvertToLlm(toProviderMessages(messages));
@@ -500,7 +564,18 @@ export async function createConversationRuntime({
       };
     }
     const registered = activeRegistry.get(context.toolCall.name);
-    if (registered?.descriptor.scope === "workspace" && !run.environment) {
+    if (!registered) {
+      // Defense in depth: the Pi loop rejects unknown tools before this hook
+      // runs, but the registry authority must hold even if that changes.
+      run.limit_code = "unregistered_tool";
+      run.limit_message = `The tool "${context.toolCall.name}" is not available.`;
+      return {
+        block: true,
+        reason: run.limit_message,
+        terminate: true,
+      };
+    }
+    if (registered.descriptor.scope === "workspace" && !run.environment) {
       run.limit_code = "workspace_required";
       run.limit_message = "Select a workspace before using file capabilities.";
       return {
@@ -682,6 +757,10 @@ export async function createConversationRuntime({
     provider: configured.provider,
     model: configured.model,
     tools: activeRegistry.describe(),
+    ...(runtimeSkills.length > 0 ? { skills: skillEventList(runtimeSkills) } : {}),
+    ...(configured.skillDiagnostics?.length > 0
+      ? { skill_diagnostics: configured.skillDiagnostics }
+      : {}),
   });
 
   async function prompt(requestId, text, context, workspaceHint) {
@@ -725,12 +804,21 @@ export async function createConversationRuntime({
       limits: normalizedLimits,
       now: now(),
     });
+    const activeSkill = activeSkillName
+      ? runtimeSkills.find((candidate) => candidate.name === activeSkillName)
+      : undefined;
     Object.assign(run, {
       text,
       context: normalizedContext,
       cancel_requested: false,
       settled: false,
       status: "running",
+      ...(activeSkill
+        ? {
+            active_skill: skillEvent(activeSkill),
+            skill_instructions: activeSkill.instructions,
+          }
+        : {}),
     });
     active = run;
     try {
@@ -770,6 +858,7 @@ export async function createConversationRuntime({
         limits: run.limits,
         tools: activeRegistry.describe(),
         ...(run.workspace ? { workspace: run.workspace } : {}),
+        ...(run.active_skill ? { active_skill: run.active_skill } : {}),
       });
       await conversationAgent.prompt(text);
       if (!run.settled && active === run) {
@@ -849,6 +938,31 @@ export async function createConversationRuntime({
     return runtimePermissionBroker.resolve(permissionId, decision, identity);
   }
 
+  function setActiveSkill(name) {
+    const skill = runtimeSkills.find((candidate) => candidate.name === name);
+    if (!skill) {
+      throw new AsideContractError(
+        `The skill "${name}" is not available.`,
+        "unknown_skill",
+      );
+    }
+    activeSkillName = name;
+    send({
+      type: "skill_activated",
+      ...(taskId ? { task_id: taskId } : {}),
+      skill: skillEvent(skill),
+    });
+    return skillEvent(skill);
+  }
+
+  function clearActiveSkill() {
+    activeSkillName = undefined;
+    send({
+      type: "skill_cleared",
+      ...(taskId ? { task_id: taskId } : {}),
+    });
+  }
+
   function dispose() {
     disposed = true;
     runtimePermissionBroker.dispose?.();
@@ -869,6 +983,18 @@ export async function createConversationRuntime({
     clearWorkspace,
     resolvePermission,
     permissionBroker: runtimePermissionBroker,
+    setActiveSkill,
+    clearActiveSkill,
+    get skills() {
+      return skillEventList(runtimeSkills);
+    },
+    get activeSkill() {
+      return activeSkillName
+        ? skillEvent(
+            runtimeSkills.find((candidate) => candidate.name === activeSkillName),
+          )
+        : undefined;
+    },
     get pendingPermissions() {
       return runtimePermissionBroker.snapshot?.() ?? [];
     },

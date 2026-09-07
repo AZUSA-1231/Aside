@@ -35,6 +35,9 @@ or when a decision changes a contract, ownership boundary, or release scope.
 | C5-I010 | accepted | Read capabilities | Use an Aside-owned workspace registry with bounded UTF-8/Markdown and JSON adapters; return typed unsupported and limit results instead of falling back to shell or generic parsing. | P2, P3, P5 |
 | C5-I011 | accepted | Write errors | Keep a filesystem mutation failure distinct from the user's permission denial so approved writes cannot report a false authorization result. | P3, P5, P6 |
 | C5-I012 | accepted | Workspace | Keep test identities distinguishable: same-size/same-ms rewrites and inode reuse can make `sameWorkspaceIdentity` match across a real replacement, so deterministic tests must vary size and mtime. | P1, P3, P4 |
+| C5-I013 | accepted | Tool safety | Pi's `prepareToolCall` rejects an unregistered tool with an immediate error result before the runtime `beforeToolCall` hook runs, so skill content that references an unregistered capability is blocked by the loop itself. | P4, P5 |
+| C5-I014 | accepted | Skills | Full skill instructions live only in the transient context projection; the task-run snapshot and durable session carry skill metadata only, so hidden source content cannot become durable workspace or session state. | P4, P5 |
+| C5-I015 | accepted | Skills | The frontmatter parser accepts scalar `key: value` lines only; indented YAML lists are diagnosed and the skill skipped rather than partially interpreted. | P4, P5 |
 
 ## C5-I001 - Keep One Coordination Plan
 
@@ -459,3 +462,104 @@ pass.
 If a future cycle needs stronger same-size detection (for example content
 hash in the identity), record it as a contract change there; this cycle keeps
 the stat-based identity and its documented limits.
+
+## C5-I013 - Pi Blocks Unregistered Tools Before the Runtime Hook
+
+Status: accepted
+Discovered: P4 skill isolation implementation
+Affected: P4 and P5
+Requirements: C5-30
+
+### Fact
+
+Pi's `prepareToolCall` looks a tool up in `currentContext.tools` and, when the
+name is absent, returns an immediate error tool result (`Tool X not found`)
+without invoking the runtime's `beforeToolCall` hook. Skill content cannot
+expand the registry, so a model following a hostile skill and calling an
+unregistered capability hits that immediate error path.
+
+### Impact
+
+The unregistered-capability guarantee in C5-30 is enforced by the Pi loop
+itself once the registry is authoritative. The runtime only needs to keep the
+registry unchanged across skill activation and to report the resulting failed
+tool result truthfully.
+
+### Decision
+
+P4 relies on the loop-level rejection and proves it with a faux provider that
+emits `host.execute` while a hostile skill is active: the tool result is
+`failed`, the run completes, and the registry never contains the name. P5 must
+preserve the same registry authority and typed failure shape through the
+JSONL/IPC boundary.
+
+### Follow-up
+
+No registry bypass exists today. If a future cycle adds dynamic capability
+expansion, it must re-review this loop-level guard.
+
+## C5-I014 - Skill Instructions Are Transient, Not Durable
+
+Status: accepted
+Discovered: P4 skill projection implementation
+Affected: P4 and P5
+Requirements: PRD sections 8.2, 10.2, and C5-27
+
+### Fact
+
+Full skill instructions are large, model-oriented reference data. Projecting
+them through the aside-context marker keeps them out of `agent.state.messages`,
+while `run.active_skill` in the task-run snapshot carries only name,
+description, source, and expected-tool metadata.
+
+### Impact
+
+If the full instructions were part of the task-run snapshot or the durable
+transcript, hidden skill source content could silently become session or
+workspace state, violating PRD section 10.2.
+
+### Decision
+
+Activation stores metadata on the run (`active_skill`) and the full
+instructions in a separate transient field (`skill_instructions`) that the
+context projection reads and the snapshot omits. P5 must keep the two
+distinct when skills cross the JSONL/IPC boundary.
+
+### Follow-up
+
+User and project skills load only under an explicit resource policy; the
+initial cycle enables builtin skills by default through `createConfiguredAgent`.
+
+## C5-I015 - Frontmatter Parser Accepts Scalar Frontmatter Only
+
+Status: accepted
+Discovered: P4 code review (code-reviewer agent)
+Affected: P4
+Requirements: PRD section 8.2
+
+### Fact
+
+The hand-rolled frontmatter parser treats every non-empty line as a
+`key: value` pair. The supported forms are scalar values, quoted strings, and
+comma-separated or JSON-array `expects` lists. A SKILL.md that uses an
+indented YAML list (`expects:` followed by `- workspace.read` lines) raises a
+`parse_failed` diagnostic and the whole skill is discarded.
+
+### Impact
+
+Initial built-in and approved skills use the supported scalar/comma forms, so
+no current source is affected. External SKILL.md content that follows the
+indented-list convention is rejected loudly rather than partially interpreted.
+
+### Decision
+
+Keep the strict scalar parser for this cycle. Malformed or unsupported
+frontmatter is diagnosed and ignored, never partially executed. The known
+convention gap is documented so an explicit decision can expand the parser in
+a later cycle if needed.
+
+### Follow-up
+
+P5 must keep skill loading diagnostics distinct from tool results across the
+JSONL/IPC boundary. A future cycle may extend the parser to indented YAML
+lists without changing the capability boundary.

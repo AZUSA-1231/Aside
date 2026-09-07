@@ -339,6 +339,8 @@ export async function createAsideConversationRuntime({
   for (const warning of opened.warnings) send({ type: "session_warning", message: warning });
 
   let conversationAgent = agent;
+  let configuredSkills = [];
+  let configuredSkillDiagnostics = [];
   if (conversationAgent) {
     conversationAgent.state.messages = restored.messages;
     conversationAgent.sessionId = opened.metadata.id;
@@ -348,6 +350,8 @@ export async function createAsideConversationRuntime({
       sessionId: opened.metadata.id,
     });
     conversationAgent = configured.agent;
+    configuredSkills = configured.skills ?? [];
+    configuredSkillDiagnostics = configured.skillDiagnostics ?? [];
   }
 
   const persistRun = createSessionPersistence(opened.session, restored.messages);
@@ -357,6 +361,8 @@ export async function createAsideConversationRuntime({
     onRunSettled: persistRun,
     environment,
     configCwd,
+    skills: configuredSkills,
+    skillDiagnostics: configuredSkillDiagnostics,
   });
   return {
     ...runtime,
