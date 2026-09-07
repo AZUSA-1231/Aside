@@ -7,7 +7,10 @@ use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State, 
 
 use crate::context::{self, HostCaptureResult, HostTargetSnapshot, HostView};
 use crate::platform::{self, Rect, TargetWindow};
-use crate::runtime::{AsideTurnContext, RuntimeManager, RuntimeRequest};
+use crate::runtime::{
+    AsideTurnContext, AsideWorkspaceHint, PermissionDecision, PermissionIdentity, RuntimeManager,
+    RuntimeRequest,
+};
 use crate::workspace::{self, WorkspaceSnapshot};
 
 pub const AGENT_STATE_EVENT: &str = "agent://state-changed";
@@ -773,6 +776,115 @@ pub fn runtime_cancel(
         .runtime
         .send(&app, RuntimeRequest::Cancel { request_id })
         .map_err(|message| native_error("conversation_cancel", message, true))
+}
+
+#[tauri::command]
+pub fn runtime_permission_response(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    request_id: String,
+    permission_id: String,
+    decision: PermissionDecision,
+    identity: Option<PermissionIdentity>,
+) -> Result<(), NativeError> {
+    if request_id.is_empty() || request_id.len() > 128 {
+        return Err(native_error(
+            "conversation",
+            "The permission response could not be matched to a request.",
+            true,
+        ));
+    }
+    if permission_id.is_empty() || permission_id.len() > 160 {
+        return Err(native_error(
+            "conversation",
+            "The permission response could not be matched to a pending decision.",
+            true,
+        ));
+    }
+    if let Some(id) = &identity {
+        for (field, value) in [
+            ("request_id", id.request_id.as_ref()),
+            ("task_id", id.task_id.as_ref()),
+            ("tool_call_id", id.tool_call_id.as_ref()),
+        ] {
+            if let Some(value) = value {
+                if value.is_empty() || value.len() > 160 {
+                    return Err(native_error(
+                        "conversation",
+                        format!("The permission identity field {field} is invalid."),
+                        true,
+                    ));
+                }
+            }
+        }
+    }
+    state
+        .runtime
+        .send(
+            &app,
+            RuntimeRequest::PermissionResponse {
+                request_id,
+                permission_id,
+                decision,
+                identity,
+            },
+        )
+        .map_err(|message| native_error("conversation", message, true))
+}
+
+fn workspace_hint_path(hint: &AsideWorkspaceHint) -> Option<&str> {
+    match hint {
+        AsideWorkspaceHint::Path(path) => Some(path.as_str()),
+        AsideWorkspaceHint::Descriptor { path, .. } => Some(path.as_str()),
+    }
+}
+
+fn validate_optional_task_id(task_id: &Option<String>) -> Result<(), NativeError> {
+    if let Some(id) = task_id {
+        if id.is_empty() || id.len() > 160 {
+            return Err(native_error(
+                "workspace",
+                "The workspace task identifier is invalid.",
+                true,
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn runtime_set_workspace(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    task_id: Option<String>,
+    workspace: AsideWorkspaceHint,
+) -> Result<(), NativeError> {
+    validate_optional_task_id(&task_id)?;
+    let path = workspace_hint_path(&workspace).unwrap_or_default();
+    if path.trim().is_empty() || path.len() > 4_096 {
+        return Err(native_error(
+            "workspace",
+            "The workspace selection is invalid.",
+            true,
+        ));
+    }
+    state
+        .runtime
+        .send(&app, RuntimeRequest::SetWorkspace { task_id, workspace })
+        .map_err(|message| native_error("workspace", message, true))
+}
+
+#[tauri::command]
+pub fn runtime_clear_workspace(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    task_id: Option<String>,
+) -> Result<(), NativeError> {
+    validate_optional_task_id(&task_id)?;
+    state
+        .runtime
+        .send(&app, RuntimeRequest::ClearWorkspace { task_id })
+        .map_err(|message| native_error("workspace", message, true))
 }
 
 #[cfg(test)]

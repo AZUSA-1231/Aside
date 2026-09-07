@@ -8,6 +8,7 @@ import {
 import {
   Bot,
   Check,
+  CheckCheck,
   CircleAlert,
   Command,
   FileJson,
@@ -19,8 +20,11 @@ import {
   RotateCcw,
   ScanSearch,
   Send,
+  Shield,
+  ShieldCheck,
   Sparkles,
   Square,
+  Wrench,
   X,
 } from "lucide-react";
 import type {
@@ -32,6 +36,10 @@ import type {
   NativeError,
   RuntimeEvent,
   RuntimeHistoryMessage,
+  RuntimePermissionRequest,
+  RuntimeSkillEvent,
+  RuntimeVerificationState,
+  RuntimeWorkspaceState,
 } from "./lib/contracts";
 import {
   canAppendHostAttachment,
@@ -60,6 +68,13 @@ interface ActiveRun {
   prompt: string;
   isRetry: boolean;
   cancelRequested: boolean;
+}
+
+interface ToolActivity {
+  tool: string;
+  status: string;
+  text: string;
+  truncated: boolean;
 }
 
 const initialMessages: ChatMessage[] = [
@@ -149,6 +164,51 @@ function toChatMessage(message: RuntimeHistoryMessage): ChatMessage {
   };
 }
 
+function workspaceSourceLabel(source: string): string {
+  switch (source) {
+    case "explicit":
+      return "Selected";
+    case "descriptor":
+      return "Captured";
+    case "previous":
+      return "Previous";
+    case "attachment":
+      return "Attachment";
+    default:
+      return source.charAt(0).toUpperCase() + source.slice(1);
+  }
+}
+
+function toolStatusLabel(status: string): string {
+  switch (status) {
+    case "running":
+      return "Running";
+    case "succeeded":
+      return "Succeeded";
+    case "failed":
+      return "Failed";
+    case "denied":
+      return "Denied";
+    case "cancelled":
+      return "Cancelled";
+    case "expired":
+      return "Expired";
+    case "unsupported":
+      return "Unsupported";
+    case "verified":
+      return "Verified";
+    case "in_progress":
+      return "In progress";
+    default:
+      return status.charAt(0).toUpperCase() + status.slice(1);
+  }
+}
+
+function shortToolName(tool: string): string {
+  const dot = tool.lastIndexOf(".");
+  return dot >= 0 ? tool.slice(dot + 1) : tool;
+}
+
 function App() {
   const [agentState, setAgentState] = useState<AgentState>(initialAgentState);
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
@@ -163,6 +223,21 @@ function App() {
   const [nativeError, setNativeError] = useState<NativeError | null>(null);
   const [activeRun, setActiveRun] = useState<ActiveRun | null>(null);
   const [runtimeReady, setRuntimeReady] = useState(false);
+  const [runtimeWorkspace, setRuntimeWorkspace] = useState<RuntimeWorkspaceState | null>(null);
+  const [activeSkill, setActiveSkill] = useState<RuntimeSkillEvent | null>(null);
+  const [pendingPermission, setPendingPermission] =
+    useState<RuntimePermissionRequest | null>(null);
+  const pendingPermissionRef = useRef<RuntimePermissionRequest | null>(null);
+  const updatePendingPermission = useCallback(
+    (value: RuntimePermissionRequest | null) => {
+      pendingPermissionRef.current = value;
+      setPendingPermission(value);
+    },
+    [],
+  );
+  const [toolActivity, setToolActivity] = useState<ToolActivity | null>(null);
+  const [verification, setVerification] = useState<RuntimeVerificationState | null>(null);
+  const [workspaceDraft, setWorkspaceDraft] = useState("");
   const activeRunRef = useRef<ActiveRun | null>(null);
   // Late one-shot capture results must not leak into a later prompt.
   const captureDiscardBeforeRef = useRef(-1);
@@ -442,6 +517,27 @@ function App() {
           setNativeError(runtimeError(event.message));
           return;
         }
+        if (event.type === "workspace_resolved") {
+          setRuntimeWorkspace(event.workspace);
+          return;
+        }
+        if (event.type === "workspace_unresolved") {
+          setRuntimeWorkspace(null);
+          if (event.message) setNativeError(runtimeError(event.message));
+          return;
+        }
+        if (event.type === "workspace_cleared") {
+          setRuntimeWorkspace(null);
+          return;
+        }
+        if (event.type === "skill_activated") {
+          setActiveSkill(event.skill);
+          return;
+        }
+        if (event.type === "skill_cleared") {
+          setActiveSkill(null);
+          return;
+        }
 
         const current = activeRunRef.current;
         if (!current || event.request_id !== current.requestId) return;
@@ -449,6 +545,11 @@ function App() {
         switch (event.type) {
           case "run_started":
             setRuntimeReady(true);
+            if (event.workspace) setRuntimeWorkspace(event.workspace);
+            if (event.active_skill) setActiveSkill(event.active_skill);
+            updatePendingPermission(null);
+            setToolActivity(null);
+            setVerification(null);
             break;
           case "text_delta":
             updateAssistant(current.assistantId, (assistant) => ({
@@ -457,12 +558,52 @@ function App() {
               status: "streaming",
             }));
             break;
+          case "tool_call_started":
+            setToolActivity({
+              tool: event.tool,
+              status: "running",
+              text: "",
+              truncated: false,
+            });
+            break;
+          case "tool_call_update":
+            setToolActivity((activity) =>
+              activity && activity.tool === event.tool
+                ? { ...activity, text: activity.text + event.text, truncated: activity.truncated || event.truncated }
+                : activity,
+            );
+            break;
+          case "tool_result":
+            setToolActivity({
+              tool: event.tool,
+              status: event.status,
+              text: event.text.slice(0, 320),
+              truncated: event.truncated,
+            });
+            if (
+              pendingPermissionRef.current &&
+              pendingPermissionRef.current.tool_call_id === event.tool_call_id
+            ) {
+              updatePendingPermission(null);
+            }
+            break;
+          case "permission_requested":
+            updatePendingPermission(event);
+            break;
+          case "verification_started":
+            setVerification({ tool: event.tool, path: event.path, status: "in_progress" });
+            break;
+          case "verification_completed":
+            setVerification({ tool: event.tool, path: event.path, status: event.status, format: event.format });
+            break;
           case "completed":
             updateAssistant(current.assistantId, (assistant) => ({
               ...assistant,
               status: "complete",
             }));
             setCurrentRun(null);
+            updatePendingPermission(null);
+            setVerification(null);
             break;
           case "cancelled":
             updateAssistant(current.assistantId, (assistant) => ({
@@ -470,9 +611,13 @@ function App() {
               status: "cancelled",
             }));
             setCurrentRun(null);
+            updatePendingPermission(null);
+            setVerification(null);
             break;
           case "failed":
             failRun(current, event.message);
+            updatePendingPermission(null);
+            setVerification(null);
             break;
           default:
             break;
@@ -496,7 +641,14 @@ function App() {
       runtimeUnlisten?.();
       hostCaptureUnlisten?.();
     };
-  }, [appendCaptureResult, failRun, hydrateHistory, setCurrentRun, updateAssistant]);
+  }, [
+    appendCaptureResult,
+    failRun,
+    hydrateHistory,
+    setCurrentRun,
+    updateAssistant,
+    updatePendingPermission,
+  ]);
 
   useEffect(() => {
     if (agentState.visibility === "visible") {
@@ -553,6 +705,45 @@ function App() {
       setNativeError(toNativeError(error, "conversation_cancel", true));
     });
   }, [setCurrentRun]);
+
+  const decidePermission = useCallback(
+    async (decision: "allow" | "deny" | "cancel") => {
+      const permission = pendingPermission;
+      if (!permission) return;
+      updatePendingPermission(null);
+      try {
+        await nativeClient.runtimePermissionResponse(
+          permission.permission_id,
+          decision,
+          {
+            request_id: permission.request_id,
+            task_id: permission.task_id,
+            tool_call_id: permission.tool_call_id,
+          },
+        );
+      } catch (error) {
+        setNativeError(toNativeError(error, "conversation", true));
+      }
+    },
+    [pendingPermission, updatePendingPermission],
+  );
+
+  const handleSetWorkspace = useCallback(() => {
+    const path = workspaceDraft.trim();
+    if (!path) return;
+    void nativeClient
+      .runtimeSetWorkspace(path)
+      .then(() => setWorkspaceDraft(""))
+      .catch((error) => {
+        setNativeError(toNativeError(error, "workspace", true));
+      });
+  }, [workspaceDraft]);
+
+  const handleClearWorkspace = useCallback(() => {
+    void nativeClient.runtimeClearWorkspace().catch((error) => {
+      setNativeError(toNativeError(error, "workspace", true));
+    });
+  }, []);
 
   const handleCapture = useCallback(async () => {
     if (activeRunRef.current) return;
@@ -690,6 +881,120 @@ function App() {
           </button>
         )}
       </section>
+
+      <section className="runtime-surface" aria-label="Runtime state">
+        {runtimeWorkspace ? (
+          <div className="runtime-chip workspace-chip">
+            <FolderOpen size={12} />
+            <div className="runtime-chip-copy">
+              <strong title={runtimeWorkspace.canonical_path}>
+                {runtimeWorkspace.canonical_path}
+              </strong>
+              <span>Workspace · {workspaceSourceLabel(runtimeWorkspace.source)}</span>
+            </div>
+            <button
+              className="runtime-chip-action"
+              type="button"
+              aria-label="Clear workspace"
+              title="Clear workspace"
+              onClick={handleClearWorkspace}
+            >
+              <X size={12} />
+            </button>
+          </div>
+        ) : (
+          <div className="workspace-set">
+            <input
+              value={workspaceDraft}
+              onChange={(event) => setWorkspaceDraft(event.currentTarget.value)}
+              placeholder="Workspace folder path"
+              aria-label="Workspace folder path"
+            />
+            <button
+              type="button"
+              className="workspace-set-button"
+              disabled={!workspaceDraft.trim() || Boolean(activeRun)}
+              onClick={handleSetWorkspace}
+            >
+              Set
+            </button>
+          </div>
+        )}
+
+        {activeSkill && (
+          <div className="runtime-chip skill-chip">
+            <Sparkles size={12} />
+            <div className="runtime-chip-copy">
+              <strong>{activeSkill.name}</strong>
+              <span>Skill · {activeSkill.source}</span>
+            </div>
+          </div>
+        )}
+
+        {verification && (
+          <div className={`runtime-chip verification-chip ${verification.status}`}>
+            <CheckCheck size={12} />
+            <div className="runtime-chip-copy">
+              <strong>
+                {shortToolName(verification.tool)} · {toolStatusLabel(verification.status)}
+              </strong>
+              <span title={verification.path}>{verification.path}</span>
+            </div>
+          </div>
+        )}
+      </section>
+
+      {toolActivity && (
+        <div className={`tool-activity ${toolActivity.status}`} aria-live="polite">
+          <Wrench size={12} />
+          <span>
+            {shortToolName(toolActivity.tool)} · {toolStatusLabel(toolActivity.status)}
+          </span>
+          {toolActivity.text && toolActivity.status !== "running" && (
+            <span className="tool-activity-text" title={toolActivity.text}>
+              {toolActivity.text}
+            </span>
+          )}
+        </div>
+      )}
+
+      {pendingPermission && (
+        <section
+          className="permission-card"
+          role="dialog"
+          aria-modal="false"
+          aria-label={`Permission for ${pendingPermission.operation}`}
+        >
+          <div className="permission-card-header">
+            <Shield size={14} />
+            <strong>{pendingPermission.operation}</strong>
+            <span className="permission-effect">{pendingPermission.effect}</span>
+          </div>
+          <div className="permission-card-copy">
+            <span>Aside is asking to perform this workspace write.</span>
+            <span className="permission-note">
+              The write starts only after an explicit decision.
+            </span>
+          </div>
+          <div className="permission-actions">
+            <button
+              type="button"
+              className="permission-allow"
+              onClick={() => void decidePermission("allow")}
+            >
+              <ShieldCheck size={14} />
+              Allow
+            </button>
+            <button
+              type="button"
+              className="permission-deny"
+              onClick={() => void decidePermission("deny")}
+            >
+              Deny
+            </button>
+          </div>
+        </section>
+      )}
 
       <section className="conversation" aria-label="Conversation">
         <div className="conversation-intro">

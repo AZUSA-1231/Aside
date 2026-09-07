@@ -266,10 +266,15 @@ export async function restoreAsideSession(session) {
     const message = clone(entry.message);
     messages.push(message);
     if (message.role === "user" || message.role === "assistant") {
+      const text = messageText(message);
+      // Assistant tool-call frames carry no user-visible text and would only
+      // render as empty bubbles in the restored UI history. The full message
+      // still restores the agent transcript; only the projection skips it.
+      if (message.role === "assistant" && text.trim().length === 0) continue;
       history.push({
         id: entry.id,
         role: displayRole(message),
-        text: messageText(message),
+        text,
         status: "complete",
         timestamp: entry.timestamp,
       });
@@ -326,6 +331,8 @@ export async function createAsideConversationRuntime({
   cwd,
   fileSystem,
   configCwd,
+  skills,
+  skillDiagnostics,
 } = {}) {
   const send = emit ?? (() => undefined);
   const opened = await openAsideSession({
@@ -339,8 +346,8 @@ export async function createAsideConversationRuntime({
   for (const warning of opened.warnings) send({ type: "session_warning", message: warning });
 
   let conversationAgent = agent;
-  let configuredSkills = [];
-  let configuredSkillDiagnostics = [];
+  let configuredSkills = skills ?? [];
+  let configuredSkillDiagnostics = skillDiagnostics ?? [];
   if (conversationAgent) {
     conversationAgent.state.messages = restored.messages;
     conversationAgent.sessionId = opened.metadata.id;
@@ -348,6 +355,7 @@ export async function createAsideConversationRuntime({
     const configured = await createConfiguredAgent({
       initialMessages: restored.messages,
       sessionId: opened.metadata.id,
+      skills: configuredSkills.length > 0 ? configuredSkills : undefined,
     });
     conversationAgent = configured.agent;
     configuredSkills = configured.skills ?? [];

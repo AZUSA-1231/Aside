@@ -872,6 +872,240 @@ h1 {
   color: #b0beb8;
 }
 
+.runtime-surface {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 20px 0;
+}
+
+.runtime-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 5px 9px;
+  color: #2c7869;
+  background: rgba(233, 244, 238, 0.8);
+  border: 1px solid rgba(41, 121, 109, 0.14);
+  border-radius: 7px;
+}
+
+.runtime-chip-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.runtime-chip-copy strong {
+  color: #1d312c;
+  font-size: 10.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.runtime-chip-copy span {
+  color: #7b8b85;
+  font-size: 9px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.runtime-chip-action {
+  margin-left: auto;
+  display: grid;
+  place-items: center;
+  padding: 3px;
+  color: #8fa39b;
+  background: transparent;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.runtime-chip-action:hover {
+  color: #1d312c;
+  background: rgba(41, 121, 109, 0.1);
+}
+
+.runtime-chip.verification-chip.verified {
+  color: #3ca888;
+}
+
+.runtime-chip.verification-chip.failed {
+  color: #b4553d;
+}
+
+.workspace-set {
+  display: flex;
+  gap: 6px;
+}
+
+.workspace-set input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 9px;
+  color: #1d312c;
+  background: #f7faf7;
+  border: 1px solid rgba(28, 54, 47, 0.14);
+  border-radius: 7px;
+  font-size: 11px;
+}
+
+.workspace-set input:focus-visible {
+  outline: 2px solid #287c70;
+  outline-offset: 1px;
+}
+
+.workspace-set input::placeholder {
+  color: #9db0a8;
+}
+
+.workspace-set-button {
+  padding: 6px 10px;
+  color: #f7faf7;
+  background: #29796d;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.workspace-set-button:hover:not(:disabled) {
+  background: #22695f;
+}
+
+.workspace-set-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.tool-activity {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 20px 0;
+  padding: 5px 9px;
+  color: #7b8b85;
+  background: rgba(241, 246, 242, 0.7);
+  border: 1px solid rgba(28, 54, 47, 0.06);
+  border-radius: 7px;
+  font-size: 9.5px;
+  font-weight: 650;
+}
+
+.tool-activity.running {
+  color: #2c7869;
+}
+
+.tool-activity.failed,
+.tool-activity.denied,
+.tool-activity.cancelled,
+.tool-activity.expired {
+  color: #b4553d;
+}
+
+.tool-activity-text {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.permission-card {
+  margin: 8px 20px 0;
+  padding: 10px 12px;
+  background: #fffdf7;
+  border: 1px solid rgba(160, 120, 40, 0.35);
+  border-radius: 9px;
+  box-shadow: 0 4px 14px rgba(28, 54, 47, 0.08);
+}
+
+.permission-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #8c6a38;
+}
+
+.permission-card-header strong {
+  color: #5b4522;
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: 0.01em;
+}
+
+.permission-effect {
+  margin-left: auto;
+  padding: 2px 6px;
+  color: #8c6a38;
+  background: rgba(160, 120, 40, 0.12);
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.permission-card-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+  color: #5b645f;
+  font-size: 10px;
+  font-weight: 550;
+}
+
+.permission-card-copy .permission-note {
+  color: #97a19b;
+  font-size: 9px;
+}
+
+.permission-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.permission-allow {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 10px;
+  color: #f7faf7;
+  background: #29796d;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.permission-allow:hover {
+  background: #22695f;
+}
+
+.permission-deny {
+  flex: 1;
+  padding: 7px 10px;
+  color: #a04b38;
+  background: rgba(176, 85, 61, 0.1);
+  border: 1px solid rgba(176, 85, 61, 0.25);
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.permission-deny:hover {
+  background: rgba(176, 85, 61, 0.16);
+}
+
 @keyframes blink {
   50% {
     opacity: 0;
@@ -901,14 +1135,17 @@ h1 {
   }
 
   .status-strip,
-  .conversation {
+  .conversation,
+  .runtime-surface {
     padding-left: 14px;
     padding-right: 14px;
   }
 
   .composer,
   .error-banner,
-  .attachment-tray {
+  .attachment-tray,
+  .tool-activity,
+  .permission-card {
     margin-left: 14px;
     margin-right: 14px;
   }

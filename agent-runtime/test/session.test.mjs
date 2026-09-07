@@ -1,17 +1,18 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { Agent } from "@earendil-works/pi-agent-core/aside";
 import { createModels } from "@earendil-works/pi-ai";
-import { fauxAssistantMessage, fauxProvider } from "@earendil-works/pi-ai/providers/faux";
+import { fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 import {
   createAsideConversationRuntime,
   createInMemoryAsideSessionRepository,
   createSessionPersistence,
   resolveSessionRoot,
 } from "../src/session.mjs";
+import { loadSkills } from "../src/skill-loader.mjs";
 
 function makeAgent(faux) {
   const models = createModels();
@@ -306,4 +307,89 @@ test("creates a fresh session when the active JSONL session is corrupt", async (
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("persists only bounded messages and restores no workspace, permission, or skill state", async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), "aside-session-workspace-"));
+  await writeFile(join(workspaceRoot, "notes.md"), "alpha\n", "utf8");
+  const repository = createInMemoryAsideSessionRepository();
+  const skills = (await loadSkills()).skills;
+  const faux = fauxProvider({ tokensPerSecond: 1_000 });
+  faux.setResponses([
+    fauxAssistantMessage(
+      fauxToolCall("workspace.write", { path: "notes.md", content: "alpha\nbeta\n" }, { id: "session-privacy-write" }),
+    ),
+    fauxAssistantMessage("saved with an approved decision"),
+  ]);
+  const agent = makeAgent(faux);
+  const events = [];
+  let runtime;
+  const emit = (event) => {
+    events.push(event);
+    if (event.type === "permission_requested") {
+      runtime.resolvePermission(event.permission_id, "allow", {
+        request_id: event.request_id,
+        task_id: event.task_id,
+        tool_call_id: event.tool_call_id,
+      });
+    }
+  };
+  runtime = await createAsideConversationRuntime({
+    repository,
+    agent,
+    skills,
+    emit,
+  });
+  runtime.setActiveSkill("revise-document");
+  await runtime.prompt(
+    "session-privacy-1",
+    "revise notes",
+    {
+      flow: { id: "flow-skill", kind: "conversation" },
+      blocks: [],
+      attachments: [
+        {
+          id: "capture-dir",
+          host: "explorer",
+          strategy: "explorer",
+          source: "Explorer folder",
+          capturedAt: 1,
+          expiresAt: Date.now() + 60_000,
+          sensitivity: "local_metadata",
+          summary: "workspace root",
+          blocks: [{ type: "text", label: "Path", text: workspaceRoot }],
+          descriptors: [{ role: "workspace_root", path: workspaceRoot, kind: "directory" }],
+        },
+      ],
+    },
+    workspaceRoot,
+  );
+
+  const entries = await runtime.session.findEntries({ type: "message", order: "oldestFirst" });
+  const serialized = JSON.stringify(entries);
+  assert.doesNotMatch(serialized, /permission_id/);
+  assert.doesNotMatch(serialized, /aside_context/);
+  assert.doesNotMatch(serialized, /workspace_root/);
+  assert.doesNotMatch(serialized, /Preserve heading/);
+  assert.ok(
+    entries.some((entry) => entry.message.role === "user" && /revise notes/.test(entry.message.content?.[0]?.text ?? "")),
+  );
+
+  const second = makeFauxAgent([fauxAssistantMessage("restored answer")]);
+  const restoredRuntime = await createAsideConversationRuntime({
+    repository,
+    agent: second.agent,
+    skills,
+    emit: () => undefined,
+  });
+  assert.deepEqual(
+    restoredRuntime.history.map((message) => [message.role, message.text]),
+    [
+      ["user", "revise notes"],
+      ["assistant", "saved with an approved decision"],
+    ],
+  );
+  assert.equal(restoredRuntime.activeSkill, undefined);
+  assert.deepEqual(restoredRuntime.pendingPermissions, []);
+  await rm(workspaceRoot, { recursive: true, force: true });
 });

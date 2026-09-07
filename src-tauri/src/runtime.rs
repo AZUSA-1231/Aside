@@ -11,6 +11,43 @@ pub use crate::context::AsideTurnContext;
 
 pub const RUNTIME_EVENT: &str = "runtime://event";
 
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PermissionDecision {
+    Allow,
+    Deny,
+    Cancel,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct PermissionIdentity {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub task_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
+}
+
+/// Workspace hint forwarded to the agent runtime for validation and
+/// canonicalization. Accepts a path string or a `{ path, kind?, source?,
+/// expires_at? }` object; the runtime owns the actual resolution.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum AsideWorkspaceHint {
+    Path(String),
+    Descriptor {
+        path: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        kind: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        source: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        expires_at: Option<u64>,
+    },
+}
+
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum RuntimeRequest {
@@ -23,53 +60,30 @@ pub enum RuntimeRequest {
     Cancel {
         request_id: String,
     },
+    PermissionResponse {
+        request_id: String,
+        permission_id: String,
+        decision: PermissionDecision,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        identity: Option<PermissionIdentity>,
+    },
+    SetWorkspace {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        task_id: Option<String>,
+        workspace: AsideWorkspaceHint,
+    },
+    ClearWorkspace {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        task_id: Option<String>,
+    },
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct RuntimeHistoryMessage {
-    pub id: String,
-    pub role: String,
-    pub text: String,
-    pub status: String,
-    pub timestamp: i64,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum RuntimeEvent {
-    Ready {
-        provider: String,
-        model: String,
-    },
-    RunStarted {
-        request_id: String,
-    },
-    TextDelta {
-        request_id: String,
-        delta: String,
-    },
-    Completed {
-        request_id: String,
-    },
-    Cancelled {
-        request_id: String,
-    },
-    Failed {
-        request_id: String,
-        message: String,
-        retryable: bool,
-    },
-    SessionWarning {
-        request_id: Option<String>,
-        message: String,
-    },
-    HistoryRestored {
-        messages: Vec<RuntimeHistoryMessage>,
-    },
-    RuntimeUnavailable {
-        message: String,
-    },
-}
+/// Runtime events are Aside-owned serialized contracts produced by the agent
+/// runtime. Tauri forwards them verbatim to React; the typed request/event
+/// vocabulary lives in the JS runtime and the React contracts. Tauri owns
+/// process lifecycle and IPC forwarding only, never path authority, provider
+/// message construction, tool execution, or permission decisions.
+pub type RuntimeEvent = serde_json::Value;
 
 struct RuntimeProcess {
     child: Option<Child>,
@@ -151,9 +165,10 @@ impl RuntimeManager {
             }
             let _ = app_handle.emit(
                 RUNTIME_EVENT,
-                RuntimeEvent::RuntimeUnavailable {
-                    message: "The Aside runtime stopped unexpectedly.".into(),
-                },
+                serde_json::json!({
+                    "type": "runtime_unavailable",
+                    "message": "The Aside runtime stopped unexpectedly.",
+                }),
             );
         });
 

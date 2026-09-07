@@ -210,6 +210,30 @@ export const nativeClient = {
     }
   },
 
+  runtimePermissionResponse: async (
+    permissionId: string,
+    decision: "allow" | "deny" | "cancel",
+    identity: { request_id: string; task_id: string; tool_call_id: string },
+  ): Promise<void> => {
+    if (!isDesktopRuntime()) return;
+    await command<void>("runtime_permission_response", {
+      requestId: identity.request_id,
+      permissionId,
+      decision,
+      identity,
+    });
+  },
+
+  runtimeSetWorkspace: async (workspace: string): Promise<void> => {
+    if (!isDesktopRuntime()) return;
+    await command<void>("runtime_set_workspace", { workspace });
+  },
+
+  runtimeClearWorkspace: async (): Promise<void> => {
+    if (!isDesktopRuntime()) return;
+    await command<void>("runtime_clear_workspace", {});
+  },
+
   onAgentState: async (handler: (state: AgentState) => void): Promise<() => void> => {
     if (!isDesktopRuntime()) return () => undefined;
     return tauriListen<AgentState>("agent://state-changed", ({ payload }) =>

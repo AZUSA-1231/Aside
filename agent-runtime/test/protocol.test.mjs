@@ -97,6 +97,162 @@ test("emits restored history before ready and forwards subsequent runtime events
   assert.deepEqual(calls.at(-1), { cancel: "protocol-1" });
 });
 
+test("parses the permission, set-workspace, and clear-workspace vocabulary", () => {
+  assert.deepEqual(
+    parseRuntimeRequest({
+      type: "permission_response",
+      request_id: "r1",
+      permission_id: "p1",
+      decision: "deny",
+      identity: { request_id: "r1", task_id: "t1", tool_call_id: "tc1" },
+    }),
+    {
+      type: "permission_response",
+      request_id: "r1",
+      permission_id: "p1",
+      decision: "deny",
+      identity: { request_id: "r1", task_id: "t1", tool_call_id: "tc1" },
+    },
+  );
+  assert.deepEqual(
+    parseRuntimeRequest({
+      type: "permission_response",
+      request_id: "r1",
+      permission_id: "p1",
+      decision: "cancel",
+    }),
+    { type: "permission_response", request_id: "r1", permission_id: "p1", decision: "cancel" },
+  );
+  assert.deepEqual(
+    parseRuntimeRequest({ type: "permission_response", request_id: "r1", permission_id: "p1", decision: "maybe" }),
+    { type: "invalid", request_id: "r1" },
+  );
+  assert.deepEqual(
+    parseRuntimeRequest({ type: "permission_response", request_id: "r1", permission_id: "p1", decision: "allow", identity: { request_id: 4 } }),
+    { type: "invalid", request_id: "r1" },
+  );
+  assert.deepEqual(
+    parseRuntimeRequest({ type: "set_workspace", workspace: "C:/work" }),
+    { type: "set_workspace", workspace: "C:/work" },
+  );
+  assert.deepEqual(
+    parseRuntimeRequest({ type: "set_workspace", task_id: "t1", workspace: { path: "C:/work", kind: "directory", source: "explicit" } }),
+    { type: "set_workspace", task_id: "t1", workspace: { path: "C:/work", kind: "directory", source: "explicit" } },
+  );
+  assert.deepEqual(
+    parseRuntimeRequest({ type: "set_workspace", workspace: 42 }),
+    { type: "invalid", request_id: undefined },
+  );
+  assert.deepEqual(
+    parseRuntimeRequest({ type: "clear_workspace", task_id: "t1" }),
+    { type: "clear_workspace", task_id: "t1" },
+  );
+  assert.deepEqual(
+    parseRuntimeRequest({ type: "clear_workspace", task_id: "" }),
+    { type: "invalid", request_id: undefined },
+  );
+});
+
+test("forwards permission responses, workspace changes, and the full event vocabulary", async () => {
+  const events = [];
+  const calls = [];
+  const runtimeFactory = async ({ emit }) => ({
+    history: [],
+    prompt: async (requestId, text) => {
+      emit({ type: "ready", provider: "faux", model: "faux-model" });
+      emit({ type: "run_started", request_id: requestId });
+      emit({
+        type: "workspace_resolved",
+        request_id: requestId,
+        task_id: "task-1",
+        workspace: { status: "resolved", source: "explicit", addressed_path: "C:/work", canonical_path: "C:/work", kind: "directory" },
+      });
+      emit({
+        type: "permission_requested",
+        permission_id: "perm-1",
+        request_id: requestId,
+        task_id: "task-1",
+        tool_call_id: "tool-call-1",
+        operation: "workspace.write",
+        effect: "write",
+        expires_at: 1234,
+        status: "pending",
+      });
+      emit({ type: "tool_result", request_id: requestId, task_id: "task-1", tool_call_id: "tool-call-1", tool: "workspace.write", status: "denied", text: "denied", details: { status: "denied" }, truncated: false });
+      emit({ type: "verification_completed", request_id: requestId, task_id: "task-1", tool: "workspace.write", path: "notes.md", status: "verified" });
+      emit({ type: "completed", request_id: requestId });
+    },
+    cancel: (requestId) => calls.push({ cancel: requestId }),
+    resolvePermission: (permissionId, decision, identity) => calls.push({ resolvePermission: { permissionId, decision, identity } }),
+    setWorkspace: async (taskId, workspace) => calls.push({ setWorkspace: { taskId, workspace } }),
+    clearWorkspace: (taskId) => calls.push({ clearWorkspace: { taskId } }),
+  });
+  const input = Readable.from([
+    `${JSON.stringify({ type: "prompt", request_id: "protocol-full", text: "write" })}\n`,
+    `${JSON.stringify({ type: "permission_response", request_id: "protocol-full", permission_id: "perm-1", decision: "deny", identity: { request_id: "protocol-full", task_id: "task-1", tool_call_id: "tool-call-1" } })}\n`,
+    `${JSON.stringify({ type: "set_workspace", task_id: "task-1", workspace: { path: "C:/other", kind: "directory" } })}\n`,
+    `${JSON.stringify({ type: "clear_workspace", task_id: "task-1" })}\n`,
+  ]);
+
+  await runProtocol({ input, emit: (event) => events.push(event), runtimeFactory });
+  await Promise.resolve();
+
+  const eventTypes = events.map((event) => event.type);
+  for (const expected of [
+    "history_restored",
+    "ready",
+    "run_started",
+    "workspace_resolved",
+    "permission_requested",
+    "tool_result",
+    "verification_completed",
+    "completed",
+  ]) {
+    assert.ok(eventTypes.includes(expected), `missing ${expected}`);
+  }
+  assert.deepEqual(calls.find((call) => call.resolvePermission), {
+    resolvePermission: {
+      permissionId: "perm-1",
+      decision: "deny",
+      identity: { request_id: "protocol-full", task_id: "task-1", tool_call_id: "tool-call-1" },
+    },
+  });
+  assert.deepEqual(calls.find((call) => call.setWorkspace), {
+    setWorkspace: { taskId: "task-1", workspace: { path: "C:/other", kind: "directory" } },
+  });
+  assert.deepEqual(calls.find((call) => call.clearWorkspace), {
+    clearWorkspace: { taskId: "task-1" },
+  });
+});
+
+test("reports a set-workspace failure as a recoverable session warning", async () => {
+  const events = [];
+  const runtimeFactory = async () => ({
+    history: [],
+    prompt: async () => undefined,
+    cancel: () => undefined,
+    resolvePermission: () => undefined,
+    setWorkspace: async () => {
+      const error = new Error("outside workspace");
+      error.code = "scope_escape";
+      throw error;
+    },
+    clearWorkspace: () => undefined,
+  });
+  const input = Readable.from([
+    `${JSON.stringify({ type: "set_workspace", workspace: "C:/outside" })}\n`,
+  ]);
+
+  await runProtocol({ input, emit: (event) => events.push(event), runtimeFactory });
+  await Promise.resolve();
+
+  assert.ok(
+    events.some(
+      (event) => event.type === "session_warning" && /outside workspace/.test(event.message),
+    ),
+  );
+});
+
 test("emits one terminal event when a runtime rejects after settling", async () => {
   const events = [];
   const runtimeFactory = async ({ emit }) => ({

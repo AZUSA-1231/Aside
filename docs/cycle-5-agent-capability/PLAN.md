@@ -1,6 +1,6 @@
 # Cycle 5 Agent Capability Execution Plan
 
-Status: executing P5; P0, P1, P2, P3, and P4 accepted on 2026-09-07
+Status: P0 through P6 implemented on 2026-09-07; release decision pending the quality gate and manual Windows evidence
 Scope decision: 2026-09-05; `vendor/pi-full` reference review included
 Source requirements: [Cycle 5 PRD](./PRD.md)
 Long-lived constraints: [Project Architecture](../ARCHITECTURE.md)
@@ -139,22 +139,27 @@ P5 -> P6 Side surface, regression, and release verification
 
 ## Current Checkpoint
 
-P0, P1, P2, P3, and P4 are accepted: the runtime now publishes Aside-owned
-task/tool contracts, bounded lifecycle events, sequential tool execution, and
+P0 through P6 are implemented. The runtime publishes Aside-owned task/tool
+contracts, bounded lifecycle events, sequential tool execution, and
 deterministic faux coverage while retaining the low-level Pi Agent boundary.
-P1 also resolves one explicit per-task workspace, keeps addressed and
-canonical paths distinct, rejects containment escapes, and withholds
-workspace-scoped tools until activation. P2 adds the bounded read-only
-workspace registry, text/Markdown and JSON adapters, explicit recursive
-search, and typed failure results. P3 adds exact-operation permission state,
-bounded text/JSON writes and edits, atomic replacement, stale-target
-revalidation, cancellation/expiry handling, and intrinsic verification. P4
-adds the bounded `SKILL.md` loader with source/trust classification,
-diagnostics, collision handling, and three bundled skills; skill activation
-projects instructions as untrusted reference data without ever changing the
-tool registry, permission broker, or agent loop. P5 is the active checkpoint.
-The `pi-full` review expands the implementation references but does not change
-the runtime boundary.
+P1 resolves one explicit per-task workspace, keeps addressed and canonical
+paths distinct, rejects containment escapes, and withholds workspace-scoped
+tools until activation. P2 adds the bounded read-only workspace registry,
+text/Markdown and JSON adapters, explicit recursive search, and typed failure
+results. P3 adds exact-operation permission state, bounded text/JSON writes
+and edits, atomic replacement, stale-target revalidation, cancellation/expiry
+handling, and intrinsic verification. P4 adds the bounded `SKILL.md` loader
+with source/trust classification, diagnostics, collision handling, and three
+bundled skills; skill activation projects instructions as untrusted reference
+data without ever changing the tool registry, permission broker, or agent
+loop. P5 carries permission, workspace, skill, tool, and verification state
+across the JSONL/Tauri boundary with strict request validation and
+non-durable session state. P6 turns the Side rail into the autonomous-task
+surface with workspace, skill, tool-activity, verification, and permission
+controls that remain display projections only. The release decision now rests
+on the PLAN quality gate and manual Windows evidence. The `pi-full` review
+expands the implementation references but does not change the runtime
+boundary.
 
 At each checkpoint, update the affected child plan from `planning` to
 `implemented` only after its exit criteria and checks have passed. Record a

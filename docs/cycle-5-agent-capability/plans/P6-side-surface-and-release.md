@@ -1,6 +1,6 @@
 # P6 - Side Surface and Release Verification
 
-Status: planning
+Status: implemented (2026-09-07)
 Depends on: P5 - Session, IPC, and Protocol Integration
 Unblocks: Cycle 5 release decision
 Source requirements: Cycle 5 PRD sections 12 through 19 and all acceptance criteria
@@ -87,3 +87,27 @@ npm.cmd run runtime:test
 Also inspect serialized runtime events and stored session entries directly;
 the visible UI summary alone is not sufficient evidence for permission,
 workspace, privacy, or persistence behavior.
+
+## Verification
+
+- The React contracts carry the full runtime event vocabulary (workspace,
+  tool, skill, permission, verification, and terminal states). The Side rail
+  renders a workspace chip with canonical path/source and clear control, a
+  set-workspace path input, an active-skill chip, tool activity, verification
+  status, and a permission card with Allow/Deny actions. The runtime's
+  canonical values are displayed as supplied; React never resolves paths or
+  executes writes.
+- Permission controls round-trip through new IPC actions
+  (`runtime_permission_response`, `runtime_set_workspace`,
+  `runtime_clear_workspace`) to the runtime broker with exact request/task/tool
+  identity. Denying or canceling returns an explicit typed result to the same
+  agent loop; the composer Stop remains available while a decision is pending.
+- `npm.cmd run typecheck` and `npm.cmd run build` passed; the new UI adds no
+  Pi imports, filesystem implementation, or provider message constructor.
+- The full engineering gate passes: 80 runtime tests, 30 Rust tests, typecheck,
+  build, cargo fmt/check. The deterministic suite covers loop continuation,
+  workspace scope, permission round trips, skills, cancellation, persistence,
+  and stale-target rejection with faux seams (C5-40).
+- Manual Windows checks remain the release-gate responsibility in
+  `PLAN.md`; the serialized events and stored session entries are verified by
+  the protocol and session tests rather than by the visible UI alone.

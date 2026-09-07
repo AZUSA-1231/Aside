@@ -38,6 +38,9 @@ or when a decision changes a contract, ownership boundary, or release scope.
 | C5-I013 | accepted | Tool safety | Pi's `prepareToolCall` rejects an unregistered tool with an immediate error result before the runtime `beforeToolCall` hook runs, so skill content that references an unregistered capability is blocked by the loop itself. | P4, P5 |
 | C5-I014 | accepted | Skills | Full skill instructions live only in the transient context projection; the task-run snapshot and durable session carry skill metadata only, so hidden source content cannot become durable workspace or session state. | P4, P5 |
 | C5-I015 | accepted | Skills | The frontmatter parser accepts scalar `key: value` lines only; indented YAML lists are diagnosed and the skill skipped rather than partially interpreted. | P4, P5 |
+| C5-I016 | accepted | IPC | Tauri forwards runtime events verbatim as `serde_json::Value`; the previous typed subset silently dropped workspace, tool, skill, and permission events, so Tauri is an explicit process/IPC forwarder only. | P5, P6 |
+| C5-I017 | accepted | Persistence | Workspace, permission, and skill state are verified non-durable; restored UI history skips empty assistant tool-call frames so the transcript still restores but the projection shows no empty bubbles. | P5, P6 |
+| C5-I018 | accepted | UX scope | Skill activation has no IPC surface this cycle (the rail displays an active skill but cannot select one), and set-workspace uses a path text input because no native folder-dialog plugin was added. | P5, P6 |
 
 ## C5-I001 - Keep One Coordination Plan
 
@@ -563,3 +566,101 @@ a later cycle if needed.
 P5 must keep skill loading diagnostics distinct from tool results across the
 JSONL/IPC boundary. A future cycle may extend the parser to indented YAML
 lists without changing the capability boundary.
+
+## C5-I016 - Tauri Is a Verbatim Runtime-Event Forwarder
+
+Status: accepted
+Discovered: P5 boundary implementation
+Affected: P5 and P6
+Requirements: C5-36 and C5-37
+
+### Fact
+
+The Rust `RuntimeEvent` was a typed subset (ready, run_started, text_delta,
+terminal, warnings). Serde ignores unknown fields on deserialization, so the
+workspace, tool, skill, and permission events the runtime already emitted were
+silently dropped before reaching React, and even parsed events lost their
+extra fields on re-serialization.
+
+### Impact
+
+React could not render workspace, permission, or tool state from the real
+runtime, so the round trip P6 needs did not exist at the Tauri boundary.
+
+### Decision
+
+`RuntimeEvent` is now a verbatim `serde_json::Value` passthrough: Tauri owns
+process lifecycle and IPC forwarding only, and the typed request/event
+vocabulary lives in the JS runtime and the React contracts. Requests remain
+strictly typed and validated because commands build them.
+
+### Follow-up
+
+P6 keeps React as a display projection that reads the serialized contract; a
+future cycle may restore a typed Rust enum only if the boundary gains a
+consumer that needs it.
+
+## C5-I017 - Workspace, Permission, and Skill State Stay Out of the Transcript
+
+Status: accepted
+Discovered: P5 session persistence verification
+Affected: P5 and P6
+Requirements: PRD section 10.2, C5-34, and C5-35
+
+### Fact
+
+A permission-gated write with an active skill must persist only the bounded
+conversation needed to resume. The new session privacy test inspects the
+stored entries and confirms they never contain `permission_id`, `aside_context`
+markers, `workspace_root` descriptors, or skill instructions. Restored UI
+history also skips empty assistant tool-call frames so the transcript restores
+fully while the projection shows no empty bubbles.
+
+### Impact
+
+Without the skip, an assistant tool-call message (no text) would restore as an
+empty chat bubble next to the real answer.
+
+### Decision
+
+`restoreAsideSession` keeps full tool-call messages for the agent transcript
+but omits empty-text assistant entries from the UI `history` projection. The
+full transcript and the projection diverge only on user-invisible frames.
+
+### Follow-up
+
+P6 renders workspace, active-skill, verification, and terminal state from
+events only; nothing in the rail becomes durable session or workspace state.
+
+## C5-I018 - Skill Selection and Native Folder Dialog Are Out of Scope
+
+Status: accepted
+Discovered: P6 surface implementation
+Affected: P5 and P6
+Requirements: C5-27 through C5-30
+
+### Fact
+
+The P5 protocol shape deliberately excludes skill activation requests, and the
+desktop build has no native folder-dialog plugin. The rail therefore displays
+an active skill only when the runtime activates it (no UI control), and
+set-workspace is a path text input that the runtime validates and
+canonicalizes.
+
+### Impact
+
+The acceptance behavior (C5-27 through C5-30) is covered at the runtime layer;
+the UI surface is a truthful projection but does not add skill selection or a
+folder picker.
+
+### Decision
+
+Keep the plan scope: skill activation remains a runtime API, and workspace
+selection works through capture descriptors, the set-workspace IPC, or the
+path input. A native folder dialog and a skill selector are explicit
+post-Cycle-5 UX follow-ups.
+
+### Follow-up
+
+Record these as deferred UX in the release boundary; they do not change the
+capability or authority model.

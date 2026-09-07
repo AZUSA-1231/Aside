@@ -60,6 +60,9 @@ pub fn run() {
             commands::resize_agent,
             commands::runtime_prompt,
             commands::runtime_cancel,
+            commands::runtime_permission_response,
+            commands::runtime_set_workspace,
+            commands::runtime_clear_workspace,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Aside");

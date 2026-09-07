@@ -166,17 +166,177 @@ export interface RuntimeHistoryMessage {
   timestamp: number;
 }
 
+export interface RuntimeWorkspaceState {
+  status: string;
+  source: string;
+  addressed_path: string;
+  canonical_path: string;
+  kind: string;
+  expires_at?: number;
+  target?: {
+    role: string;
+    addressed_path: string;
+    canonical_path: string;
+    relative_path: string;
+    kind: string;
+  };
+}
+
+export interface RuntimeToolDescriptor {
+  name: string;
+  description: string;
+  label: string;
+  effect: string;
+  scope: string;
+  replay: string;
+}
+
+export interface RuntimeSkillEvent {
+  name: string;
+  description: string;
+  source: string;
+  model_invocation: boolean;
+  expects?: string[];
+}
+
+export interface RuntimePermissionRequest {
+  permission_id: string;
+  request_id: string;
+  task_id: string;
+  tool_call_id: string;
+  operation: string;
+  effect: string;
+  expires_at: number;
+  status: string;
+}
+
+export interface RuntimeToolResultDetails {
+  status: string;
+  code?: string;
+  [key: string]: unknown;
+}
+
+export interface RuntimeVerificationState {
+  tool: string;
+  path: string;
+  status: string;
+  format?: string;
+}
+
 export type RuntimeEvent =
-  | { type: "ready"; provider: string; model: string }
-  | { type: "run_started"; request_id: string }
-  | { type: "text_delta"; request_id: string; delta: string }
-  | { type: "completed"; request_id: string }
-  | { type: "cancelled"; request_id: string }
+  | {
+      type: "ready";
+      provider: string;
+      model: string;
+      tools?: RuntimeToolDescriptor[];
+      skills?: RuntimeSkillEvent[];
+      skill_diagnostics?: Array<{ code: string; message: string; path?: string }>;
+    }
+  | {
+      type: "workspace_resolved";
+      request_id: string;
+      task_id: string;
+      workspace: RuntimeWorkspaceState;
+    }
+  | {
+      type: "workspace_unresolved";
+      request_id?: string;
+      task_id?: string;
+      code: string;
+      message: string;
+    }
+  | { type: "workspace_cleared"; task_id?: string }
+  | {
+      type: "run_started";
+      request_id: string;
+      task_id?: string;
+      limits?: Record<string, number>;
+      tools?: RuntimeToolDescriptor[];
+      workspace?: RuntimeWorkspaceState;
+      active_skill?: RuntimeSkillEvent;
+    }
+  | {
+      type: "tool_call_started";
+      request_id: string;
+      task_id: string;
+      tool_call_id: string;
+      tool: string;
+      arguments: string;
+      arguments_truncated: boolean;
+    }
+  | {
+      type: "tool_call_update";
+      request_id: string;
+      task_id: string;
+      tool_call_id: string;
+      tool: string;
+      text: string;
+      truncated: boolean;
+    }
+  | {
+      type: "tool_result";
+      request_id: string;
+      task_id: string;
+      tool_call_id: string;
+      tool: string;
+      status: string;
+      text: string;
+      details: RuntimeToolResultDetails;
+      truncated: boolean;
+    }
+  | {
+      type: "text_delta";
+      request_id: string;
+      task_id?: string;
+      delta: string;
+      truncated?: boolean;
+    }
+  | {
+      type: "permission_requested";
+      permission_id: string;
+      request_id: string;
+      task_id: string;
+      tool_call_id: string;
+      operation: string;
+      effect: string;
+      expires_at: number;
+      status: string;
+    }
+  | {
+      type: "run_waiting";
+      request_id: string;
+      task_id: string;
+      reason: string;
+      permission_id: string;
+      expires_at: number;
+    }
+  | { type: "skill_activated"; task_id?: string; skill: RuntimeSkillEvent }
+  | { type: "skill_cleared"; task_id?: string }
+  | {
+      type: "verification_started";
+      request_id: string;
+      task_id: string;
+      tool: string;
+      path: string;
+    }
+  | {
+      type: "verification_completed";
+      request_id: string;
+      task_id: string;
+      tool: string;
+      path: string;
+      status: string;
+      format?: string;
+    }
+  | { type: "completed"; request_id: string; task_id?: string }
+  | { type: "cancelled"; request_id: string; task_id?: string }
   | {
       type: "failed";
       request_id: string;
+      task_id?: string;
       message: string;
       retryable: boolean;
+      code?: string;
     }
   | { type: "session_warning"; request_id?: string; message: string }
   | { type: "history_restored"; messages: RuntimeHistoryMessage[] }

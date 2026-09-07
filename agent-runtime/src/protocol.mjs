@@ -20,6 +20,69 @@ function isTerminalEvent(event) {
   );
 }
 
+const PERMISSION_DECISIONS = new Set(["allow", "deny", "cancel"]);
+const MAX_WORKSPACE_PATH_BYTES = 4_096;
+const MAX_IDENTIFIER_LENGTH = 160;
+
+function boundedIdentifier(value) {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= MAX_IDENTIFIER_LENGTH
+  );
+}
+
+function isValidPermissionIdentity(value) {
+  if (!isRecord(value)) return false;
+  if (!hasOnlyKeys(value, new Set(["request_id", "task_id", "tool_call_id"]))) {
+    return false;
+  }
+  for (const key of ["request_id", "task_id", "tool_call_id"]) {
+    if (value[key] !== undefined && !boundedIdentifier(value[key])) return false;
+  }
+  return true;
+}
+
+function isValidWorkspaceHint(value) {
+  if (typeof value === "string") {
+    return value.trim().length > 0 && value.length <= MAX_WORKSPACE_PATH_BYTES;
+  }
+  if (!isRecord(value)) return false;
+  if (!hasOnlyKeys(value, new Set(["path", "kind", "source", "expires_at"]))) {
+    return false;
+  }
+  if (
+    typeof value.path !== "string" ||
+    value.path.trim().length === 0 ||
+    value.path.length > MAX_WORKSPACE_PATH_BYTES
+  ) {
+    return false;
+  }
+  for (const key of ["kind", "source"]) {
+    if (value[key] !== undefined && typeof value[key] !== "string") return false;
+  }
+  if (
+    value.expires_at !== undefined &&
+    (typeof value.expires_at !== "number" || !Number.isSafeInteger(value.expires_at) || value.expires_at < 0)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function optionalTaskId(value) {
+  if (value.task_id === undefined) return {};
+  if (typeof value.task_id !== "string" || value.task_id.length === 0) return undefined;
+  return { task_id: value.task_id };
+}
+
+function invalidRequest(value) {
+  return {
+    type: "invalid",
+    request_id: typeof value.request_id === "string" ? value.request_id : undefined,
+  };
+}
+
 export function parseRuntimeRequest(value) {
   if (!isRecord(value) || typeof value.type !== "string") {
     return { type: "invalid", request_id: undefined };
@@ -38,10 +101,7 @@ export function parseRuntimeRequest(value) {
           text: value.text,
           ...(value.context === undefined ? {} : { context: value.context }),
         }
-      : {
-          type: "invalid",
-          request_id: typeof value.request_id === "string" ? value.request_id : undefined,
-        };
+      : invalidRequest(value);
   }
 
   if (value.type === "cancel") {
@@ -50,16 +110,53 @@ export function parseRuntimeRequest(value) {
       typeof value.request_id === "string";
     return valid
       ? { type: "cancel", request_id: value.request_id }
-      : {
-          type: "invalid",
-          request_id: typeof value.request_id === "string" ? value.request_id : undefined,
-        };
+      : invalidRequest(value);
   }
 
-  return {
-    type: "invalid",
-    request_id: typeof value.request_id === "string" ? value.request_id : undefined,
-  };
+  if (value.type === "permission_response") {
+    const valid =
+      hasOnlyKeys(
+        value,
+        new Set(["type", "request_id", "permission_id", "decision", "identity"]),
+      ) &&
+      boundedIdentifier(value.request_id) &&
+      boundedIdentifier(value.permission_id) &&
+      typeof value.decision === "string" &&
+      PERMISSION_DECISIONS.has(value.decision) &&
+      (value.identity === undefined || isValidPermissionIdentity(value.identity));
+    return valid
+      ? {
+          type: "permission_response",
+          request_id: value.request_id,
+          permission_id: value.permission_id,
+          decision: value.decision,
+          ...(value.identity === undefined ? {} : { identity: value.identity }),
+        }
+      : invalidRequest(value);
+  }
+
+  if (value.type === "set_workspace") {
+    const taskId = optionalTaskId(value);
+    const valid =
+      taskId !== undefined &&
+      hasOnlyKeys(value, new Set(["type", "task_id", "workspace"])) &&
+      isValidWorkspaceHint(value.workspace);
+    return valid
+      ? { type: "set_workspace", workspace: value.workspace, ...taskId }
+      : invalidRequest(value);
+  }
+
+  if (value.type === "clear_workspace") {
+    const taskId = optionalTaskId(value);
+    const valid =
+      taskId !== undefined &&
+      hasOnlyKeys(value, new Set(["type", "task_id"]));
+    return valid
+      ? { type: "clear_workspace", ...taskId }
+      : invalidRequest(value);
+  }
+
+  return invalidRequest(value);
 }
 
 function invalidRequestEvent(requestId) {
@@ -139,6 +236,55 @@ export async function runProtocol({
             retryable: true,
           }),
         );
+      continue;
+    }
+
+    if (request.type === "permission_response") {
+      if (!runtime) {
+        emit({
+          type: "failed",
+          request_id: request.request_id,
+          message: setupError ?? "The Aside runtime is unavailable.",
+          retryable: true,
+        });
+        continue;
+      }
+      runtime.resolvePermission(
+        request.permission_id,
+        request.decision,
+        request.identity ?? {},
+      );
+      continue;
+    }
+
+    if (request.type === "set_workspace") {
+      if (!runtime) {
+        emit({
+          type: "session_warning",
+          message: setupError ?? "The Aside runtime is unavailable.",
+        });
+        continue;
+      }
+      void runtime
+        .setWorkspace(request.task_id, request.workspace)
+        .catch((error) =>
+          emitRuntimeEvent({
+            type: "session_warning",
+            message: sanitizeError(error),
+          }),
+        );
+      continue;
+    }
+
+    if (request.type === "clear_workspace") {
+      if (!runtime) {
+        emit({
+          type: "session_warning",
+          message: setupError ?? "The Aside runtime is unavailable.",
+        });
+        continue;
+      }
+      runtime.clearWorkspace(request.task_id);
       continue;
     }
 

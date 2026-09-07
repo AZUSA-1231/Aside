@@ -1,6 +1,6 @@
 # P5 - Session, IPC, and Protocol Integration
 
-Status: planning
+Status: implemented (2026-09-07)
 Depends on: P0 through P4
 Unblocks: P6 - Side Surface and Release Verification
 Source requirements: Cycle 5 PRD sections 9, 10, 12, 13, 14, and 16.1/16.6/16.7
@@ -93,3 +93,29 @@ Run protocol, session, and runtime tests with a temporary session root and
 faux provider/tools. Exercise a restart before a pending write and inspect the
 stored JSONL to confirm there is no permission grant, credential, native value,
 or unbounded workspace snapshot.
+
+## Verification
+
+- The JSONL request vocabulary now includes `permission_response`,
+  `set_workspace`, and `clear_workspace` in addition to `prompt` and `cancel`,
+  each strictly validated and bounded. Runtime events cross the boundary
+  verbatim so workspace, tool, skill, permission, and verification state reach
+  React; Tauri remains a process/IPC forwarder and holds no path authority.
+- `node --test agent-runtime/test/protocol.test.mjs` passed: 6 tests covering
+  the extended vocabulary, invalid/stale rejection, forwarding of permission,
+  set-workspace, and clear-workspace to the runtime, full event-vocabulary
+  forwarding, and a set-workspace failure reported as a session warning.
+- `node --test agent-runtime/test/session.test.mjs` passed: 8 tests, including
+  a persistence-privacy case proving that a permission-gated write with an
+  active skill persists only bounded user/assistant messages and never
+  `permission_id`, `aside_context`, `workspace_root`, or skill instructions.
+  Restored history skips empty assistant tool-call frames.
+- `npm.cmd run runtime:test` passed: 80 tests.
+- `cargo fmt --manifest-path src-tauri/Cargo.toml --check`, `cargo check`, and
+  `cargo test --manifest-path src-tauri/Cargo.toml` passed: 30 tests.
+- An end-to-end protocol run proved the boundary: JSONL prompt -> `workspace.edit`
+  -> `permission_requested` -> JSONL `permission_response` (allow) -> atomic
+  write -> `tool_result` succeeded -> `completed`, with the target content
+  updated exactly once after approval.
+- React and Tauri import no Pi classes, filesystem implementations, provider
+  message constructors, or path authority (C5-36/C5-37).
