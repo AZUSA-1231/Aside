@@ -13,6 +13,9 @@ dist-ssr
 *.local
 vendor/pi-full/
 
+# Internal project documentation (kept local, not published)
+/docs
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
