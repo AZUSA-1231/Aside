@@ -6,8 +6,10 @@
 </p>
 
 > **Status: work in progress** — a semi-finished MVP. The desktop shell, window
-> behavior, agent runtime, and bounded host-context capture are in place;
-> richer host integrations are still planned.
+> behavior, agent runtime, bounded host-context capture, and bounded
+> permission-gated workspace tools are in place. Cycle 5's implementation is
+> complete but its manual Windows acceptance is still open; PDF, Word, and Web
+> Search are planned for Cycle 6.
 
 Aside is a persistent desktop companion for Windows. It's a small frameless
 side panel you can summon from anywhere with `Ctrl + Alt + A` — always within
@@ -28,7 +30,20 @@ Built with **Tauri 2**, **React**, **TypeScript**, and **Pi's agent core**.
 - **Bounded host context** — the agent reads limited context from the current
   window (browser pages, Explorer, PDF, Word, Excel paths) via Windows UI
   Automation, without reading file contents or unbounded screen data.
-- **Small everyday tools** — schedules, reminders, and lightweight utilities.
+- **Automatic workspace handoff** — capturing a file resolves the containing
+  directory as the task workspace before any file tool call. Capture is a
+  reference, not permission; the runtime canonicalizes and revalidates it.
+- **Bounded workspace tools** — list, stat, read, and search text and JSON
+  files inside the resolved workspace, without a shell or a process-wide
+  working-directory change.
+- **Permission-gated writes** — text and JSON writes and edits are prepared,
+  previewed, and executed once after an exact-operation decision. Approved
+  operations are revalidated against the current target before they run.
+- **Skills** — three bundled bounded `SKILL.md` workflows. Skill content is
+  untrusted reference data: it can never register a tool or expand authority.
+- **Task-aware Side rail** — workspace, active skill, tool activity,
+  verification, and permission controls, all display projections over the
+  runtime's serialized state.
 
 ## Getting started
 
@@ -61,8 +76,20 @@ local server. `.env.local` is git-ignored; packaged builds also read
 ## Roadmap
 
 The current MVP covers the desktop and window experience, the agent runtime,
-and bounded UIA-based host-context capture. Deferred for now:
+bounded UIA-based host-context capture, and bounded permission-gated workspace
+tools. Cycle 6 adds PDF reading, Word reading and transformation, Web Search,
+and a user-connected MCP tool adapter, all through one Aside-owned capability
+registry and policy path.
 
+Deferred for now:
+
+- shell, PowerShell, and arbitrary process or code execution
+- Excel, PowerPoint, GitHub, VSCode actions, Notion, and general browsing
+- PDF mutation and OCR, and full Word round-trip fidelity
+- permanent workspace trust, multi-workspace execution, and background agents
 - VSCode bridge and active-editor integration
 - Rich production host extraction
 - Windows Widget / Shell integration, browser extensions, DOM access, and OCR
+
+No shell or process capability is registered in the model-visible tool schema,
+including as a disabled placeholder.

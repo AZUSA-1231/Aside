@@ -11,6 +11,12 @@ node_modules
 dist
 dist-ssr
 *.local
+
+# Provider credentials. The runtime reads `.env.local`; `.env` is ignored too so
+# a mistyped filename cannot put a live key into a commit.
+.env
+.env.*
+!.env.example
 vendor/pi-full/
 
 # Internal project documentation (kept local, not published)
