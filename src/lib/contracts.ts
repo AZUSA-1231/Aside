@@ -182,13 +182,39 @@ export interface RuntimeWorkspaceState {
   };
 }
 
+export interface RuntimeCapabilityAvailability {
+  prerequisites: string[];
+}
+
+/**
+ * A bounded display projection. Trusted policy metadata stays runtime
+ * authoritative; React never feeds these values back as a decision.
+ */
 export interface RuntimeToolDescriptor {
+  contract_version: number;
   name: string;
   description: string;
   label: string;
   effect: string;
   scope: string;
+  egress: string;
+  source: string;
   replay: string;
+  availability: RuntimeCapabilityAvailability;
+  origin_label: string;
+}
+
+/**
+ * The runtime's honest description of a capability's trust boundary. `note` is
+ * looked up from a closed table by the runtime, never composed by a caller.
+ */
+export interface RuntimeCapabilityRisk {
+  effect: string;
+  egress: string;
+  source: string;
+  origin_label: string;
+  boundary: "aside_enforced" | "external_process";
+  note: string;
 }
 
 export interface RuntimeSkillEvent {
@@ -206,6 +232,9 @@ export interface RuntimePermissionRequest {
   tool_call_id: string;
   operation: string;
   effect: string;
+  egress: string;
+  source: string;
+  risk: RuntimeCapabilityRisk;
   expires_at: number;
   status: string;
 }
@@ -246,6 +275,14 @@ export type RuntimeEvent =
       message: string;
     }
   | { type: "workspace_cleared"; task_id?: string }
+  | {
+      /** An explicit selection outranked a capture in the same prompt. */
+      type: "workspace_overridden";
+      request_id: string;
+      task_id: string;
+      replaced_by: string;
+      captured_path: string;
+    }
   | {
       type: "run_started";
       request_id: string;
@@ -299,6 +336,9 @@ export type RuntimeEvent =
       tool_call_id: string;
       operation: string;
       effect: string;
+      egress: string;
+      source: string;
+      risk: RuntimeCapabilityRisk;
       expires_at: number;
       status: string;
     }

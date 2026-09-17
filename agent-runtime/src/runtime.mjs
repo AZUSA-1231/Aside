@@ -15,17 +15,26 @@ import {
   AsideContractError,
   DEFAULT_AGENT_LIMITS,
   assertSafeText,
-  boundedToolResult,
   byteLength,
-  createAsideToolRegistry,
   createTaskRun,
   normalizeAgentLimits,
-  previewValue,
-  sanitizeRuntimeText,
-  toolResultText,
   truncateText,
   snapshotTaskRun,
 } from "./agent-contracts.mjs";
+import {
+  NO_RUN_FACTS,
+  createRunFacts,
+  filterAvailableTools,
+} from "./capability-availability.mjs";
+import { createAsideToolRegistry } from "./capability-contract.mjs";
+import { evaluateToolPolicy } from "./capability-policy.mjs";
+import {
+  boundedToolResult,
+  isFailureToolResultStatus,
+  normalizeToolResultStatus,
+  permissionNotObtainedResult,
+} from "./capability-result.mjs";
+import { emitToolEvent } from "./tool-events.mjs";
 import {
   DEFAULT_BUILTIN_SKILLS_ROOT,
   buildSkillManifest,
@@ -38,13 +47,17 @@ import {
   normalizeWorkspaceHint,
   resolveTaskWorkspace,
 } from "./workspace.mjs";
-import { createWorkspaceReadTools } from "./workspace-tools.mjs";
+import {
+  createWorkspaceReadTools,
+  describeDocumentFormats,
+} from "./workspace-tools.mjs";
 import { createWorkspaceWriteTools } from "./workspace-write-tools.mjs";
 import { PermissionBroker } from "./permission-broker.mjs";
 
 export const MAX_REQUEST_ID_LENGTH = 128;
 export const MAX_PROMPT_LENGTH = 20_000;
 export const MAX_SYSTEM_POLICY_BYTES = 8 * 1024;
+export const MAX_CAPABILITY_SUMMARY_BYTES = 1_024;
 export { DEFAULT_AGENT_LIMITS } from "./agent-contracts.mjs";
 export const DEFAULT_SYSTEM_PROMPT =
   "You are Aside, a concise and thoughtful desktop assistant. Answer directly and keep short requests practical.";
@@ -160,72 +173,31 @@ function normalizeSystemPolicy(policy) {
   return assertSafeText(policy, "system_policy", MAX_SYSTEM_POLICY_BYTES);
 }
 
-function describeToolCall(event, limits) {
-  const args = previewValue(event.args, Math.min(limits.maxToolUpdateBytes, 1_024));
-  return {
-    tool_call_id: sanitizeRuntimeText(event.toolCallId, 160).text,
-    tool: sanitizeRuntimeText(event.toolName, 96).text,
-    arguments: args.text,
-    arguments_truncated: args.truncated,
-  };
-}
-
-function emitToolEvent(send, run, event) {
-  if (event.type === "tool_execution_start") {
-    send({
-      type: "tool_call_started",
-      request_id: run.request_id,
-      task_id: run.task_id,
-      ...describeToolCall(event, run.limits),
-    });
-    return;
-  }
-
-  if (event.type === "tool_execution_update") {
-    const update = boundedToolResult(
-      event.partialResult,
-      run.limits.maxToolUpdateBytes,
-    );
-    send({
-      type: "tool_call_update",
-      request_id: run.request_id,
-      task_id: run.task_id,
-      tool_call_id: sanitizeRuntimeText(event.toolCallId, 160).text,
-      tool: sanitizeRuntimeText(event.toolName, 96).text,
-      text: toolResultText(update),
-      truncated: update.truncated,
-    });
-    return;
-  }
-
-  if (event.type === "tool_execution_end") {
-    const result = boundedToolResult(
-      event.result,
-      run.limits.maxToolResultBytes,
-    );
-    const resultStatus = [
-      "denied",
-      "cancelled",
-      "expired",
-      "invalidated",
-      "unsupported",
-    ].includes(result.details?.status)
-      ? result.details.status
-      : event.isError
-        ? "failed"
-        : "succeeded";
-    send({
-      type: "tool_result",
-      request_id: run.request_id,
-      task_id: run.task_id,
-      tool_call_id: sanitizeRuntimeText(event.toolCallId, 160).text,
-      tool: sanitizeRuntimeText(event.toolName, 96).text,
-      status: resultStatus,
-      text: toolResultText(result),
-      details: result.details,
-      truncated: result.truncated,
-    });
-  }
+/**
+ * States what the registered capabilities actually do, derived from the
+ * registry and the document adapters rather than hand-written, so registering
+ * an adapter cannot leave the prompt understating it (C6-I023).
+ *
+ * A tool description is consulted when the model calls a tool; this is what it
+ * uses to answer "can you read a PDF?" before it thinks to look.
+ */
+function buildCapabilitySummary(registry) {
+  const names = registry.descriptors.map((descriptor) => descriptor.name);
+  if (names.length === 0) return "";
+  const { readable, writable } = describeDocumentFormats();
+  const lines = [
+    `You can work with files in the active workspace using these tools: ${names.join(", ")}.`,
+    readable.length > 0 ? `Readable formats: ${readable.join(", ")}.` : "",
+    writable.length > 0
+      ? `Writable formats: ${writable.join(", ")}; every write or edit requires the user's explicit approval.`
+      : "",
+    // PDF is readable but not writable, which is worth saying outright.
+    readable.includes("pdf") && !writable.includes("pdf")
+      ? "PDF is read-only: text and page numbers are returned, images are not described, and no OCR is performed."
+      : "",
+    "A workspace must be resolved before any file tool becomes available; if one is not, ask the user to select a file or folder.",
+  ].filter((line) => line.length > 0);
+  return truncateText(lines.join(" "), MAX_CAPABILITY_SUMMARY_BYTES).text;
 }
 
 function validatePromptInput(requestId, text) {
@@ -328,6 +300,7 @@ export async function createConfiguredAgent({
   const skillManifestText = buildSkillManifest(loadedSkills.skills);
   const systemPrompt = [
     DEFAULT_SYSTEM_PROMPT,
+    buildCapabilitySummary(registry),
     normalizedSystemPolicy,
     skillManifestText,
   ]
@@ -418,15 +391,54 @@ export async function createConversationRuntime({
   let disposed = false;
   let selectedWorkspace;
   let previousWorkspace;
+
+  /**
+   * The identity of the conversation that owns the current workspace. It comes
+   * from the durable session, not from how long this process has been running,
+   * so a new conversation starts without a workspace instead of inheriting one.
+   * The task id (or the runtime instance) is the fallback for an agent that has
+   * no session identity, as in tests.
+   */
+  function currentContinuationId() {
+    const sessionId = conversationAgent.sessionId;
+    if (typeof sessionId === "string" && sessionId.length > 0) return sessionId;
+    return taskId ?? "runtime";
+  }
   if (requestedRegistry) conversationAgent.state.tools = requestedRegistry.tools;
   const initialTools = conversationAgent.state.tools ?? [];
   const baseRegistry = requestedRegistry ?? normalizeToolSet(
     initialTools.length > 0 ? initialTools : createDefaultWorkspaceTools(),
   );
-  let activeRegistry = baseRegistry.filter(
-    ({ descriptor }) => descriptor.scope !== "workspace",
-  );
+  let activeRegistry = filterAvailableTools(baseRegistry, NO_RUN_FACTS);
   conversationAgent.toolExecution = "sequential";
+
+  /**
+   * A broker view whose trust metadata comes from the trusted descriptor, not
+   * from the adapter. An adapter cannot describe itself as built-in or claim a
+   * softer boundary than the registry recorded (C6-I006, PRD section 12).
+   */
+  function scopedPermissionBroker(broker, descriptor) {
+    if (!broker || typeof broker.waitForDecision !== "function") return broker;
+    const trusted = (input) => ({
+      ...input,
+      effect: descriptor.effect,
+      egress: descriptor.egress,
+      source: descriptor.source,
+      origin_label: descriptor.origin.label,
+    });
+    return {
+      waitForDecision: (input, signal) => broker.waitForDecision(trusted(input), signal),
+      request: (input, signal) => broker.request(trusted(input), signal),
+      resolve: (permissionId, decision, identity) =>
+        broker.resolve(permissionId, decision, identity),
+      cancel: (permissionId, code) => broker.cancel(permissionId, code),
+      cancelForRun: (identity, code) => broker.cancelForRun(identity, code),
+      snapshot: () => broker.snapshot(),
+      get pendingCount() {
+        return broker.pendingCount;
+      },
+    };
+  }
 
   function wrapRuntimeTool(tool) {
     return {
@@ -457,7 +469,12 @@ export async function createConversationRuntime({
               taskRun: run,
               workspace: run?.environment,
               workspaceState: run?.workspace,
-              permissionBroker: runtimePermissionBroker,
+              permissionBroker: run?.policy?.descriptor
+                ? scopedPermissionBroker(
+                  runtimePermissionBroker,
+                  run.policy.descriptor,
+                )
+                : runtimePermissionBroker,
               emit: send,
               })
             : tool;
@@ -470,7 +487,26 @@ export async function createConversationRuntime({
             controller.signal,
             onUpdate,
           );
-          return await Promise.race([execution, timeout]);
+          const outcome = await Promise.race([execution, timeout]);
+          // An adapter whose policy required a permission decision must have
+          // obtained one, for this run and this call. A success without a
+          // consumable grant is refused rather than reported as complete.
+          if (
+            run?.policy?.decision === "permission_required" &&
+            !isFailureToolResultStatus(
+              normalizeToolResultStatus(
+                outcome?.details,
+                outcome?.isError === true,
+              ),
+            ) &&
+            !runtimePermissionBroker.consumeGrant?.(toolCallId, {
+              request_id: run.request_id,
+              task_id: run.task_id,
+            })
+          ) {
+            return permissionNotObtainedResult(tool.name);
+          }
+          return outcome;
         } catch (error) {
           if (timedOut) {
             throw new Error("The tool exceeded its active-time limit.");
@@ -504,10 +540,10 @@ export async function createConversationRuntime({
           workspaceState: resolution.state,
         })
       : baseRegistry.tools;
-    const registry = normalizeToolSet(candidateTools ?? []);
-    return resolution.environment
-      ? registry
-      : registry.filter(({ descriptor }) => descriptor.scope !== "workspace");
+    return filterAvailableTools(
+      normalizeToolSet(candidateTools ?? []),
+      createRunFacts(run),
+    );
   }
 
   installRegistry(activeRegistry);
@@ -563,27 +599,24 @@ export async function createConversationRuntime({
         terminate: true,
       };
     }
-    const registered = activeRegistry.get(context.toolCall.name);
-    if (!registered) {
-      // Defense in depth: the Pi loop rejects unknown tools before this hook
-      // runs, but the registry authority must hold even if that changes.
-      run.limit_code = "unregistered_tool";
-      run.limit_message = `The tool "${context.toolCall.name}" is not available.`;
+    // Defense in depth: the Pi loop rejects unknown tools and the run registry
+    // already excludes unavailable ones, but the policy authority must hold
+    // even if either of those changes.
+    const policy = evaluateToolPolicy({
+      registry: activeRegistry,
+      toolName: context.toolCall.name,
+      facts: run.facts,
+    });
+    if (policy.decision === "unavailable") {
+      run.limit_code = policy.reason_code;
+      run.limit_message = policy.reason;
       return {
         block: true,
-        reason: run.limit_message,
+        reason: policy.reason,
         terminate: true,
       };
     }
-    if (registered.descriptor.scope === "workspace" && !run.environment) {
-      run.limit_code = "workspace_required";
-      run.limit_message = "Select a workspace before using file capabilities.";
-      return {
-        block: true,
-        reason: run.limit_message,
-        terminate: true,
-      };
-    }
+    run.policy = policy;
     const result = await baseBeforeToolCall?.(context, signal);
     if (result?.block) return result;
     return result;
@@ -597,15 +630,18 @@ export async function createConversationRuntime({
       ...context.result,
       ...(baseResult ?? {}),
     };
-    const resultDetails = candidate.details;
-    const resultIsError =
-      candidate.isError === true ||
-      ["failed", "unsupported", "cancelled"].includes(resultDetails?.status);
     const bounded = boundedToolResult(candidate, normalizedLimits.maxToolResultBytes);
+    // Read the tool's own flag, not the loop's: the loop reports isError=false
+    // for any tool that returns rather than throws. A tool that reports a
+    // failure only through details.status is still a failure.
+    const status = normalizeToolResultStatus(
+      bounded.details ?? candidate.details,
+      candidate.isError === true || baseResult?.isError === true,
+    );
     return {
       content: bounded.content,
       details: bounded.details,
-      isError: Boolean(baseResult?.isError ?? context.isError) || resultIsError,
+      isError: isFailureToolResultStatus(status),
       ...(bounded.terminate || baseResult?.terminate ? { terminate: true } : {}),
     };
   };
@@ -650,6 +686,11 @@ export async function createConversationRuntime({
     run.settled = true;
     const terminalStatus = run.limit_code ? "failed" : status;
     run.status = terminalStatus;
+    // An approval that was never spent must not outlive its run.
+    runtimePermissionBroker.clearGrantsForRun?.({
+      requestId: run.request_id,
+      taskId: run.task_id,
+    });
 
     if (status !== "completed") {
       removeUnsuccessfulAssistantMessages(conversationAgent);
@@ -742,7 +783,11 @@ export async function createConversationRuntime({
 
     if (event.type === "agent_end") {
       const failure = event.messages.find(isUnsuccessfulAssistantMessage);
-      if (failure?.stopReason === "aborted") {
+      // A run the user stopped is cancelled regardless of which turn it was
+      // in. Aborting mid-tool-call surfaces as an error message rather than an
+      // aborted stop reason, so the request flag is the authoritative signal —
+      // the same rule `prompt()` already applies to a thrown abort.
+      if (run.cancel_requested || failure?.stopReason === "aborted") {
         await settle(run, "cancelled", failure);
       } else if (failure) {
         await settle(run, "failed", failure);
@@ -822,17 +867,49 @@ export async function createConversationRuntime({
     });
     active = run;
     try {
-      const resolution = await resolveTaskWorkspace({
-        context: normalizedContext,
-        workspaceHint: workspaceHint ?? configuredWorkspaceHint ?? selectedWorkspace,
-        previousWorkspace,
-        fileSystem: workspaceFileSystem,
-        now: now(),
-      });
+      // Process lifetime is not task continuity: a changed conversation
+      // identity must not inherit the previous run's workspace (C6-I021).
+      const continuationId = currentContinuationId();
+      let resolution;
+      try {
+        resolution = await resolveTaskWorkspace({
+          context: normalizedContext,
+          workspaceHint: workspaceHint ?? configuredWorkspaceHint ?? selectedWorkspace,
+          previousWorkspace,
+          continuationId,
+          fileSystem: workspaceFileSystem,
+          now: now(),
+        });
+      } catch (error) {
+        // A stale, inaccessible, or ambiguous descriptor is a recoverable
+        // state, not a run failure: the model still answers without scoped
+        // tools rather than having the task killed (C6-08).
+        if (!(error instanceof WorkspaceError)) throw error;
+        resolution = {
+          state: {
+            status: "unresolved",
+            code: typeof error.code === "string" ? error.code : "workspace_error",
+            message: sanitizeError(error),
+          },
+          environment: undefined,
+        };
+      }
+      if (resolution.overridden) {
+        send({
+          type: "workspace_overridden",
+          request_id: requestId,
+          task_id: run.task_id,
+          replaced_by: resolution.overridden.source,
+          captured_path: resolution.overridden.captured_path,
+        });
+      }
       run.workspace = resolution.state.status === "resolved"
         ? workspaceEventState(resolution.state)
         : undefined;
       run.environment = resolution.environment;
+      // The single run-scoped fact bag, computed once. Availability filtering
+      // and the policy evaluator both read it.
+      run.facts = createRunFacts(run);
       if (resolution.state.status === "resolved") {
         previousWorkspace = resolution.state;
         send({
@@ -874,9 +951,7 @@ export async function createConversationRuntime({
       }
     } finally {
       if (active === run) active = null;
-      installRegistry(
-        baseRegistry.filter(({ descriptor }) => descriptor.scope !== "workspace"),
-      );
+      installRegistry(filterAvailableTools(baseRegistry, NO_RUN_FACTS));
     }
   }
 
@@ -893,6 +968,7 @@ export async function createConversationRuntime({
     }
     const resolution = await resolveTaskWorkspace({
       workspaceHint: normalized,
+      continuationId: currentContinuationId(),
       fileSystem: workspaceFileSystem,
       now: now(),
     });

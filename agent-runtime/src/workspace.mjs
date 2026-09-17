@@ -45,8 +45,19 @@ const workspaceSources = new Set([
   "explicit",
   "workspace_descriptor",
   "file_descriptor",
+  // A capture that reported both a root and a target for the same task.
+  "descriptor_handoff",
   "previous_task_workspace",
 ]);
+
+// A captured descriptor either establishes the workspace root or the target
+// inside it. They are selected independently so an Explorer capture that lists
+// its directory before its selected file binds both.
+/** Upper bound on a directory listing cursor, so a cursor cannot walk forever. */
+const MAX_LIST_OFFSET = 1_000_000;
+
+const ROOT_DESCRIPTOR_ROLES = new Set(["workspace_root", "directory"]);
+const TARGET_DESCRIPTOR_ROLES = new Set(["active_file", "selected_item", "document"]);
 
 export class WorkspaceError extends Error {
   constructor(code, message, path, details) {
@@ -243,8 +254,43 @@ function descriptorCandidates(context) {
   return candidates;
 }
 
-function descriptorCandidate(context) {
-  return descriptorCandidates(context)[0];
+function distinctByPath(candidates) {
+  const seen = new Map();
+  for (const candidate of candidates) {
+    const key = comparisonPath(candidate.path);
+    if (!seen.has(key)) seen.set(key, candidate);
+  }
+  return [...seen.values()];
+}
+
+/**
+ * Selects the workspace root and the target independently. Array order in the
+ * attachment is not significant, so "directory then file" and "file then
+ * directory" resolve identically. More than one distinct root or target is
+ * ambiguous and refuses to guess rather than choosing the first.
+ */
+export function selectDescriptorHandoff(context) {
+  const candidates = descriptorCandidates(context);
+  const roots = distinctByPath(
+    candidates.filter((candidate) => ROOT_DESCRIPTOR_ROLES.has(candidate.role)),
+  );
+  const targets = distinctByPath(
+    candidates.filter((candidate) => TARGET_DESCRIPTOR_ROLES.has(candidate.role)),
+  );
+  if (roots.length > 1) {
+    throw new WorkspaceError(
+      "ambiguous_descriptor",
+      "More than one workspace root was captured, so none can be chosen safely.",
+    );
+  }
+  if (targets.length > 1) {
+    throw new WorkspaceError(
+      "ambiguous_descriptor",
+      "More than one target was captured, so none can be chosen safely.",
+    );
+  }
+  if (roots.length === 0 && targets.length === 0) return undefined;
+  return { root: roots[0], target: targets[0] };
 }
 
 function backendWithDefaults(fileSystem = {}) {
@@ -287,50 +333,86 @@ async function canonicalDirectory(backend, addressedPath) {
 }
 
 function targetReference(candidate, resource, workspacePath) {
-  const targetPath = resource.kind === "directory" && candidate.role !== "active_file" && candidate.role !== "document"
-    ? resource.canonicalPath
-    : resource.canonicalPath;
-  const root = resource.kind === "directory" && (candidate.role === "workspace_root" || candidate.role === "directory" || candidate.role === "selected_item")
-    ? resource.canonicalPath
-    : workspacePath;
   return {
     role: candidate.role ?? (resource.kind === "file" ? "document" : "workspace_root"),
     addressed_path: candidate.path,
-    canonical_path: targetPath,
-    relative_path: normalizeRelativePath(root, targetPath),
+    canonical_path: resource.canonicalPath,
+    relative_path: normalizeRelativePath(workspacePath, resource.canonicalPath),
     kind: resource.kind,
     ...(candidate.expires_at === undefined ? {} : { expires_at: candidate.expires_at }),
   };
 }
 
-async function activateCandidate(candidate, backend, now) {
-  const expiry = safeExpiry(candidate.expires_at);
+/**
+ * Activates the selected root and target together. When no root was captured
+ * the target's containing directory becomes the root, which is the Cycle 5
+ * behaviour for a bare file descriptor.
+ */
+async function activateHandoff(handoff, backend, now) {
+  const { root, target } = handoff;
+  const primary = root ?? target;
+  const expiry = safeExpiry(primary.expires_at);
   if (expiry !== undefined && expiry <= now) {
-    throw new WorkspaceError("descriptor_expired", "The workspace descriptor has expired.", candidate.path);
+    throw new WorkspaceError(
+      "descriptor_expired",
+      "The workspace descriptor has expired.",
+      primary.path,
+    );
   }
-  const expectedKind = safeKind(candidate.kind);
-  const resource = await existingResource(backend, candidate.path, expectedKind);
-  const addressedPath = nativePath.resolve(candidate.path);
-  const workspacePath = resource.kind === "directory"
-    ? resource.canonicalPath
-    : nativePath.dirname(addressedPath);
+
+  const rootResource = root
+    ? await existingResource(backend, root.path, safeKind(root.kind))
+    : undefined;
+  // An explicit hint or a descriptor with no declared kind may name a file;
+  // its containing directory is then the root, as in Cycle 5. A descriptor
+  // whose declared kind disagrees with the resource is rejected above.
+  const workspacePath = rootResource
+    ? rootResource.kind === "directory"
+      ? rootResource.canonicalPath
+      : nativePath.dirname(rootResource.canonicalPath)
+    : nativePath.dirname(nativePath.resolve(target.path));
   const workspace = await canonicalDirectory(backend, workspacePath);
-  if (!isWithin(workspace.canonicalPath, resource.canonicalPath)) {
-    throw new WorkspaceError("scope_escape", "The target is outside the active workspace.", candidate.path);
+
+  const targetCandidate = target ?? root;
+  const targetResource = target
+    ? await existingResource(backend, target.path, safeKind(target.kind))
+    : rootResource;
+  if (!isWithin(workspace.canonicalPath, targetResource.canonicalPath)) {
+    throw new WorkspaceError(
+      "scope_escape",
+      "The captured target is outside the active workspace.",
+      targetCandidate.path,
+    );
   }
+
+  const reference = targetReference(
+    targetCandidate,
+    targetResource,
+    workspace.canonicalPath,
+  );
   return {
     status: "resolved",
-    source: safeSource(candidate.source),
-    addressed_path: candidate.path,
+    source: root && target ? "descriptor_handoff" : safeSource(primary.source),
+    addressed_path: primary.path,
     canonical_path: workspace.canonicalPath,
     kind: "directory",
-    target: targetReference(candidate, resource, workspace.canonicalPath),
+    target: {
+      ...reference,
+      identity: identityFromStats(targetResource.info, targetResource.kind),
+    },
     ...(expiry === undefined ? {} : { expires_at: expiry }),
   };
 }
 
-async function revalidatePrevious(previous, backend, now) {
+/**
+ * A previous workspace is reused only when the caller proves it belongs to the
+ * same continuing conversation. Process lifetime alone is not continuity
+ * (C6-I021), so a changed identity drops the prior state instead of inheriting
+ * it silently.
+ */
+async function revalidatePrevious(previous, backend, now, continuationId) {
   if (!previous || previous.status !== "resolved") return undefined;
+  if (previous.continuation_id !== continuationId) return undefined;
   if (previous.expires_at !== undefined && previous.expires_at <= now) {
     throw new WorkspaceError("descriptor_expired", "The previous workspace descriptor has expired.");
   }
@@ -367,10 +449,16 @@ async function revalidatePrevious(previous, backend, now) {
   };
 }
 
+/**
+ * Resolves the task workspace from, in order: an explicit user selection, a
+ * fresh validated capture, or a prior workspace belonging to the same
+ * continuing conversation. A capture may contribute a root, a target, or both.
+ */
 export async function resolveTaskWorkspace({
   context,
   workspaceHint,
   previousWorkspace,
+  continuationId,
   fileSystem,
   now = Date.now(),
 } = {}) {
@@ -378,21 +466,43 @@ export async function resolveTaskWorkspace({
     throw new WorkspaceError("invalid_workspace", "The workspace clock value is invalid.");
   }
   const backend = backendWithDefaults(fileSystem);
+  // Stamping the conversation that owns this resolution is what lets a later
+  // prompt distinguish a continuation from an unrelated new task.
+  const owned = (state) => ({ ...state, continuation_id: continuationId });
+  const handoff = selectDescriptorHandoff(context);
   const explicit = normalizeWorkspaceHint(workspaceHint);
-  const candidate = explicit ?? descriptorCandidate(context);
-  if (candidate) {
-    const state = await activateCandidate(candidate, backend, now);
-    if (state.target) {
-      const target = await existingResource(backend, state.target.canonical_path, state.target.kind);
-      state.target.identity = identityFromStats(target.info, target.kind);
-    }
+  if (explicit) {
+    const state = owned(await activateHandoff({ root: explicit }, backend, now));
+    return {
+      state,
+      environment: createWorkspaceEnvironment({ state, fileSystem: backend }),
+      // An explicit selection outranks a capture in the same prompt. Report it
+      // so the surface can explain why the captured resource did not bind.
+      ...(handoff
+        ? {
+            overridden: {
+              source: "explicit",
+              captured_path: (handoff.root ?? handoff.target).path,
+            },
+          }
+        : {}),
+    };
+  }
+
+  if (handoff) {
+    const state = owned(await activateHandoff(handoff, backend, now));
     return {
       state,
       environment: createWorkspaceEnvironment({ state, fileSystem: backend }),
     };
   }
 
-  const previous = await revalidatePrevious(previousWorkspace, backend, now);
+  const previous = await revalidatePrevious(
+    previousWorkspace,
+    backend,
+    now,
+    continuationId,
+  );
   if (!previous) {
     return {
       state: {
@@ -564,6 +674,13 @@ export function createWorkspaceEnvironment({ state, fileSystem } = {}) {
     if (!Number.isSafeInteger(maxEntries) || maxEntries <= 0) {
       throw new WorkspaceError("invalid_limit", "A positive directory entry limit is required.");
     }
+    const offset = options.offset ?? 0;
+    if (!Number.isSafeInteger(offset) || offset < 0 || offset > MAX_LIST_OFFSET) {
+      throw new WorkspaceError(
+        "invalid_offset",
+        `The directory entry offset must be an integer between 0 and ${MAX_LIST_OFFSET}.`,
+      );
+    }
     const resolved = await resolvePath(addressedPath, { expectedKind: "directory" });
     let entries;
     try {
@@ -571,8 +688,15 @@ export function createWorkspaceEnvironment({ state, fileSystem } = {}) {
     } catch (error) {
       throw mapFsError(error, addressedPath);
     }
-    const truncated = entries.length > maxEntries;
-    if (truncated) entries = entries.slice(0, maxEntries);
+    // Readdir order is filesystem-dependent, so a continuation cursor is only
+    // meaningful over a stable ordering.
+    const ordered = entries.slice().sort((left, right) =>
+      left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
+    const start = Math.min(offset, ordered.length);
+    entries = ordered.slice(start, start + maxEntries);
+    const truncated = start + entries.length < ordered.length;
+    const nextOffset = truncated ? start + entries.length : undefined;
+    const totalEntries = ordered.length;
     const values = [];
     for (const entry of entries) {
       if (options.signal?.aborted) {
@@ -599,7 +723,14 @@ export function createWorkspaceEnvironment({ state, fileSystem } = {}) {
       }
       if (child.kind === "file" || child.kind === "directory") values.push(child);
     }
-    return { ...resolved, entries: values, truncated };
+    return {
+      ...resolved,
+      entries: values,
+      truncated,
+      offset: start,
+      total_entries: totalEntries,
+      ...(nextOffset === undefined ? {} : { next_offset: nextOffset }),
+    };
   }
 
   async function assertCurrent() {

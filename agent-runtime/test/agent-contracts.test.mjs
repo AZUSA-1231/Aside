@@ -5,13 +5,13 @@ import { fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-work
 import {
   AsideContractError,
   DEFAULT_AGENT_LIMITS,
-  boundedToolResult,
-  createAsideToolRegistry,
   createTaskRun,
   normalizeAgentLimits,
   previewValue,
   truncateText,
 } from "../src/agent-contracts.mjs";
+import { createAsideToolRegistry } from "../src/capability-contract.mjs";
+import { boundedToolResult } from "../src/capability-result.mjs";
 import { createConversationRuntime } from "../src/runtime.mjs";
 import { Agent } from "@earendil-works/pi-agent-core/aside";
 import { createModels } from "@earendil-works/pi-ai";

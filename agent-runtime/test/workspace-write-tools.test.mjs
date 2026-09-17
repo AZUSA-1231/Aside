@@ -6,10 +6,8 @@ import test from "node:test";
 import { Agent } from "@earendil-works/pi-agent-core/aside";
 import { createModels } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
-import {
-  DEFAULT_AGENT_LIMITS,
-  createAsideToolRegistry,
-} from "../src/agent-contracts.mjs";
+import { DEFAULT_AGENT_LIMITS } from "../src/agent-contracts.mjs";
+import { createAsideToolRegistry } from "../src/capability-contract.mjs";
 import {
   PermissionBroker,
   PermissionError,

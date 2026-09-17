@@ -969,11 +969,19 @@ function App() {
             <Shield size={14} />
             <strong>{pendingPermission.operation}</strong>
             <span className="permission-effect">{pendingPermission.effect}</span>
+            {pendingPermission.egress && pendingPermission.egress !== "none" && (
+              <span className="permission-effect">
+                egress: {pendingPermission.egress}
+              </span>
+            )}
           </div>
           <div className="permission-card-copy">
-            <span>Aside is asking to perform this workspace write.</span>
+            <span>
+              {pendingPermission.risk?.origin_label ?? pendingPermission.operation}
+            </span>
             <span className="permission-note">
-              The write starts only after an explicit decision.
+              {pendingPermission.risk?.note ??
+                "This operation requires an explicit decision."}
             </span>
           </div>
           <div className="permission-actions">

@@ -3,6 +3,36 @@ import { Readable } from "node:stream";
 import test from "node:test";
 import { parseRuntimeRequest, runProtocol } from "../src/protocol.mjs";
 
+// The Cycle 6 capability dimensions must survive the process boundary verbatim.
+// Tauri forwards events as `serde_json::Value`, so this module is the only
+// place that could drop them.
+const CAPABILITY_DESCRIPTOR_FIXTURE = Object.freeze({
+  contract_version: 1,
+  name: "workspace.write",
+  description: "Prepare a bounded workspace write for permission.",
+  label: "Write workspace file",
+  effect: "write",
+  scope: "workspace",
+  egress: "none",
+  source: "builtin",
+  replay: "non_replayable",
+  availability: { prerequisites: ["workspace"] },
+  origin_label: "Aside built-in capability",
+});
+
+const CAPABILITY_RISK_FIXTURE = Object.freeze({
+  egress: "none",
+  source: "builtin",
+  risk: {
+    effect: "write",
+    egress: "none",
+    source: "builtin",
+    origin_label: "Aside built-in capability",
+    boundary: "aside_enforced",
+    note: "Aside enforces this capability's limits inside its own runtime.",
+  },
+});
+
 test("parses only the Aside prompt and cancel request vocabulary", () => {
   assert.deepEqual(
     parseRuntimeRequest({
@@ -160,7 +190,11 @@ test("forwards permission responses, workspace changes, and the full event vocab
     history: [],
     prompt: async (requestId, text) => {
       emit({ type: "ready", provider: "faux", model: "faux-model" });
-      emit({ type: "run_started", request_id: requestId });
+      emit({
+        type: "run_started",
+        request_id: requestId,
+        tools: [CAPABILITY_DESCRIPTOR_FIXTURE],
+      });
       emit({
         type: "workspace_resolved",
         request_id: requestId,
@@ -175,6 +209,7 @@ test("forwards permission responses, workspace changes, and the full event vocab
         tool_call_id: "tool-call-1",
         operation: "workspace.write",
         effect: "write",
+        ...CAPABILITY_RISK_FIXTURE,
         expires_at: 1234,
         status: "pending",
       });
@@ -223,6 +258,31 @@ test("forwards permission responses, workspace changes, and the full event vocab
   assert.deepEqual(calls.find((call) => call.clearWorkspace), {
     clearWorkspace: { taskId: "task-1" },
   });
+
+  // Every capability dimension crosses the boundary unchanged.
+  const started = events.find((event) => event.type === "run_started");
+  assert.deepEqual(started.tools, [CAPABILITY_DESCRIPTOR_FIXTURE]);
+  for (const key of [
+    "contract_version",
+    "effect",
+    "scope",
+    "egress",
+    "source",
+    "replay",
+    "availability",
+    "origin_label",
+  ]) {
+    assert.deepEqual(
+      started.tools[0][key],
+      CAPABILITY_DESCRIPTOR_FIXTURE[key],
+      `${key} survived the round trip`,
+    );
+  }
+
+  const permission = events.find((event) => event.type === "permission_requested");
+  assert.equal(permission.egress, "none");
+  assert.equal(permission.source, "builtin");
+  assert.deepEqual(permission.risk, CAPABILITY_RISK_FIXTURE.risk);
 });
 
 test("reports a set-workspace failure as a recoverable session warning", async () => {

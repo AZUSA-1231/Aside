@@ -2,12 +2,19 @@ import { Type } from "@earendil-works/pi-ai";
 import {
   AsideContractError,
   byteLength,
-  createAsideToolRegistry,
   previewValue,
   sanitizeRuntimeText,
   truncateText,
 } from "./agent-contracts.mjs";
+import { createAsideToolRegistry } from "./capability-contract.mjs";
+import {
+  DocumentAdapterError,
+  isDocumentBlock,
+} from "./document-contract.mjs";
 import { WorkspaceError } from "./workspace.mjs";
+import { DEFAULT_PDF_ADAPTER } from "./pdf-adapter.mjs";
+
+export { DocumentAdapterError };
 
 const textEncoder = new TextEncoder();
 const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
@@ -249,19 +256,11 @@ function jsonDepthAndNodes(value, maxDepth, maxNodes) {
   return { bounded: true, nodes };
 }
 
-export class DocumentAdapterError extends Error {
-  constructor(code, message, path, details) {
-    super(message);
-    this.name = "DocumentAdapterError";
-    this.code = code;
-    this.path = path;
-    this.details = details;
-  }
-}
-
 const defaultTextAdapter = Object.freeze({
   id: "text",
   formats: Object.freeze(["text", "markdown"]),
+  // Content search may only match adapters that produce a text representation.
+  textual: true,
   write: true,
   maxReadBytes: DEFAULT_WORKSPACE_TOOL_LIMITS.maxReadBytes,
   maxExpandedBytes: DEFAULT_WORKSPACE_TOOL_LIMITS.maxReadBytes,
@@ -279,6 +278,7 @@ const defaultTextAdapter = Object.freeze({
 const defaultJsonAdapter = Object.freeze({
   id: "json",
   formats: Object.freeze(["json"]),
+  textual: true,
   write: true,
   maxReadBytes: DEFAULT_WORKSPACE_TOOL_LIMITS.maxReadBytes,
   maxExpandedBytes: DEFAULT_WORKSPACE_TOOL_LIMITS.maxJsonExpandedBytes,
@@ -335,7 +335,29 @@ const defaultJsonAdapter = Object.freeze({
 export const DEFAULT_DOCUMENT_ADAPTERS = Object.freeze([
   defaultJsonAdapter,
   defaultTextAdapter,
+  DEFAULT_PDF_ADAPTER,
 ]);
+
+/**
+ * The formats the active adapters actually accept, derived from the adapters
+ * themselves. The model's self-description is built from this rather than a
+ * hand-written list, so adding an adapter cannot leave the prompt stale
+ * (C6-I023).
+ */
+export function describeDocumentFormats(adapters = DEFAULT_DOCUMENT_ADAPTERS) {
+  const readable = new Set();
+  const writable = new Set();
+  for (const adapter of adapters) {
+    for (const format of adapter.formats ?? []) {
+      readable.add(format);
+      if (adapter.write === true) writable.add(format);
+    }
+  }
+  return Object.freeze({
+    readable: Object.freeze([...readable].sort()),
+    writable: Object.freeze([...writable].sort()),
+  });
+}
 
 export function createDocumentAdapterRegistry(adapters = DEFAULT_DOCUMENT_ADAPTERS) {
   if (!Array.isArray(adapters) || adapters.length === 0) {
@@ -352,7 +374,15 @@ export function createDocumentAdapterRegistry(adapters = DEFAULT_DOCUMENT_ADAPTE
       adapter.formats.length === 0 ||
       adapter.formats.some((format) => typeof format !== "string") ||
       typeof adapter.write !== "boolean" ||
-      typeof adapter.read !== "function"
+      (adapter.textual !== undefined && typeof adapter.textual !== "boolean") ||
+      typeof adapter.read !== "function" ||
+      (adapter.extensions !== undefined &&
+        (!Array.isArray(adapter.extensions) ||
+          adapter.extensions.some(
+            (extension) =>
+              typeof extension !== "string" ||
+              !/^\.[a-z0-9]+$/.test(extension),
+          )))
     ) {
       throw new AsideContractError("A document adapter has an invalid contract.");
     }
@@ -372,8 +402,17 @@ export function createDocumentAdapterRegistry(adapters = DEFAULT_DOCUMENT_ADAPTE
       if (!selected || typeof selected.read !== "function") return undefined;
       return selected;
     }
-    if (unsupportedExtensions.has(extensionOf(path))) return undefined;
-    if (extensionOf(path) === ".json") return get("json");
+    const extension = extensionOf(path);
+    // A registered adapter that claims this extension wins over the built-in
+    // unsupported-extension guard. Checking the guard first would make
+    // declaring a format like `.pdf` have no effect at all.
+    const declared = adapters.find(
+      (adapter) =>
+        Array.isArray(adapter.extensions) && adapter.extensions.includes(extension),
+    );
+    if (declared) return declared;
+    if (unsupportedExtensions.has(extension)) return undefined;
+    if (extension === ".json") return get("json");
     return get("text");
   }
 
@@ -388,11 +427,17 @@ const pathSchema = Type.String({
   description: "A relative path inside the active workspace, or an absolute path inside it.",
 });
 const positiveNumber = (description) => Type.Integer({ minimum: 1, description });
+const nonNegativeNumber = (description) => Type.Integer({ minimum: 0, description });
 
 export const WORKSPACE_READ_TOOL_SCHEMAS = Object.freeze({
   list: Type.Object({
     path: Type.Optional(pathSchema),
     limit: Type.Optional(positiveNumber("Maximum number of directory entries.")),
+    offset: Type.Optional(
+      nonNegativeNumber(
+        "Zero-based entry offset. Use next_offset to continue a truncated listing.",
+      ),
+    ),
   }),
   search: Type.Object({
     query: Type.String({ description: "Text to find in names or supported text content." }),
@@ -407,13 +452,42 @@ export const WORKSPACE_READ_TOOL_SCHEMAS = Object.freeze({
   stat: Type.Object({ path: pathSchema }),
   read: Type.Object({
     path: pathSchema,
-    format: Type.Optional(Type.Union([Type.Literal("auto"), Type.Literal("text"), Type.Literal("json")])),
+    // Deliberately a bounded string rather than a fixed union: the valid set is
+    // whatever the active adapter registry declares, and a union would silently
+    // reject every format a later adapter adds. An unknown value is reported as
+    // unsupported_format, not silently ignored.
+    format: Type.Optional(
+      Type.String({
+        description:
+          "Explicit format id. Omit or use \"auto\" to select by file extension. "
+          + "Supported ids: \"text\", \"json\", \"pdf\".",
+      }),
+    ),
     offset: Type.Optional(positiveNumber("One-based line offset.")),
     limit: Type.Optional(positiveNumber("Maximum number of lines.")),
+    byte_offset: Type.Optional(
+      nonNegativeNumber(
+        "Zero-based byte offset into the decoded text. Use next_byte_offset to continue a truncated read.",
+      ),
+    ),
+    pages: Type.Optional(
+      Type.String({
+        description:
+          "PDF only. A page or page range, for example \"1-3\" or \"2,5\". "
+          + "Use next_page from a truncated read to continue.",
+      }),
+    ),
   }),
 });
 
-export async function readDocument({ workspace, documentRegistry, limits }, path, format, signal, maxBytes = limits.maxReadBytes) {
+export async function readDocument(
+  { workspace, documentRegistry, limits },
+  path,
+  format,
+  signal,
+  maxBytes = limits.maxReadBytes,
+  selection,
+) {
   throwIfAborted(signal, path);
   const resolved = await workspace.resolvePath(path, { expectedKind: "file" });
   const adapter = documentRegistry.select(path, format ?? "auto");
@@ -432,29 +506,52 @@ export async function readDocument({ workspace, documentRegistry, limits }, path
     maxBytes: Math.min(maxBytes, adapterLimit),
     signal,
   });
-  const document = await adapter.read({ bytes: bytes.bytes, path, limits });
-  if (!document || typeof document !== "object" || typeof document.text !== "string") {
+  const document = await adapter.read({ bytes: bytes.bytes, path, limits, signal, selection });
+  if (!document || typeof document !== "object") {
     throw new DocumentAdapterError(
       "invalid_document",
-      "The document adapter returned an invalid text representation.",
+      "The document adapter returned an invalid representation.",
       path,
     );
   }
+  // An adapter returns either a text representation or structured blocks. It
+  // must not be forced to invent a text field it cannot produce honestly.
+  const hasText = typeof document.text === "string";
+  const hasBlocks = Array.isArray(document.blocks);
+  if (!hasText && !hasBlocks) {
+    throw new DocumentAdapterError(
+      "invalid_document",
+      "The document adapter returned neither text nor structured blocks.",
+      path,
+    );
+  }
+  const expandedBytes = hasText
+    ? byteLength(document.text)
+    : byteLength(JSON.stringify(document.blocks));
   const maxExpandedBytes = Number.isSafeInteger(adapter.maxExpandedBytes)
     ? adapter.maxExpandedBytes
     : limits.maxReadBytes;
-  if (byteLength(document.text) > maxExpandedBytes) {
+  if (expandedBytes > maxExpandedBytes) {
     throw new DocumentAdapterError(
       "document_too_large",
       "The expanded document exceeds the adapter limit.",
       path,
-      { expanded_bytes: byteLength(document.text), max_bytes: maxExpandedBytes },
+      { expanded_bytes: expandedBytes, max_bytes: maxExpandedBytes },
     );
   }
-  return { resolved: bytes, adapter, document, raw_text: decodeUtf8(bytes.bytes, path) };
+  throwIfAborted(signal, path);
+  return {
+    resolved: bytes,
+    adapter,
+    document,
+    // Raw text is the exact original bytes for the write path. A binary
+    // adapter has none, and decoding its bytes as UTF-8 would either throw or
+    // silently corrupt them.
+    ...(hasText ? { raw_text: decodeUtf8(bytes.bytes, path) } : {}),
+  };
 }
 
-export async function validateDocumentText({ documentRegistry, limits, path, format = "auto", text }) {
+export async function validateDocumentText({ documentRegistry, limits, path, format = "auto", text, signal }) {
   if (typeof text !== "string") {
     throw new WorkspaceError("invalid_argument", "Document content must be text.", path);
   }
@@ -476,7 +573,7 @@ export async function validateDocumentText({ documentRegistry, limits, path, for
       max_bytes: maxBytes,
     });
   }
-  const document = await adapter.read({ bytes, path, limits });
+  const document = await adapter.read({ bytes, path, limits, signal });
   return { adapter, document, bytes };
 }
 
@@ -490,13 +587,76 @@ function selectLines(text, offset, limit) {
     );
   }
   const end = limit === undefined ? lines.length : Math.min(lines.length, start + limit);
+  // Character index of the first selected line, so the selection can also be
+  // reported and continued in bytes.
+  let startIndex = 0;
+  for (let index = 0; index < start; index += 1) startIndex += lines[index].length + 1;
+  const hasMore = end < lines.length;
+  // Slice rather than re-join, and keep the terminating newline when more lines
+  // follow. The returned text is then exactly the file's bytes for those lines,
+  // so a byte continuation resumes at the same boundary as a line continuation
+  // and iterating either one reconstructs the file without gaps.
+  let endIndex = text.length;
+  if (hasMore) {
+    endIndex = startIndex;
+    for (let index = start; index < end; index += 1) {
+      endIndex += lines[index].length + 1;
+    }
+  }
   return {
-    text: lines.slice(start, end).join("\n"),
+    text: text.slice(startIndex, endIndex),
     start_line: start + 1,
     end_line: end,
+    start_index: startIndex,
     total_lines: lines.length,
-    has_more: end < lines.length,
+    has_more: hasMore,
   };
+}
+
+/** Number of lines the given text spans, counting a trailing newline as ending
+ *  the line it terminates rather than starting a new empty one. */
+function countLines(text) {
+  if (text.length === 0) return 0;
+  let newlines = 0;
+  for (const character of text) {
+    if (character === "\n") newlines += 1;
+  }
+  return text.endsWith("\n") ? newlines : newlines + 1;
+}
+
+function lineCountAt(text, index, startLine = 1) {
+  let lines = startLine;
+  for (let position = 0; position < index; position += 1) {
+    if (text[position] === "\n") lines += 1;
+  }
+  return lines;
+}
+
+/**
+ * Resolves a byte offset to a character index, advancing past any character
+ * that straddles the boundary. Advancing rather than retreating means a
+ * continuation never re-delivers bytes the caller already received; the
+ * returned `bytes` is the position actually used.
+ */
+function locateByteOffset(text, byteOffset) {
+  if (!Number.isSafeInteger(byteOffset) || byteOffset < 0) {
+    throw new WorkspaceError("invalid_offset", "The requested byte offset is invalid.");
+  }
+  const total = byteLength(text);
+  if (byteOffset > total) {
+    throw new WorkspaceError(
+      "invalid_offset",
+      `The requested byte offset is beyond the document (${total} bytes).`,
+    );
+  }
+  let bytes = 0;
+  let index = 0;
+  for (const character of text) {
+    if (bytes >= byteOffset) break;
+    bytes += byteLength(character);
+    index += character.length;
+  }
+  return { index, bytes };
 }
 
 function lineSnippet(text, index, maxBytes = 384) {
@@ -520,11 +680,17 @@ async function handleList({ workspace, limits }, params, signal) {
     limits.maxListEntries,
   );
   const path = boundedPath(params?.path ?? ".", limits);
+  const offset = params?.offset ?? 0;
+  if (!Number.isSafeInteger(offset) || offset < 0) {
+    throw new WorkspaceError("invalid_offset", "The directory entry offset is invalid.", path);
+  }
   const listed = await workspace.listDirectory(path, {
     maxEntries,
+    offset,
     signal,
   });
   throwIfAborted(signal, path);
+  // Entries are ordered by name, so a cursor is stable across calls.
   const entries = listed.entries.map((entry) => ({
     name: entry.name,
     path: productPath(entry.addressed_path),
@@ -532,11 +698,17 @@ async function handleList({ workspace, limits }, params, signal) {
     size: entry.size,
     mtime_ms: entry.mtime_ms,
   }));
+  const continuation = {
+    ...(listed.offset === undefined ? {} : { offset: listed.offset }),
+    ...(listed.total_entries === undefined ? {} : { total_entries: listed.total_entries }),
+    ...(listed.next_offset === undefined ? {} : { next_offset: listed.next_offset }),
+  };
   const payload = {
     ...pathDetails(listed),
     entries,
     entry_count: entries.length,
     truncated: listed.truncated,
+    ...continuation,
   };
   return successfulResult(
     "workspace.list",
@@ -545,6 +717,7 @@ async function handleList({ workspace, limits }, params, signal) {
       path: listed.relative_path,
       entries,
       truncated: listed.truncated,
+      ...continuation,
     }, null, 2),
     limits,
   );
@@ -564,6 +737,75 @@ async function handleStat({ workspace, limits }, params, signal) {
   return successfulResult("workspace.stat", payload, JSON.stringify(payload, null, 2), limits);
 }
 
+/**
+ * Renders structured blocks into bounded text and reports whether the byte
+ * budget cut the extraction short. Continuation is by page, because that is
+ * the locator a paginated document actually has.
+ */
+function structuredReadResult(loaded, limits) {
+  const document = loaded.document;
+  const blocks = Array.isArray(document.blocks) ? document.blocks : [];
+  const { text, truncated, lastPage } = renderDocumentBlocks(blocks, limits);
+  const metadata = document.metadata ?? {};
+  const pageCount = metadata.pages;
+  const nextPage = truncated && lastPage !== undefined && lastPage < pageCount
+    ? lastPage + 1
+    : undefined;
+  const warnings = Array.isArray(document.warnings) ? document.warnings : [];
+  const payload = {
+    ...pathDetails(loaded.resolved),
+    format: document.format,
+    ...(document.media_type ? { media_type: document.media_type } : {}),
+    size: loaded.resolved.identity.size,
+    ...(pageCount === undefined ? {} : { page_count: pageCount }),
+    ...(metadata.pages_read === undefined ? {} : { pages_read: metadata.pages_read }),
+    ...(metadata.title ? { title: metadata.title } : {}),
+    ...(metadata.author ? { author: metadata.author } : {}),
+    block_count: blocks.length,
+    partial: document.partial === true,
+    warnings,
+    truncated,
+    ...(nextPage === undefined ? {} : { next_page: nextPage }),
+  };
+  const header = JSON.stringify({
+    path: loaded.resolved.relative_path,
+    format: document.format,
+    ...(pageCount === undefined ? {} : { page_count: pageCount }),
+    ...(nextPage === undefined ? {} : { next_page: nextPage }),
+    truncated,
+    ...(warnings.length === 0 ? {} : { warnings }),
+  }, null, 2);
+  return successfulResult(
+    "workspace.read",
+    payload,
+    `${header}\n\n${text}`,
+    limits,
+    { truncated },
+  );
+}
+
+function renderDocumentBlocks(blocks, limits) {
+  const budget = Math.max(128, limits.maxOutputBytes - 512);
+  const lines = [];
+  let bytes = 0;
+  let truncated = false;
+  let lastPage;
+  for (const block of blocks) {
+    const line = block.type === "page_break"
+      ? `\n--- page ${block.locator?.page ?? "?"} ---`
+      : String(block.text ?? "");
+    const cost = byteLength(line) + 1;
+    if (bytes + cost > budget) {
+      truncated = true;
+      break;
+    }
+    bytes += cost;
+    lines.push(line);
+    if (block.locator?.page !== undefined) lastPage = block.locator.page;
+  }
+  return { text: lines.join("\n"), truncated, lastPage };
+}
+
 async function handleRead({ workspace, documentRegistry, limits }, params, signal) {
   const path = boundedPath(params?.path, limits);
   const loaded = await readDocument(
@@ -571,29 +813,68 @@ async function handleRead({ workspace, documentRegistry, limits }, params, signa
     path,
     params?.format,
     signal,
+    limits.maxReadBytes,
+    { pages: params?.pages },
   );
-  const selected = selectLines(loaded.document.text, params?.offset, params?.limit);
+  if (typeof loaded.document.text !== "string") {
+    return structuredReadResult(loaded, limits);
+  }
+  const text = loaded.document.text;
+  const totalBytes = byteLength(text);
+  const totalLines = lineCountAt(text, text.length);
   const contentBudget = Math.max(128, limits.maxOutputBytes - 512);
-  const boundedContent = truncateText(selected.text, contentBudget);
-  const truncated = selected.has_more || boundedContent.truncated;
+
+  // A byte offset resumes a truncated read; a line offset selects whole lines.
+  let remainder;
+  let offsetBytes;
+  let startLine;
+  let hasMoreLines = false;
+  if (params?.byte_offset !== undefined) {
+    const located = locateByteOffset(text, params.byte_offset);
+    remainder = text.slice(located.index);
+    offsetBytes = located.bytes;
+    startLine = lineCountAt(text, located.index);
+  } else {
+    const selected = selectLines(text, params?.offset, params?.limit);
+    remainder = selected.text;
+    offsetBytes = byteLength(text.slice(0, selected.start_index));
+    startLine = selected.start_line;
+    hasMoreLines = selected.has_more;
+  }
+
+  const boundedContent = truncateText(remainder, contentBudget);
+  const contentBytes = byteLength(boundedContent.text);
+  const truncated = hasMoreLines || boundedContent.truncated;
+  // The continuation is the byte immediately after the last byte actually
+  // returned, so a caller iterating on it can never skip or duplicate content —
+  // including when the cut falls inside one very long line.
+  const nextByteOffset = truncated ? offsetBytes + contentBytes : undefined;
+  const returnedLines = countLines(boundedContent.text);
+  const continuation = {
+    ...(nextByteOffset === undefined ? {} : { next_byte_offset: nextByteOffset }),
+    ...(hasMoreLines ? { next_offset: startLine + returnedLines } : {}),
+  };
   const payload = {
     ...pathDetails(loaded.resolved),
     format: loaded.document.format,
     size: loaded.resolved.identity.size,
-    offset: selected.start_line,
-    lines: selected.end_line - selected.start_line + 1,
-    total_lines: selected.total_lines,
-    content_bytes: byteLength(boundedContent.text),
+    offset: startLine,
+    offset_bytes: offsetBytes,
+    lines: returnedLines,
+    total_lines: totalLines,
+    total_bytes: totalBytes,
+    content_bytes: contentBytes,
     truncated,
-    ...(selected.has_more ? { next_offset: selected.end_line + 1 } : {}),
+    ...continuation,
     ...(loaded.document.nodes === undefined ? {} : { json_nodes: loaded.document.nodes }),
   };
   const header = JSON.stringify({
     path: loaded.resolved.relative_path,
     format: loaded.document.format,
-    offset: selected.start_line,
+    offset: startLine,
+    offset_bytes: offsetBytes,
     truncated,
-    ...(selected.has_more ? { next_offset: selected.end_line + 1 } : {}),
+    ...continuation,
   }, null, 2);
   const body = `${header}\n\n${boundedContent.text}`;
   return successfulResult("workspace.read", payload, body, limits, { truncated });
@@ -633,6 +914,13 @@ async function handleSearch({ workspace, documentRegistry, limits }, params, sig
       if (displayPath.toLocaleLowerCase().includes(queryLower)) matches.push({ type: "name" });
     }
     if (mode === "content" || mode === "both") {
+      // A binary adapter has no text representation to match against, and
+      // parsing it here would be both wrong and expensive.
+      const selected = documentRegistry.select(path, "auto");
+      if (selected && selected.textual !== true) {
+        diagnostics.push({ path: displayPath, code: "unsupported_format" });
+        return;
+      }
       try {
         const loaded = await readDocument(
           { workspace, documentRegistry, limits },
@@ -641,6 +929,10 @@ async function handleSearch({ workspace, documentRegistry, limits }, params, sig
           signal,
           limits.maxSearchFileBytes,
         );
+        if (typeof loaded.document.text !== "string") {
+          diagnostics.push({ path: displayPath, code: "unsupported_format" });
+          return;
+        }
         const contentLower = loaded.document.text.toLocaleLowerCase();
         const index = contentLower.indexOf(queryLower);
         if (index >= 0) {
@@ -732,28 +1024,59 @@ const toolDefinitions = [
     description: "List bounded file and directory metadata in the active workspace.",
     label: "List workspace",
     parameters: WORKSPACE_READ_TOOL_SCHEMAS.list,
-    descriptor: { effect: "read", scope: "workspace", replay: "safe" },
+    descriptor: {
+      effect: "read",
+      scope: "workspace",
+      egress: "none",
+      replay: "safe",
+      availability: { prerequisites: ["workspace"] },
+    },
   },
   {
     name: "workspace.search",
-    description: "Search bounded names or supported text content in the active workspace.",
+    description:
+      "Search bounded names, or the text content of text, Markdown, and JSON "
+      + "files, in the active workspace. PDF and other binary documents are "
+      + "listed by name but their content is not searched.",
     label: "Search workspace",
     parameters: WORKSPACE_READ_TOOL_SCHEMAS.search,
-    descriptor: { effect: "read", scope: "workspace", replay: "safe" },
+    descriptor: {
+      effect: "read",
+      scope: "workspace",
+      egress: "none",
+      replay: "safe",
+      availability: { prerequisites: ["workspace"] },
+    },
   },
   {
     name: "workspace.stat",
     description: "Inspect bounded metadata for one active-workspace file or directory.",
     label: "Inspect workspace item",
     parameters: WORKSPACE_READ_TOOL_SCHEMAS.stat,
-    descriptor: { effect: "read", scope: "workspace", replay: "safe" },
+    descriptor: {
+      effect: "read",
+      scope: "workspace",
+      egress: "none",
+      replay: "safe",
+      availability: { prerequisites: ["workspace"] },
+    },
   },
   {
     name: "workspace.read",
-    description: "Read bounded UTF-8 text, Markdown, or JSON from the active workspace.",
+    description:
+      "Read bounded content from one file in the active workspace. Supports UTF-8 "
+      + "text, Markdown, JSON, and PDF. PDF is read-only: text and page numbers "
+      + "are returned, images are not described and no OCR is performed. Long "
+      + "content is truncated and reports how to continue.",
     label: "Read workspace file",
     parameters: WORKSPACE_READ_TOOL_SCHEMAS.read,
-    descriptor: { effect: "read", scope: "workspace", replay: "safe" },
+    descriptor: {
+      effect: "read",
+      scope: "workspace",
+      egress: "none",
+      replay: "safe",
+      availability: { prerequisites: ["workspace"] },
+    },
   },
 ];
 

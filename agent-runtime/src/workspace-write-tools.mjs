@@ -3,10 +3,10 @@ import { Type } from "@earendil-works/pi-ai";
 import {
   AsideContractError,
   byteLength,
-  createAsideToolRegistry,
   previewValue,
   sanitizeRuntimeText,
 } from "./agent-contracts.mjs";
+import { createAsideToolRegistry } from "./capability-contract.mjs";
 import {
   DEFAULT_WORKSPACE_TOOL_LIMITS,
   createDocumentAdapterRegistry,
@@ -350,6 +350,7 @@ async function prepareWrite({ workspace, documentRegistry, limits }, params, sig
     path,
     format,
     text: content,
+    signal,
   });
   let originalText = "";
   let originalBytes = 0;
@@ -400,6 +401,7 @@ async function prepareEdit({ workspace, documentRegistry, limits }, params, sign
     path,
     format,
     text: content,
+    signal,
   });
   return {
     kind: "edit",
@@ -531,6 +533,10 @@ function createRunWriteTool(definition, prepare, configuredLimits, documentRegis
               tool_call_id: toolCallId,
               operation: definition.name,
               effect: "write",
+              // A workspace write transmits nothing outside Aside, so the
+              // egress dimension is explicit rather than merely defaulted.
+              egress: "none",
+              source: "builtin",
               explanation: definition.name === "workspace.edit"
                 ? "Aside is requesting permission to apply the exact proposed text replacement."
                 : "Aside is requesting permission to create or replace this workspace file.",
@@ -600,7 +606,13 @@ export function createWorkspaceWriteTools({ limits, documentAdapters } = {}) {
         description: "Prepare a bounded UTF-8 text or JSON file create/replace for permission.",
         label: "Write workspace file",
         parameters: writeSchema,
-        descriptor: { effect: "write", scope: "workspace", replay: "non_replayable" },
+        descriptor: {
+          effect: "write",
+          scope: "workspace",
+          egress: "none",
+          replay: "non_replayable",
+          availability: { prerequisites: ["workspace"] },
+        },
       },
       prepareWrite,
       configuredLimits,
@@ -612,7 +624,13 @@ export function createWorkspaceWriteTools({ limits, documentAdapters } = {}) {
         description: "Prepare an exact bounded text replacement for permission and verification.",
         label: "Edit workspace file",
         parameters: editSchema,
-        descriptor: { effect: "write", scope: "workspace", replay: "non_replayable" },
+        descriptor: {
+          effect: "write",
+          scope: "workspace",
+          egress: "none",
+          replay: "non_replayable",
+          availability: { prerequisites: ["workspace"] },
+        },
       },
       prepareEdit,
       configuredLimits,
