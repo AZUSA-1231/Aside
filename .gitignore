@@ -19,6 +19,11 @@ dist-ssr
 !.env.example
 vendor/pi-full/
 
+# Reference-only vendor trees: reviewed for design, not built or shipped.
+# `vendor/pi` is a real runtime dependency and stays tracked.
+vendor/Office-Word-MCP-Server/
+vendor/docx-mcp/
+
 # Internal project documentation (kept local, not published)
 /docs
 
