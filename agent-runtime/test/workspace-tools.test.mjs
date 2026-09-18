@@ -38,7 +38,7 @@ async function fixture() {
   await writeFile(join(root, "notes.md"), "alpha\nbeta\ngamma\n", "utf8");
   await writeFile(join(root, "data.json"), JSON.stringify({ title: "Aside", count: 2 }), "utf8");
   await writeFile(join(root, "nested", "report.txt"), "a report about Aside\n", "utf8");
-  await writeFile(join(root, "binary.docx"), Buffer.from([0, 1, 2, 3, 255]));
+  await writeFile(join(root, "binary.xlsx"), Buffer.from([0, 1, 2, 3, 255]));
   return resolve(root);
 }
 
@@ -153,7 +153,8 @@ test("returns typed unsupported, scope, missing, limit, and cancellation results
     assert.equal(lines.details.truncated, true);
     assert.equal(lines.details.next_offset, 2);
 
-    const unsupported = await byName.get("workspace.read").execute("read-binary", { path: "binary.docx" });
+    // .docx and .pdf now have adapters; .xlsx still does not.
+    const unsupported = await byName.get("workspace.read").execute("read-binary", { path: "binary.xlsx" });
     assert.equal(unsupported.isError, true);
     assert.equal(unsupported.details.code, "unsupported_format");
 
@@ -223,6 +224,10 @@ test("the default runtime exposes workspace tools only after workspace activatio
         "workspace.read",
         "workspace.write",
         "workspace.edit",
+        // Document generation is workspace-scoped too, so it is withheld with
+        // the rest until a workspace is resolved.
+        "document.create",
+        "document.transform",
       ],
     );
     assert.ok(events.some((event) => event.type === "tool_result" && event.status === "succeeded"));
@@ -552,8 +557,8 @@ test("C6-15: a declared adapter takes precedence over the unsupported guard", as
     ]);
 
     // An unregistered binary stays honestly unsupported...
-    assert.equal(registry.select("file.docx", "auto"), undefined);
     assert.equal(registry.select("file.xlsx", "auto"), undefined);
+    assert.equal(registry.select("file.pptx", "auto"), undefined);
     // ...and a declared one is selected even though it is an unknown extension.
     assert.equal(registry.select("sample.pdfish", "auto").id, "pdfish");
     // The built-in text and JSON behaviour is unchanged.
@@ -734,8 +739,10 @@ test("the read description tells the model that PDF is supported", () => {
   // landed without updating them, the model correctly reported that it had no
   // PDF capability.
   assert.match(read.description, /PDF/i);
-  assert.match(read.description, /read-only/i);
+  assert.match(read.description, /no images, no OCR/i);
+  assert.match(read.description, /docx/i);
   assert.match(String(read.parameters.properties.format.description), /pdf/i);
+  assert.match(String(read.parameters.properties.format.description), /docx/i);
   assert.match(String(read.parameters.properties.pages.description), /PDF/i);
   // Search must not promise content it will not scan.
   assert.match(search.description, /PDF/i);

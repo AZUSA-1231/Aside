@@ -14,6 +14,7 @@ import { createAsideToolRegistry } from "../src/capability-contract.mjs";
 import { validateTurnContext } from "../src/context.mjs";
 import { PermissionBroker } from "../src/permission-broker.mjs";
 import { createConversationRuntime } from "../src/runtime.mjs";
+import { createDocumentTools } from "../src/docx-tools.mjs";
 import { createWorkspaceReadTools } from "../src/workspace-tools.mjs";
 import { createWorkspaceWriteTools } from "../src/workspace-write-tools.mjs";
 
@@ -714,4 +715,117 @@ test("C6-I023: the system prompt states the capability the registry provides", a
 
   // Derived, not hand-written: a registry with different tools reads differently.
   assert.equal(typeof createConfiguredAgent, "function");
+});
+
+test("C6-22: a document capability runs through the policy and permission path", async () => {
+  const root = await fixture();
+  try {
+    const faux = fauxProvider({ tokensPerSecond: 1_000 });
+    faux.setResponses([
+      fauxAssistantMessage(fauxToolCall("document.create", {
+        path: "generated.docx",
+        document: {
+          blocks: [
+            { type: "heading", level: 1, text: "Generated" },
+            { type: "paragraph", text: "Body text." },
+          ],
+        },
+      }, { id: "create-call" })),
+      fauxAssistantMessage("created it"),
+    ]);
+    const events = [];
+    let runtime;
+    const emit = (event) => {
+      events.push(event);
+      if (event.type === "permission_requested") {
+        runtime.resolvePermission(event.permission_id, "allow", {
+          request_id: event.request_id,
+          task_id: event.task_id,
+          tool_call_id: event.tool_call_id,
+        });
+      }
+    };
+    runtime = await createConversationRuntime({
+      agent: makeAgent(faux),
+      tools: [...createWorkspaceReadTools(), ...createDocumentTools()],
+      workspaceHint: root,
+      emit,
+    });
+
+    await runtime.prompt("create-document", "make me a document");
+
+    // The capability is a write, so policy routes it through a decision.
+    const requested = events.filter((event) => event.type === "permission_requested");
+    assert.equal(requested.length, 1);
+    assert.equal(requested[0].operation, "document.create");
+    assert.equal(requested[0].effect, "write");
+    assert.equal(requested[0].egress, "none");
+    assert.equal(requested[0].source, "builtin");
+    assert.equal(requested[0].risk.boundary, "aside_enforced");
+
+    const [result] = toolResults(events);
+    assert.equal(result.tool, "document.create");
+    assert.equal(result.status, "succeeded");
+    assert.equal(result.details.verification.status, "verified");
+    assert.deepEqual(result.details.verification.structure, {
+      headings: 1,
+      paragraphs: 1,
+      list_items: 0,
+      tables: 0,
+      page_breaks: 0,
+    });
+
+    // The grant earned by the decision was consumed exactly once.
+    assert.equal(runtime.permissionBroker.grantCount, 0);
+    assert.equal(terminalEvents(events).length, 1);
+    assert.equal(terminalEvents(events)[0].type, "completed");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("C6-22: a denied document decision writes nothing", async () => {
+  const root = await fixture();
+  try {
+    const faux = fauxProvider({ tokensPerSecond: 1_000 });
+    faux.setResponses([
+      fauxAssistantMessage(fauxToolCall("document.create", {
+        path: "refused.docx",
+        document: { blocks: [{ type: "paragraph", text: "Body." }] },
+      }, { id: "create-denied" })),
+      fauxAssistantMessage("understood"),
+    ]);
+    const events = [];
+    let runtime;
+    const emit = (event) => {
+      events.push(event);
+      if (event.type === "permission_requested") {
+        runtime.resolvePermission(event.permission_id, "deny", {
+          request_id: event.request_id,
+          task_id: event.task_id,
+          tool_call_id: event.tool_call_id,
+        });
+      }
+    };
+    runtime = await createConversationRuntime({
+      agent: makeAgent(faux),
+      tools: createDocumentTools(),
+      workspaceHint: root,
+      emit,
+    });
+
+    await runtime.prompt("deny-document", "make me a document");
+
+    const [result] = toolResults(events);
+    assert.equal(result.status, "denied");
+    assert.equal(
+      events.some((event) => event.type === "verification_completed"),
+      false,
+      "a denied write is never reported as verified",
+    );
+    await assert.rejects(() => readFile(join(root, "refused.docx")));
+    assert.equal(terminalEvents(events).length, 1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });

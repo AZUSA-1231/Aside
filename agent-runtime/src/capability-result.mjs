@@ -153,6 +153,23 @@ export function toolResultEnvelope({
   };
 }
 
+/**
+ * A failure envelope built from a typed error. Kept here rather than in each
+ * adapter so every family reports failures the same way.
+ */
+export function failedToolResultEnvelope(
+  tool,
+  { code = "failed", message, details = {} } = {},
+) {
+  return toolResultEnvelope({
+    tool,
+    status: "failed",
+    code,
+    message,
+    details,
+  });
+}
+
 export function cancelledToolResult(tool, { code = "cancelled", message } = {}) {
   return toolResultEnvelope({
     tool,

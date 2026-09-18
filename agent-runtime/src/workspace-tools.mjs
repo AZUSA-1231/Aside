@@ -13,6 +13,7 @@ import {
 } from "./document-contract.mjs";
 import { WorkspaceError } from "./workspace.mjs";
 import { DEFAULT_PDF_ADAPTER } from "./pdf-adapter.mjs";
+import { DEFAULT_DOCX_ADAPTER } from "./docx-adapter.mjs";
 
 export { DocumentAdapterError };
 
@@ -336,6 +337,7 @@ export const DEFAULT_DOCUMENT_ADAPTERS = Object.freeze([
   defaultJsonAdapter,
   defaultTextAdapter,
   DEFAULT_PDF_ADAPTER,
+  DEFAULT_DOCX_ADAPTER,
 ]);
 
 /**
@@ -347,15 +349,18 @@ export const DEFAULT_DOCUMENT_ADAPTERS = Object.freeze([
 export function describeDocumentFormats(adapters = DEFAULT_DOCUMENT_ADAPTERS) {
   const readable = new Set();
   const writable = new Set();
+  const generatable = new Set();
   for (const adapter of adapters) {
     for (const format of adapter.formats ?? []) {
       readable.add(format);
       if (adapter.write === true) writable.add(format);
+      if (adapter.generatable === true) generatable.add(format);
     }
   }
   return Object.freeze({
     readable: Object.freeze([...readable].sort()),
     writable: Object.freeze([...writable].sort()),
+    generatable: Object.freeze([...generatable].sort()),
   });
 }
 
@@ -460,7 +465,7 @@ export const WORKSPACE_READ_TOOL_SCHEMAS = Object.freeze({
       Type.String({
         description:
           "Explicit format id. Omit or use \"auto\" to select by file extension. "
-          + "Supported ids: \"text\", \"json\", \"pdf\".",
+          + "Supported ids: \"text\", \"json\", \"pdf\", \"docx\".",
       }),
     ),
     offset: Type.Optional(positiveNumber("One-based line offset.")),
@@ -1036,8 +1041,8 @@ const toolDefinitions = [
     name: "workspace.search",
     description:
       "Search bounded names, or the text content of text, Markdown, and JSON "
-      + "files, in the active workspace. PDF and other binary documents are "
-      + "listed by name but their content is not searched.",
+      + "files, in the active workspace. PDF and Word documents are listed by "
+      + "name but their content is not searched.",
     label: "Search workspace",
     parameters: WORKSPACE_READ_TOOL_SCHEMAS.search,
     descriptor: {
@@ -1065,9 +1070,10 @@ const toolDefinitions = [
     name: "workspace.read",
     description:
       "Read bounded content from one file in the active workspace. Supports UTF-8 "
-      + "text, Markdown, JSON, and PDF. PDF is read-only: text and page numbers "
-      + "are returned, images are not described and no OCR is performed. Long "
-      + "content is truncated and reports how to continue.",
+      + "text, Markdown, JSON, PDF, and Word .docx. PDF returns text and page "
+      + "numbers (no images, no OCR). Word returns headings, paragraphs, lists, "
+      + "tables and links in document order. Long content is truncated and "
+      + "reports how to continue.",
     label: "Read workspace file",
     parameters: WORKSPACE_READ_TOOL_SCHEMAS.read,
     descriptor: {

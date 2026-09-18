@@ -52,6 +52,7 @@ import {
   describeDocumentFormats,
 } from "./workspace-tools.mjs";
 import { createWorkspaceWriteTools } from "./workspace-write-tools.mjs";
+import { createDocumentTools } from "./docx-tools.mjs";
 import { PermissionBroker } from "./permission-broker.mjs";
 
 export const MAX_REQUEST_ID_LENGTH = 128;
@@ -165,6 +166,7 @@ function createDefaultWorkspaceTools() {
   return [
     ...createWorkspaceReadTools(),
     ...createWorkspaceWriteTools(),
+    ...createDocumentTools(),
   ];
 }
 
@@ -184,12 +186,15 @@ function normalizeSystemPolicy(policy) {
 function buildCapabilitySummary(registry) {
   const names = registry.descriptors.map((descriptor) => descriptor.name);
   if (names.length === 0) return "";
-  const { readable, writable } = describeDocumentFormats();
+  const { readable, writable, generatable } = describeDocumentFormats();
   const lines = [
     `You can work with files in the active workspace using these tools: ${names.join(", ")}.`,
     readable.length > 0 ? `Readable formats: ${readable.join(", ")}.` : "",
     writable.length > 0
       ? `Writable formats: ${writable.join(", ")}; every write or edit requires the user's explicit approval.`
+      : "",
+    generatable.length > 0
+      ? `You can also create new ${generatable.join(", ")} documents from a structured specification, always to a new path and never over an existing file.`
       : "",
     // PDF is readable but not writable, which is worth saying outright.
     readable.includes("pdf") && !writable.includes("pdf")

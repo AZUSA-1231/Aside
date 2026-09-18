@@ -782,13 +782,12 @@ export function createWorkspaceEnvironment({ state, fileSystem } = {}) {
       }
       return resolvePath(addressedPath, { expectedKind: "file" });
     },
-    async writeTextAtomic(addressedPath, text, options = {}) {
-      if (typeof text !== "string" || !Number.isSafeInteger(options.maxBytes) || options.maxBytes <= 0) {
-        throw new WorkspaceError("invalid_limit", "A positive text write limit is required.", addressedPath);
-      }
-      if (byteLength(text) > options.maxBytes) {
-        throw new WorkspaceError("result_too_large", "The workspace write exceeds the content limit.", addressedPath);
-      }
+    /**
+     * The one atomic write path. Text and binary share it so the containment,
+     * revalidation, temp-then-rename, and cleanup guarantees cannot drift
+     * between two implementations.
+     */
+    async writeAtomic(addressedPath, payload, options = {}, encoding) {
       if (options.signal?.aborted) {
         throw new WorkspaceError("aborted", "The workspace operation was cancelled.", addressedPath);
       }
@@ -808,10 +807,11 @@ export function createWorkspaceEnvironment({ state, fileSystem } = {}) {
       const temporaryPath = nativePath.join(parent.canonicalPath, `.aside-write-${randomUUID()}.tmp`);
       let temporaryCreated = false;
       try {
-        await backend.writeFile(temporaryPath, text, {
-          encoding: "utf8",
-          signal: options.signal,
-        });
+        await backend.writeFile(
+          temporaryPath,
+          payload,
+          encoding === undefined ? { signal: options.signal } : { encoding, signal: options.signal },
+        );
         temporaryCreated = true;
         if (options.signal?.aborted) {
           throw new WorkspaceError("aborted", "The workspace operation was cancelled.", addressedPath);
@@ -831,6 +831,26 @@ export function createWorkspaceEnvironment({ state, fileSystem } = {}) {
         }
       }
       return resolvePath(addressedPath, { expectedKind: "file" });
+    },
+
+    async writeTextAtomic(addressedPath, text, options = {}) {
+      if (typeof text !== "string" || !Number.isSafeInteger(options.maxBytes) || options.maxBytes <= 0) {
+        throw new WorkspaceError("invalid_limit", "A positive text write limit is required.", addressedPath);
+      }
+      if (byteLength(text) > options.maxBytes) {
+        throw new WorkspaceError("result_too_large", "The workspace write exceeds the content limit.", addressedPath);
+      }
+      return this.writeAtomic(addressedPath, text, options, "utf8");
+    },
+
+    async writeBytesAtomic(addressedPath, bytes, options = {}) {
+      if (!(bytes instanceof Uint8Array) || !Number.isSafeInteger(options.maxBytes) || options.maxBytes <= 0) {
+        throw new WorkspaceError("invalid_limit", "A positive binary write limit is required.", addressedPath);
+      }
+      if (bytes.byteLength > options.maxBytes) {
+        throw new WorkspaceError("result_too_large", "The workspace write exceeds the content limit.", addressedPath);
+      }
+      return this.writeAtomic(addressedPath, bytes, options);
     },
     async renamePath(sourcePath, destinationPath, options = {}) {
       const source = await resolvePath(sourcePath, { expectedKind: "file" });
