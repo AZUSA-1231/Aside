@@ -11,13 +11,14 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "runtime:test": "node --test agent-runtime/test/runtime.test.mjs agent-runtime/test/session.test.mjs agent-runtime/test/protocol.test.mjs agent-runtime/test/config.test.mjs agent-runtime/test/agent-contracts.test.mjs agent-runtime/test/workspace.test.mjs agent-runtime/test/workspace-handoff.test.mjs agent-runtime/test/pdf-adapter.test.mjs agent-runtime/test/docx-adapter.test.mjs agent-runtime/test/docx-tools.test.mjs agent-runtime/test/workspace-tools.test.mjs agent-runtime/test/workspace-write-tools.test.mjs agent-runtime/test/skill-loader.test.mjs agent-runtime/test/skill-runtime.test.mjs agent-runtime/test/capability-availability.test.mjs agent-runtime/test/capability-result.test.mjs agent-runtime/test/capability-contract.test.mjs agent-runtime/test/capability-policy.test.mjs agent-runtime/test/capability-permission.test.mjs agent-runtime/test/capability-runtime.test.mjs",
+    "runtime:test": "node --test --test-timeout=60000 agent-runtime/test/runtime.test.mjs agent-runtime/test/session.test.mjs agent-runtime/test/protocol.test.mjs agent-runtime/test/config.test.mjs agent-runtime/test/agent-contracts.test.mjs agent-runtime/test/workspace.test.mjs agent-runtime/test/workspace-handoff.test.mjs agent-runtime/test/pdf-adapter.test.mjs agent-runtime/test/docx-adapter.test.mjs agent-runtime/test/docx-tools.test.mjs agent-runtime/test/workspace-tools.test.mjs agent-runtime/test/workspace-write-tools.test.mjs agent-runtime/test/skill-loader.test.mjs agent-runtime/test/skill-runtime.test.mjs agent-runtime/test/capability-availability.test.mjs agent-runtime/test/capability-result.test.mjs agent-runtime/test/capability-contract.test.mjs agent-runtime/test/capability-policy.test.mjs agent-runtime/test/capability-permission.test.mjs agent-runtime/test/capability-runtime.test.mjs agent-runtime/test/mcp-schema.test.mjs agent-runtime/test/mcp-result.test.mjs agent-runtime/test/mcp-config.test.mjs agent-runtime/test/mcp-client.test.mjs agent-runtime/test/mcp-adapter.test.mjs agent-runtime/test/mcp-runtime.test.mjs",
     "pi:build": "npm run build --workspace=@earendil-works/pi-telemetry && npm run build --workspace=@earendil-works/pi-ai && npm run build --workspace=@earendil-works/pi-agent-core",
     "chromium:probe": "node tools/chromium-cdp-probe.mjs",
     "tauri": "tauri",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-global-shortcut": "^2",
     "@tauri-apps/plugin-opener": "^2",

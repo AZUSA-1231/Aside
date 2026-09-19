@@ -348,6 +348,8 @@ export async function createAsideConversationRuntime({
   let conversationAgent = agent;
   let configuredSkills = skills ?? [];
   let configuredSkillDiagnostics = skillDiagnostics ?? [];
+  let configuredMcp;
+  let configuredBuildSystemPromptFor;
   if (conversationAgent) {
     conversationAgent.state.messages = restored.messages;
     conversationAgent.sessionId = opened.metadata.id;
@@ -360,6 +362,11 @@ export async function createAsideConversationRuntime({
     conversationAgent = configured.agent;
     configuredSkills = configured.skills ?? [];
     configuredSkillDiagnostics = configured.skillDiagnostics ?? [];
+    configuredMcp = configured.mcp;
+    configuredBuildSystemPromptFor = configured.buildSystemPromptFor;
+    for (const diagnostic of configured.mcpDiagnostics ?? []) {
+      send({ type: "runtime_warning", ...diagnostic });
+    }
   }
 
   const persistRun = createSessionPersistence(opened.session, restored.messages);
@@ -371,6 +378,8 @@ export async function createAsideConversationRuntime({
     configCwd,
     skills: configuredSkills,
     skillDiagnostics: configuredSkillDiagnostics,
+    mcp: configuredMcp,
+    buildSystemPromptFor: configuredBuildSystemPromptFor,
   });
   return {
     ...runtime,

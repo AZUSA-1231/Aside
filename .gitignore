@@ -24,6 +24,10 @@ vendor/pi-full/
 vendor/Office-Word-MCP-Server/
 vendor/docx-mcp/
 
+# Read for adversarial MCP fixture shapes (Cycle 6 P6). A fixture source, never
+# a runtime dependency: not bundled, not default-configured, not built.
+vendor/web-search-mcp/
+
 # Internal project documentation (kept local, not published)
 /docs
 

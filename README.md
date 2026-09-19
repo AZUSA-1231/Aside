@@ -77,14 +77,22 @@ local server. `.env.local` is git-ignored; packaged builds also read
 
 The current MVP covers the desktop and window experience, the agent runtime,
 bounded UIA-based host-context capture, and bounded permission-gated workspace
-tools. Cycle 6 adds PDF reading, Word reading and transformation, Web Search,
-and a user-connected MCP tool adapter, all through one Aside-owned capability
+tools. Cycle 6 adds PDF reading, Word reading and transformation, and a
+user-connected MCP tool adapter, all through one Aside-owned capability
 registry and policy path.
+
+Aside bundles no MCP server and ships no default server configuration. You
+connect your own, and the adapter applies Aside's policy, permission, bounds,
+and result normalization to whatever it exposes.
 
 Deferred for now:
 
 - shell, PowerShell, and arbitrary process or code execution
 - Excel, PowerPoint, GitHub, VSCode actions, Notion, and general browsing
+- Web Search. Considered for Cycle 6 and removed: a built-in would mean
+  adopting one provider's contract and terms, and every keyless option
+  reachable over MCP is a scraper. Not built, and no server is bundled to
+  reach it.
 - PDF mutation and OCR, and full Word round-trip fidelity
 - permanent workspace trust, multi-workspace execution, and background agents
 - VSCode bridge and active-editor integration
