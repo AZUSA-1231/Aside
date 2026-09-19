@@ -292,9 +292,51 @@ export async function runProtocol({
   }
 }
 
+/**
+ * The oldest Node the runtime supports.
+ *
+ * Held to the floor the vendored Pi packages declare in their `engines` field.
+ * Below it the runtime starts and then fails on the first provider call, which
+ * is the worst outcome: the failure arrives far from its cause, and the message
+ * names a provider rather than the Node version.
+ *
+ * The check exists for installed builds specifically. A packaged application
+ * ships its own Node, so a version failure means the staging step or the bundle
+ * is wrong — and the user has no way to guess that from a provider error.
+ */
+const MINIMUM_NODE_MAJOR = 22;
+const MINIMUM_NODE_MINOR = 19;
+
+export function checkNodeVersion(version = process.versions.node) {
+  const [major, minor] = String(version).split(".").map((part) => Number.parseInt(part, 10));
+  if (!Number.isSafeInteger(major) || !Number.isSafeInteger(minor)) {
+    return { ok: false, message: `Node reported an unreadable version: "${version}".` };
+  }
+  if (major > MINIMUM_NODE_MAJOR) return { ok: true };
+  if (major === MINIMUM_NODE_MAJOR && minor >= MINIMUM_NODE_MINOR) return { ok: true };
+  return {
+    ok: false,
+    message:
+      `Aside needs Node ${MINIMUM_NODE_MAJOR}.${MINIMUM_NODE_MINOR} or newer; this is ${version}. `
+      + "A packaged build bundles its own Node, so seeing this means the installation is "
+      + "incomplete or the wrong Node was placed on PATH.",
+  };
+}
+
 if (
   process.argv[1] &&
   resolve(fileURLToPath(import.meta.url)) === resolve(process.argv[1])
 ) {
+  const node = checkNodeVersion();
+  if (!node.ok) {
+    // Emitted on the protocol channel rather than written to stderr, which the
+    // launcher discards. The surface reads `runtime_unavailable` and shows the
+    // message; a version problem the user cannot see is a version problem they
+    // cannot fix.
+    process.stdout.write(
+      `${JSON.stringify({ type: "runtime_unavailable", message: node.message })}\n`,
+    );
+    process.exit(1);
+  }
   await runProtocol();
 }

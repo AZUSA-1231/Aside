@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { Readable } from "node:stream";
 import test from "node:test";
-import { parseRuntimeRequest, runProtocol } from "../src/protocol.mjs";
+import { checkNodeVersion, parseRuntimeRequest, runProtocol } from "../src/protocol.mjs";
 
 // The Cycle 6 capability dimensions must survive the process boundary verbatim.
 // Tauri forwards events as `serde_json::Value`, so this module is the only
@@ -344,4 +344,33 @@ test("emits one terminal event when a runtime rejects after settling", async () 
     ).length,
     1,
   );
+});
+
+// ---------------------------------------------------------------------------
+// Node version gate
+//
+// A packaged build ships its own Node, so a version failure means the staging
+// step or the bundle is wrong. Reporting it as a provider error would put the
+// message far from the cause and name the wrong thing.
+// ---------------------------------------------------------------------------
+
+test("accepts the Node versions the runtime supports", () => {
+  for (const version of ["22.19.0", "22.20.1", "23.0.0", "24.4.2"]) {
+    assert.equal(checkNodeVersion(version).ok, true, `${version} should be accepted`);
+  }
+});
+
+test("refuses a Node below the supported floor and says which version arrived", () => {
+  for (const version of ["22.18.0", "22.0.0", "20.11.1", "18.20.0"]) {
+    const result = checkNodeVersion(version);
+    assert.equal(result.ok, false, `${version} should be refused`);
+    assert.match(result.message, /22\.19 or newer/);
+    assert.ok(result.message.includes(version), "the message must name the version that arrived");
+  }
+});
+
+test("refuses a version it cannot read rather than assuming it is fine", () => {
+  const result = checkNodeVersion("not-a-version");
+  assert.equal(result.ok, false);
+  assert.match(result.message, /unreadable/);
 });

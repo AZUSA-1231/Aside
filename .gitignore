@@ -19,6 +19,12 @@ dist-ssr
 !.env.example
 vendor/pi-full/
 
+# Staged by `node scripts/stage-runtime.mjs` before `tauri build`. Build output,
+# not source: it is ~80 MB of copied dependencies and a downloaded Node binary,
+# and Tauri resolves these paths at build time, so committing them would break
+# the build for anyone who has not run the script.
+src-tauri/resources/
+
 # Reference-only vendor trees: reviewed for design, not built or shipped.
 # `vendor/pi` is a real runtime dependency and stays tracked.
 vendor/Office-Word-MCP-Server/
