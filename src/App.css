@@ -1161,3 +1161,68 @@ h1 {
     display: none;
   }
 }
+
+/* Cycle 6 P7 surface additions.
+   Chips follow the existing language: muted teal for ordinary state, amber for
+   something the user needs to notice. `override-chip` and the external boundary
+   badge are amber on purpose — both report a divergence between what the user
+   expects and what is happening, which is exactly when the surface should
+   interrupt its own quiet. */
+
+.runtime-chip.waiting-chip {
+  color: #6b7f8c;
+  background: rgba(238, 243, 247, 0.8);
+  border-color: rgba(80, 110, 130, 0.16);
+}
+
+.runtime-chip.override-chip,
+.runtime-chip.server-chip.unavailable {
+  color: #8c6a38;
+  background: rgba(247, 240, 226, 0.85);
+  border-color: rgba(160, 120, 40, 0.2);
+}
+
+.permission-effect.permission-boundary {
+  margin-left: 0;
+  color: #9a4f36;
+  background: rgba(180, 85, 61, 0.14);
+}
+
+.tool-activity-origin {
+  flex: none;
+  padding: 1px 5px;
+  color: #8c6a38;
+  background: rgba(160, 120, 40, 0.12);
+  border-radius: 999px;
+  font-size: 8.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+/* Document status chips. Amber when the extraction was partial or truncated:
+   the user needs to know an answer came from part of a document, and the model
+   may reasonably not say so. A completed read and a written file stay quiet. */
+
+.document-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 20px 0;
+  padding: 5px 9px;
+  color: #2c7869;
+  background: rgba(238, 246, 241, 0.8);
+  border: 1px solid rgba(41, 121, 109, 0.12);
+  border-radius: 7px;
+}
+
+.document-chip.partial {
+  color: #8c6a38;
+  background: rgba(247, 240, 226, 0.85);
+  border-color: rgba(160, 120, 40, 0.2);
+}
+
+.document-chip.written {
+  color: #3a6f8c;
+  background: rgba(236, 243, 248, 0.8);
+  border-color: rgba(58, 111, 140, 0.16);
+}

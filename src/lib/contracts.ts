@@ -225,6 +225,48 @@ export interface RuntimeSkillEvent {
   expects?: string[];
 }
 
+/**
+ * A warning the runtime raised outside a run, or about a run's environment.
+ *
+ * `server_id` and `tool` are present only when the warning concerns a connected
+ * MCP server. There is no field for a command, argument, or environment value:
+ * this projection is for display, and those are never displayed.
+ */
+export interface RuntimeWarning {
+  code: string;
+  message: string;
+  server_id?: string;
+  tool?: string;
+}
+
+/**
+ * A configured MCP server, as the surface may describe it.
+ *
+ * Configuration facts only. Whether the server is reachable and how many tools
+ * it contributed are per-run facts, and are read from the run's own tool list
+ * rather than announced here — a server that is configured and reachable is not
+ * the same as one that is configured and broken, and the surface must not
+ * conflate them.
+ */
+export interface RuntimeMcpServerConfig {
+  id: string;
+  display_name: string;
+  enabled: boolean;
+  trust_acknowledged: boolean;
+}
+
+/**
+ * A connected tool's provenance, derived from a run's tool descriptors.
+ *
+ * `boundary` is the runtime's own value, not a label this layer composes. An
+ * MCP tool is `external_process`; nothing in the surface may upgrade that.
+ */
+export interface RuntimeToolProvenance {
+  source: "builtin" | "user_mcp";
+  originLabel: string;
+  isExternal: boolean;
+}
+
 export interface RuntimePermissionRequest {
   permission_id: string;
   request_id: string;
@@ -243,6 +285,62 @@ export interface RuntimeToolResultDetails {
   status: string;
   code?: string;
   [key: string]: unknown;
+}
+
+/**
+ * A bounded warning from a document adapter.
+ *
+ * `page` is present only when the warning concerns one page of a paginated
+ * document — a PDF page with no extractable text, for instance.
+ */
+export interface RuntimeDocumentWarning {
+  code: string;
+  message: string;
+  page?: number;
+}
+
+/**
+ * A structured read of a PDF or Word document.
+ *
+ * `partial` and `truncated` are separate facts and both matter: a PDF whose
+ * extraction stopped at a block limit is partial even when nothing was
+ * truncated for length. Neither may be rendered as a complete read.
+ */
+export interface RuntimeDocumentReadStatus {
+  format: string;
+  blockCount: number;
+  pageCount?: number;
+  pagesRead?: number;
+  nextPage?: number;
+  partial: boolean;
+  truncated: boolean;
+  warnings: RuntimeDocumentWarning[];
+  /** A one-line description of the extent actually read. */
+  scope: string;
+}
+
+/**
+ * A generated or transformed document.
+ *
+ * `verification` is the runtime's reopen check. Absent means the document was
+ * not reopened, which is not the same as a check that passed.
+ */
+export interface RuntimeDocumentWriteStatus {
+  operation: "create" | "transform";
+  outputPath: string;
+  bytes?: number;
+  structure: Record<string, number>;
+  sourcePath?: string;
+  /**
+   * Fidelity warning codes from the **source** document, not messages.
+   *
+   * The write tools report codes only — the reader already produced the
+   * messages during its own pass, and re-sending them would duplicate bounded
+   * output for no gain. The surface therefore shows codes here, and the user
+   * sees the full text when the source was read.
+   */
+  sourceWarnings: string[];
+  verification?: string;
 }
 
 export interface RuntimeVerificationState {
@@ -380,4 +478,17 @@ export type RuntimeEvent =
     }
   | { type: "session_warning"; request_id?: string; message: string }
   | { type: "history_restored"; messages: RuntimeHistoryMessage[] }
-  | { type: "runtime_unavailable"; message: string };
+  | { type: "runtime_unavailable"; message: string }
+  /**
+   * A runtime warning raised outside a run. MCP configuration and adaptation
+   * problems arrive here, which is why it carries optional server identity.
+   */
+  | ({ type: "runtime_warning" } & RuntimeWarning)
+  /**
+   * The MCP servers configured for this session, emitted once at startup.
+   *
+   * Configuration only. A server being listed here says nothing about whether
+   * it started; the run's own tool list is the evidence for that, and the
+   * surface must not present one as the other.
+   */
+  | { type: "mcp_servers"; servers: RuntimeMcpServerConfig[] };

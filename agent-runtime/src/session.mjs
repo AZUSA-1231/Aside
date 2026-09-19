@@ -364,6 +364,22 @@ export async function createAsideConversationRuntime({
     configuredSkillDiagnostics = configured.skillDiagnostics ?? [];
     configuredMcp = configured.mcp;
     configuredBuildSystemPromptFor = configured.buildSystemPromptFor;
+    // Configuration facts only, and only when there is something to report. A
+    // session with no MCP configured emits nothing, so the surface has no empty
+    // MCP section to explain away. Whether a listed server actually started is
+    // a per-run fact the surface reads from the run's tool list.
+    const configuredServers = configured.mcpServers ?? [];
+    if (configuredServers.length > 0) {
+      send({
+        type: "mcp_servers",
+        servers: configuredServers.map((server) => ({
+          id: server.id,
+          display_name: server.display_name,
+          enabled: server.enabled,
+          trust_acknowledged: server.trust_acknowledged,
+        })),
+      });
+    }
     for (const diagnostic of configured.mcpDiagnostics ?? []) {
       send({ type: "runtime_warning", ...diagnostic });
     }

@@ -34,10 +34,15 @@ import type {
   HostView,
   HostCaptureResult,
   NativeError,
+  RuntimeDocumentReadStatus,
+  RuntimeDocumentWriteStatus,
   RuntimeEvent,
   RuntimeHistoryMessage,
+  RuntimeMcpServerConfig,
   RuntimePermissionRequest,
   RuntimeSkillEvent,
+  RuntimeToolDescriptor,
+  RuntimeToolProvenance,
   RuntimeVerificationState,
   RuntimeWorkspaceState,
 } from "./lib/contracts";
@@ -46,6 +51,11 @@ import {
   createHostTurnContext,
   normalizeHostAttachment,
 } from "./lib/context";
+import {
+  describeStructure,
+  readDocumentStatus,
+  writeDocumentStatus,
+} from "./lib/document-status";
 import { isDesktopRuntime, nativeClient, toNativeError } from "./lib/ipc";
 import "./App.css";
 
@@ -209,6 +219,27 @@ function shortToolName(tool: string): string {
   return dot >= 0 ? tool.slice(dot + 1) : tool;
 }
 
+/**
+ * Tool provenance, taken from the run's descriptors rather than inferred.
+ *
+ * The only thing that makes a tool external is the runtime reporting
+ * `source: "user_mcp"`. React does not decide this, and does not upgrade a tool
+ * to external on a naming convention — an outside program's tools are named
+ * `mcp.*`, but a name is not evidence and the descriptor is.
+ */
+function provenanceFrom(tools: RuntimeToolDescriptor[]): Record<string, RuntimeToolProvenance> {
+  const provenance: Record<string, RuntimeToolProvenance> = {};
+  for (const tool of tools) {
+    const isExternal = tool.source === "user_mcp";
+    provenance[tool.name] = {
+      source: isExternal ? "user_mcp" : "builtin",
+      originLabel: tool.origin_label,
+      isExternal,
+    };
+  }
+  return provenance;
+}
+
 function App() {
   const [agentState, setAgentState] = useState<AgentState>(initialAgentState);
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
@@ -237,6 +268,24 @@ function App() {
   );
   const [toolActivity, setToolActivity] = useState<ToolActivity | null>(null);
   const [verification, setVerification] = useState<RuntimeVerificationState | null>(null);
+  // Configured MCP servers, as configuration facts. Whether each one actually
+  // started is derived from the run's tool list, never from this list.
+  const [mcpServers, setMcpServers] = useState<RuntimeMcpServerConfig[]>([]);
+  // Tool provenance for the active run, keyed by tool name. Read from the run's
+  // own descriptors so the surface cannot label a connected tool as built-in.
+  const [toolProvenance, setToolProvenance] = useState<Record<string, RuntimeToolProvenance>>({});
+  // A capture that an explicit selection outranked, reported rather than hidden.
+  const [workspaceOverride, setWorkspaceOverride] = useState<{
+    replacedBy: string;
+    capturedPath: string;
+  } | null>(null);
+  // Set while a run is parked on a user decision, cleared when it settles.
+  const [runWaiting, setRunWaiting] = useState<string | null>(null);
+  // The document status of the most recent tool result, if it was a structured
+  // read or a generated document. Both are `null` for ordinary text and JSON
+  // work, which is the common case and must stay quiet.
+  const [documentRead, setDocumentRead] = useState<RuntimeDocumentReadStatus | null>(null);
+  const [documentWrite, setDocumentWrite] = useState<RuntimeDocumentWriteStatus | null>(null);
   const [workspaceDraft, setWorkspaceDraft] = useState("");
   const activeRunRef = useRef<ActiveRun | null>(null);
   // Late one-shot capture results must not leak into a later prompt.
@@ -509,6 +558,17 @@ function App() {
           setNativeError(runtimeError(event.message));
           return;
         }
+        // Handled before the run-scoped gate below: neither carries a
+        // request_id, because neither belongs to a run. An MCP configuration
+        // problem exists whether or not a conversation is in flight.
+        if (event.type === "runtime_warning") {
+          setNativeError(runtimeError(event.message));
+          return;
+        }
+        if (event.type === "mcp_servers") {
+          setMcpServers(event.servers);
+          return;
+        }
         if (event.type === "runtime_unavailable") {
           historyHydratedRef.current = false;
           setRuntimeReady(false);
@@ -550,6 +610,22 @@ function App() {
             updatePendingPermission(null);
             setToolActivity(null);
             setVerification(null);
+            setWorkspaceOverride(null);
+            setDocumentRead(null);
+            setDocumentWrite(null);
+            // Built from the run's own descriptors. A tool the runtime did not
+            // report as `user_mcp` is built-in, so the surface can only claim
+            // external provenance the runtime actually declared.
+            setToolProvenance(provenanceFrom(event.tools ?? []));
+            break;
+          case "workspace_overridden":
+            setWorkspaceOverride({ replacedBy: event.replaced_by, capturedPath: event.captured_path });
+            break;
+          case "run_waiting":
+            // The run is parked on a decision. The permission card carries the
+            // detail; this exists so the surface can say the run is waiting
+            // rather than appearing stalled.
+            setRunWaiting(event.reason);
             break;
           case "text_delta":
             updateAssistant(current.assistantId, (assistant) => ({
@@ -580,6 +656,15 @@ function App() {
               text: event.text.slice(0, 320),
               truncated: event.truncated,
             });
+            // A failed result is not a document status, whatever fields it
+            // carries. Only a succeeded result is projected, and only when its
+            // details are recognizably a document read or a generated file.
+            if (event.status === "succeeded") {
+              const read = readDocumentStatus(event.details);
+              const write = writeDocumentStatus(event.details);
+              if (read) setDocumentRead(read);
+              if (write) setDocumentWrite(write);
+            }
             if (
               pendingPermissionRef.current &&
               pendingPermissionRef.current.tool_call_id === event.tool_call_id
@@ -604,6 +689,7 @@ function App() {
             setCurrentRun(null);
             updatePendingPermission(null);
             setVerification(null);
+            setRunWaiting(null);
             break;
           case "cancelled":
             updateAssistant(current.assistantId, (assistant) => ({
@@ -613,11 +699,13 @@ function App() {
             setCurrentRun(null);
             updatePendingPermission(null);
             setVerification(null);
+            setRunWaiting(null);
             break;
           case "failed":
             failRun(current, event.message);
             updatePendingPermission(null);
             setVerification(null);
+            setRunWaiting(null);
             break;
           default:
             break;
@@ -793,6 +881,24 @@ function App() {
   const modeLabel = agentState.surface === "workspace" ? "Workspace" : "Side";
   const shortcutLabel = isDesktopRuntime() ? "Ctrl + Alt + A" : "Desktop app shortcut";
   const captureStrategy = captureHost?.strategy;
+  // Provenance of whatever is currently running, resolved from the run's own
+  // descriptors. Undefined means the tool was not in the run's tool list, which
+  // the surface renders as unknown rather than as built-in.
+  const activityProvenance = toolActivity ? toolProvenance[toolActivity.tool] : undefined;
+  // Configured servers that contributed no tool to the active run. Worth
+  // showing: a configured server that is not loading is a different problem
+  // from one that is not configured, and the user cannot tell them apart from
+  // an empty tool list.
+  const silentServers = activeRun
+    ? mcpServers.filter(
+        (server) =>
+          server.enabled
+          && server.trust_acknowledged
+          && !Object.values(toolProvenance).some(
+            (provenance) => provenance.isExternal && provenance.originLabel === server.display_name,
+          ),
+      )
+    : [];
 
   return (
     <main className={`app-shell ${agentState.surface}-surface`}>
@@ -942,7 +1048,93 @@ function App() {
             </div>
           </div>
         )}
+
+        {runWaiting && (
+          <div className="runtime-chip waiting-chip">
+            <LoaderCircle size={12} />
+            <div className="runtime-chip-copy">
+              <strong>Waiting for you</strong>
+              <span>{runWaiting}</span>
+            </div>
+          </div>
+        )}
+
+        {/* An explicit selection outranked a capture. Reported rather than
+            silent: the user believes they captured one thing and the task is
+            running against another unless we say so. */}
+        {workspaceOverride && (
+          <div className="runtime-chip override-chip">
+            <CircleAlert size={12} />
+            <div className="runtime-chip-copy">
+              <strong>Selection outranked the capture</strong>
+              <span title={workspaceOverride.capturedPath}>
+                Using {workspaceOverride.replacedBy}; not {workspaceOverride.capturedPath}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Configured, enabled, acknowledged — and contributing nothing to this
+            run. Named so the user can tell "server broken" from "server not
+            configured", which an empty tool list cannot distinguish. */}
+        {silentServers.length > 0 && (
+          <div className="runtime-chip server-chip unavailable">
+            <Wrench size={12} />
+            <div className="runtime-chip-copy">
+              <strong>
+                {silentServers.map((server) => server.display_name).join(", ")}
+              </strong>
+              <span>Connected program(s) provided no tools for this task</span>
+            </div>
+          </div>
+        )}
       </section>
+
+      {/* What was actually read, and what was lost. A partial or truncated
+          extraction is stated here rather than left for the model to mention:
+          the user is the one who needs to know the answer came from part of
+          the document, and the model may reasonably omit it. */}
+      {documentRead && (
+        <div className={`document-chip ${documentRead.partial || documentRead.truncated ? "partial" : ""}`}>
+          <FileJson size={12} />
+          <div className="runtime-chip-copy">
+            <strong>
+              {documentRead.format.toUpperCase()} · {documentRead.scope}
+            </strong>
+            <span>
+              {documentRead.partial || documentRead.truncated ? "Partial extraction · " : ""}
+              {documentRead.warnings.length > 0
+                ? documentRead.warnings
+                    .slice(0, 2)
+                    .map((warning) => warning.message)
+                    .join(" ")
+                : "Read complete"}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* A written document, its destination, and whether it was reopened. The
+          fidelity warnings belong to the *source*, and are shown before the
+          user treats the output as equivalent to it. */}
+      {documentWrite && (
+        <div className="document-chip written">
+          <CheckCheck size={12} />
+          <div className="runtime-chip-copy">
+            <strong title={documentWrite.outputPath}>
+              {documentWrite.operation === "transform" ? "Transformed" : "Created"} ·{" "}
+              {shortToolName(documentWrite.outputPath)}
+            </strong>
+            <span>
+              {describeStructure(documentWrite.structure)}
+              {documentWrite.verification ? ` · reopened: ${documentWrite.verification}` : " · not reopened"}
+              {documentWrite.sourceWarnings.length > 0
+                ? ` · source may have lost: ${documentWrite.sourceWarnings.join(", ")}`
+                : ""}
+            </span>
+          </div>
+        </div>
+      )}
 
       {toolActivity && (
         <div className={`tool-activity ${toolActivity.status}`} aria-live="polite">
@@ -950,6 +1142,13 @@ function App() {
           <span>
             {shortToolName(toolActivity.tool)} · {toolStatusLabel(toolActivity.status)}
           </span>
+          {/* Where the tool came from, and — for a connected program — that it
+              runs outside Aside. Nothing here upgrades a call to contained. */}
+          {activityProvenance?.isExternal && (
+            <span className="tool-activity-origin" title={activityProvenance.originLabel}>
+              outside Aside · {activityProvenance.originLabel}
+            </span>
+          )}
           {toolActivity.text && toolActivity.status !== "running" && (
             <span className="tool-activity-text" title={toolActivity.text}>
               {toolActivity.text}
@@ -972,6 +1171,14 @@ function App() {
             {pendingPermission.egress && pendingPermission.egress !== "none" && (
               <span className="permission-effect">
                 egress: {pendingPermission.egress}
+              </span>
+            )}
+            {/* The runtime's own boundary value, never a label composed here.
+                When it says `external_process`, the decision is about a program
+                Aside does not sandbox, and the card has to say so plainly. */}
+            {pendingPermission.risk?.boundary === "external_process" && (
+              <span className="permission-effect permission-boundary">
+                outside Aside
               </span>
             )}
           </div>
