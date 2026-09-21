@@ -71,6 +71,23 @@ export function parsePageRange(input, { maxPages = MAX_PDF_PAGE_RANGE } = {}) {
     }
     const start = Number(match[1]);
     const end = match[2] === undefined ? start : Number(match[2]);
+    // Checked before any arithmetic, and before the span guards below.
+    //
+    // A digit string can exceed what a double represents exactly. Past 2^53 the
+    // span arithmetic stops being meaningful — `end - start + 1` can report 1
+    // for a span of one enormous page and pass the count guard — and worse, the
+    // iteration below cannot advance, because `page += 1` is a no-op at that
+    // magnitude. The loop then never terminates, and since this runs
+    // synchronously it blocks the event loop, where no AbortSignal can reach it.
+    //
+    // This is reachable from a model-supplied argument, so it is a denial of
+    // service on the runtime, not a malformed-input nicety.
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end)) {
+      throw new DocumentAdapterError(
+        "invalid_page_range",
+        `The page range "${token}" names a page outside the supported range.`,
+      );
+    }
     if (start < 1 || end < start) {
       throw new DocumentAdapterError(
         "invalid_page_range",

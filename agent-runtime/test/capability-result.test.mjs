@@ -188,13 +188,48 @@ test("keeps the moved boundedToolResult contract intact", () => {
   assert.equal(roomy.details.status, "succeeded");
   assert.equal(roomy.truncated, false);
 
-  // The marker is appended only when budget remains for it.
+  // The marker appears when the budget can hold both it and some content.
   const marked = boundedToolResult(
     { content: [{ type: "text", text: "a".repeat(20) }, { type: "image", data: "x" }] },
     64,
   );
   assert.ok(
     marked.content.some((block) => block.text.includes("[tool output truncated]")),
+  );
+
+  // The case this test used to miss, and the reason the rule above was wrong.
+  //
+  // The original implementation appended the marker only if bytes remained
+  // after truncating, which after a content-filled truncation is never — the
+  // notice was absent in exactly the situation it exists for. Asserting only
+  // the case above, where a small content block leaves room, is what let it
+  // ship. Found by the independent audit as part of A04/A08.
+  const filled = boundedToolResult(
+    { content: [{ type: "text", text: "b".repeat(10_000) }] },
+    512,
+  );
+  assert.equal(filled.truncated, true);
+  assert.ok(
+    filled.content.some((block) => block.text.includes("[tool output truncated]")),
+    "a truncation notice must survive a truncation that fills the budget",
+  );
+  const filledBytes = filled.content.reduce(
+    (total, block) => total + Buffer.byteLength(block.text, "utf8"),
+    0,
+  );
+  assert.ok(filledBytes <= 512, "and must still respect the budget");
+
+  // A budget too small to hold both spends itself on content, because a notice
+  // that displaces the payload is worse than no notice.
+  const tiny = boundedToolResult(
+    { content: [{ type: "text", text: "c".repeat(10_000) }] },
+    8,
+  );
+  assert.equal(tiny.truncated, true);
+  assert.equal(
+    tiny.content.some((block) => block.text.includes("[tool output truncated]")),
+    false,
+    "at 8 bytes the content wins; the flag carries the truncation instead",
   );
 
   assert.throws(() => boundedToolResult({}, 0), /maxBytes/);

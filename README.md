@@ -6,10 +6,12 @@
 </p>
 
 > **Status: work in progress** — a semi-finished MVP. The desktop shell, window
-> behavior, agent runtime, bounded host-context capture, and bounded
-> permission-gated workspace tools are in place. Cycle 5's implementation is
-> complete but its manual Windows acceptance is still open; PDF, Word, and Web
-> Search are planned for Cycle 6.
+> behavior, agent runtime, bounded host-context capture, bounded
+> permission-gated workspace tools, PDF and Word handling, and a
+> user-connected MCP tool adapter are implemented. Manual Windows acceptance is
+> open for both Cycle 5 and Cycle 6, and an independent audit of Cycle 6 has
+> open findings; nothing here is released and no installable build is produced
+> yet.
 
 Aside is a persistent desktop companion for Windows. It's a small frameless
 side panel you can summon from anywhere with `Ctrl + Alt + A` — always within

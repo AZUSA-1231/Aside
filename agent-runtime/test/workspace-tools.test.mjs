@@ -14,9 +14,11 @@ import {
   createDocumentAdapterRegistry,
   createWorkspaceReadTools,
   readDocument,
+  renderDocumentBlocks,
   validateDocumentText,
 } from "../src/workspace-tools.mjs";
 import { createWorkspaceWriteTools } from "../src/workspace-write-tools.mjs";
+import { buildDocx } from "./docx-fixtures.mjs";
 import { resolveTaskWorkspace } from "../src/workspace.mjs";
 import { createConversationRuntime } from "../src/runtime.mjs";
 import { buildLargePdf, buildPdf } from "./pdf-fixtures.mjs";
@@ -819,4 +821,68 @@ test("C6-16: the read tool renders PDF pages with a page continuation", async ()
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+// ---------------------------------------------------------------------------
+// A03 — every supported block type must reach the model
+//
+// Found by the independent audit. `renderDocumentBlocks` took `block.text` for
+// anything that was not a page break, so a Word table — whose content lives in
+// `rows` — rendered as an empty line. The model was told the read succeeded and
+// given no table, and could not tell the difference between "this document has
+// a blank paragraph" and "Aside dropped your table".
+//
+// The adapter-level tests already covered the table, which is precisely why
+// they did not catch this: the loss happened one layer above them. This walks
+// the full tool path and asserts on content the model actually receives.
+// ---------------------------------------------------------------------------
+
+test("A03: a table reaches the model as content, with its cells", async () => {
+  const root = await mkdtemp(join(tmpdir(), "aside-table-"));
+  try {
+    await writeFile(
+      join(root, "table.docx"),
+      buildDocx([
+        { type: "heading", text: "AUDIT_HEADING_11", level: 1 },
+        { type: "paragraph", text: "AUDIT_PARAGRAPH_22" },
+        { type: "table", rows: [["AUDIT_CELL_33", "AUDIT_CELL_44"], ["AUDIT_CELL_55", "AUDIT_CELL_66"]] },
+      ]),
+    );
+    const { implementation } = await bindTool(root, "workspace.read");
+    const result = await implementation.execute("table-1", { path: "table.docx" });
+
+    assert.equal(result.details.status, "succeeded");
+    assert.equal(result.details.truncated, false);
+    const text = resultText(result);
+
+    // Every marker, not just the table's: a heading and a list flattened into
+    // plain paragraphs lose their kind, which is the same loss in miniature.
+    for (const marker of [
+      "AUDIT_HEADING_11",
+      "AUDIT_PARAGRAPH_22",
+      "AUDIT_CELL_33",
+      "AUDIT_CELL_44",
+      "AUDIT_CELL_55",
+      "AUDIT_CELL_66",
+    ]) {
+      assert.ok(text.includes(marker), `"${marker}" did not reach the model: ${text.slice(0, 400)}`);
+    }
+    // The block kind is preserved rather than flattened.
+    assert.match(text, /^# AUDIT_HEADING_11$/m, "a heading reads as a heading");
+    assert.match(text, /\| AUDIT_CELL_33 \| AUDIT_CELL_44 \|/, "the table reads as a table");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("A03: an unrecognized block type is visible, never a silent blank", async () => {
+  // The renderer must not be able to lose a block by not knowing it. Silence is
+  // indistinguishable from an empty paragraph in the document, and only one of
+  // those is a fact about the document.
+  const rendered = renderDocumentBlocks(
+    [{ type: "future_widget", text: "AUDIT_FUTURE_77" }, { type: "paragraph", text: "after" }],
+    { maxOutputBytes: 4_096 },
+  );
+  assert.match(rendered.text, /unsupported block: future_widget/);
+  assert.match(rendered.text, /after/, "rendering continues past an unknown block");
 });

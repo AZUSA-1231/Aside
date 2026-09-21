@@ -380,3 +380,86 @@ test("an MCP tool reaches the model as a callable tool, end to end", async () =>
     runtime.dispose();
   }
 });
+
+// ---------------------------------------------------------------------------
+// A06 — Stop during MCP discovery must not still submit the prompt
+//
+// Found by the independent audit. `registryForRun` awaits the connected
+// servers, and `cancel()` sets `run.cancel_requested` without being able to
+// interrupt work already in flight. The run then continued to `agent.prompt()`,
+// so the provider was called after the user pressed Stop. The terminal event
+// was `cancelled`, which is correct and misleading: it said nothing about the
+// request having been sent.
+// ---------------------------------------------------------------------------
+
+async function runWithSlowDiscovery({ cancelDuringDiscovery }) {
+  const faux = fauxProvider({ tokensPerSecond: 1_000 });
+  const models = createModels();
+  models.setProvider(faux.provider);
+  faux.setResponses([fauxAssistantMessage("should not be reached")]);
+
+  const agent = new Agent({
+    initialState: {
+      systemPrompt: "x",
+      model: faux.getModel(),
+      thinkingLevel: "off",
+      tools: [],
+    },
+    streamFn: models.streamSimple.bind(models),
+    convertToLlm: (messages) => messages,
+  });
+
+  const events = [];
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+
+  const runtime = await createConversationRuntime({
+    emit: (event) => events.push(event),
+    agent,
+    // A discovery that has not returned yet is exactly the window a user's Stop
+    // lands in when a server is slow to start.
+    mcp: {
+      toolFactory: async () => {
+        await gate;
+        return [];
+      },
+    },
+  });
+
+  const pending = runtime.prompt("a06", "do the thing");
+  if (cancelDuringDiscovery) {
+    await Promise.resolve();
+    runtime.cancel("a06");
+  }
+  release();
+  await pending;
+  runtime.dispose();
+  return { events, callCount: faux.state.callCount };
+}
+
+test("A06: Stop during discovery means the provider is never called", async () => {
+  const { events, callCount } = await runWithSlowDiscovery({ cancelDuringDiscovery: true });
+
+  assert.equal(
+    callCount,
+    0,
+    "the provider was called after the user pressed Stop during discovery",
+  );
+  assert.equal(
+    events.some((event) => event.type === "run_started"),
+    false,
+    "a cancelled run reported itself as started",
+  );
+  const terminals = events.filter((event) =>
+    ["completed", "cancelled", "failed"].includes(event.type));
+  assert.equal(terminals.length, 1, "exactly one terminal event");
+  assert.equal(terminals[0].type, "cancelled");
+});
+
+test("A06: the same run without a Stop still reaches the provider", async () => {
+  // The guard must not be a blanket refusal to start, which would pass the test
+  // above while breaking every ordinary run.
+  const { events, callCount } = await runWithSlowDiscovery({ cancelDuringDiscovery: false });
+  assert.equal(callCount, 1, "an uncancelled run reaches the provider exactly once");
+  assert.ok(events.some((event) => event.type === "run_started"));
+});

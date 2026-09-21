@@ -2,6 +2,7 @@ import { constants } from "node:fs";
 import { randomUUID } from "node:crypto";
 import {
   access,
+  link,
   lstat,
   mkdir,
   readFile,
@@ -169,7 +170,9 @@ function mapFsError(error, path, options = {}) {
         ? "The workspace operation was cancelled."
       : mapped === "not_found"
         ? "The workspace resource was not found."
-        : "The workspace resource could not be accessed.",
+        : mapped === "stale_target"
+          ? "The workspace target now exists and must be reviewed again."
+          : "The workspace resource could not be accessed.",
     path,
   );
 }
@@ -296,6 +299,7 @@ export function selectDescriptorHandoff(context) {
 function backendWithDefaults(fileSystem = {}) {
   return {
     access: fileSystem.access ?? access,
+    link: fileSystem.link ?? link,
     lstat: fileSystem.lstat ?? lstat,
     mkdir: fileSystem.mkdir ?? mkdir,
     readFile: fileSystem.readFile ?? readFile,
@@ -306,6 +310,45 @@ function backendWithDefaults(fileSystem = {}) {
     unlink: fileSystem.unlink ?? unlink,
     writeFile: fileSystem.writeFile ?? writeFile,
   };
+}
+
+/**
+ * Commits a prepared file to a path that must still be absent.
+ *
+ * `beforeRename` checks that the destination is missing, but checking and then
+ * renaming leaves a window: on Windows `rename` is replace-on-existing, so a
+ * file created by another writer between the check and the commit is silently
+ * overwritten. Adding a second check does not close it — the window is between
+ * the last check and the commit, whatever the last check is.
+ *
+ * A hard link is the primitive that closes it. `link` fails with `EEXIST` when
+ * the destination already exists, so the test and the commit are one operation
+ * with no window between them. On success the destination and the temporary
+ * name refer to the same file, and the temporary name is then redundant.
+ *
+ * Documented limit: hard links need a filesystem that supports them (NTFS yes,
+ * FAT32 no) and the two paths must be on the same volume. Both hold here,
+ * because the temporary file is created in the destination's own directory.
+ */
+async function commitWithoutReplacing(backend, temporaryPath, destination) {
+  try {
+    await backend.link(temporaryPath, destination);
+  } catch (error) {
+    if (error?.code === "EEXIST") {
+      throw new WorkspaceError(
+        "stale_target",
+        "The output path now exists and must be reviewed again.",
+        destination,
+      );
+    }
+    throw error;
+  }
+  try {
+    await backend.unlink(temporaryPath);
+  } catch {
+    // The destination is committed either way; a leftover temporary name is
+    // untidy, not a failed write.
+  }
 }
 
 async function existingResource(backend, addressedPath, expectedKind) {
@@ -817,8 +860,14 @@ export function createWorkspaceEnvironment({ state, fileSystem } = {}) {
           throw new WorkspaceError("aborted", "The workspace operation was cancelled.", addressedPath);
         }
         if (options.beforeRename) await options.beforeRename(current);
-        await backend.rename(temporaryPath, current.canonical_path);
-        temporaryCreated = false;
+        if (options.expectMissing === true) {
+          // Committed without replace semantics. See commitWithoutReplacing.
+          await commitWithoutReplacing(backend, temporaryPath, current.canonical_path);
+          temporaryCreated = false;
+        } else {
+          await backend.rename(temporaryPath, current.canonical_path);
+          temporaryCreated = false;
+        }
       } catch (error) {
         throw mapFsError(error, addressedPath, { mutation: true });
       } finally {

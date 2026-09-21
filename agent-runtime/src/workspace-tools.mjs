@@ -789,16 +789,66 @@ function structuredReadResult(loaded, limits) {
   );
 }
 
-function renderDocumentBlocks(blocks, limits) {
+/**
+ * Renders one block into the text the model reads.
+ *
+ * Every supported type renders its own content and its own kind. The first
+ * version took `block.text` for anything that was not a page break, which
+ * quietly discarded every block whose content lives elsewhere — a Word table
+ * carries `rows` — and flattened headings and list items into plain paragraphs
+ * even though the adapter had distinguished them. The model saw an empty line,
+ * which reads as "this document has a blank paragraph here": a claim about the
+ * document rather than about the renderer. See A03.
+ */
+function renderDocumentBlock(block) {
+  switch (block?.type) {
+    case "page_break":
+      return `\n--- page ${block.locator?.page ?? "?"} ---`;
+    case "heading": {
+      const level = Math.min(Math.max(Number(block.level) || 1, 1), 6);
+      return `${"#".repeat(level)} ${String(block.text ?? "")}`;
+    }
+    case "list_item":
+      return `- ${String(block.text ?? "")}`;
+    case "paragraph":
+      return String(block.text ?? "");
+    case "table": {
+      const rows = Array.isArray(block.rows) ? block.rows : [];
+      if (rows.length === 0) return "[empty table]";
+      const rendered = rows
+        .map((row) => {
+          const cells = Array.isArray(row) ? row : [row];
+          return `| ${cells.map((cell) => String(cell ?? "").replace(/\|/g, "\\|")).join(" | ")} |`;
+        })
+        .join("\n");
+      // The adapter marks a table whose rows were cut, and that has to travel
+      // with the table rather than only into `details`.
+      return block.truncated === true ? `${rendered}\n[table truncated]` : rendered;
+    }
+    default:
+      // Never an empty line. A block this renderer does not understand must say
+      // so, because silence is indistinguishable from an empty paragraph in the
+      // document — and the model has no way to tell which it is looking at.
+      return `[unsupported block: ${String(block?.type ?? "unknown")}]`;
+  }
+}
+
+/**
+ * Exported so the model-visible rendering of a document can be tested directly.
+ *
+ * This function decides what the model is told a document contains, and A03 was
+ * a defect in it that the adapter tests could not reach — they asserted the
+ * blocks the adapter produced, one layer below where the loss happened. A pure
+ * function this load-bearing should be reachable without a synthetic adapter.
+ */
+export function renderDocumentBlocks(blocks, limits) {
   const budget = Math.max(128, limits.maxOutputBytes - 512);
   const lines = [];
   let bytes = 0;
   let truncated = false;
   let lastPage;
   for (const block of blocks) {
-    const line = block.type === "page_break"
-      ? `\n--- page ${block.locator?.page ?? "?"} ---`
-      : String(block.text ?? "");
+    const line = renderDocumentBlock(block);
     const cost = byteLength(line) + 1;
     if (bytes + cost > budget) {
       truncated = true;

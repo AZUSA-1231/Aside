@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { MAX_TOOL_DESCRIPTION_LENGTH } from "../src/agent-contracts.mjs";
 import { createAsideToolRegistry } from "../src/capability-contract.mjs";
 import {
   MAX_MCP_TOOLS_TOTAL,
@@ -495,4 +496,157 @@ test("end to end: a real server process reaches the registry and runs", async ()
   } finally {
     await controller.close();
   }
+});
+
+// ---------------------------------------------------------------------------
+// A05 — one bad tool definition must not take down the task
+//
+// Found by the independent audit. Accepting each of a server's tools
+// individually is not the same as the tools Aside produces from them being
+// acceptable: two same-named server tools encode to the same Aside name, and a
+// description the adapter allowed could exceed the registry's limit. Either one
+// reached the aggregate registry and threw there — which happens before
+// `agent.prompt`, so it took down every unrelated capability in the task rather
+// than just the offending tool.
+// ---------------------------------------------------------------------------
+
+test("A05: two same-named server tools cost one tool, not the task", async () => {
+  const { controller } = await controllerFor({
+    tools: [tool("dup"), tool("dup"), tool("echo-search")],
+  });
+  const tools = await controller.tools();
+
+  // One of the duplicates survives; the second is refused with a diagnostic.
+  assert.equal(tools.length, 2, `expected 2 adapted tools, got ${tools.length}`);
+  assert.ok(
+    controller.diagnostics.some((entry) => entry.code === "duplicate_tool"),
+    `expected a duplicate_tool diagnostic, got ${JSON.stringify(controller.diagnostics)}`,
+  );
+  // And the result is a registry that actually builds.
+  assert.doesNotThrow(() => createAsideToolRegistry(tools));
+});
+
+test("A05: a tool description is bounded to the registry's own limit", async () => {
+  // 1000 bytes: inside the schema layer's 2048-byte cap, over the registry's
+  // 800. That is the window the audit found — a description that passes one
+  // layer and fails the next. Testing at 4000 would prove nothing, because the
+  // schema layer refuses it first.
+  const { controller } = await controllerFor({
+    tools: [tool("chatty", { type: "object", properties: {} }, "d".repeat(1_000))],
+  });
+  const tools = await controller.tools();
+
+  assert.equal(tools.length, 1);
+  assert.ok(
+    tools[0].description.length <= MAX_TOOL_DESCRIPTION_LENGTH,
+    `description is ${tools[0].description.length} bytes, above the registry limit`,
+  );
+  // The point is not the number but that the registry accepts what the adapter
+  // produced, because that is what used to fail.
+  assert.doesNotThrow(() => createAsideToolRegistry(tools));
+});
+
+test("A05: a server that produces only bad tools leaves built-ins usable", async () => {
+  const { controller } = await controllerFor({ tools: [tool("dup"), tool("dup")] });
+  const adapted = await controller.tools();
+
+  // Whatever survives, combining it with a built-in must still build. This is
+  // the isolation requirement stated as a property rather than as a count.
+  const builtin = {
+    name: "aside.echo",
+    description: "Echo.",
+    label: "Echo",
+    parameters: { type: "object", properties: {} },
+    async execute() {
+      return { content: [{ type: "text", text: "ok" }], details: { status: "succeeded" } };
+    },
+    descriptor: {
+      name: "aside.echo",
+      effect: "read",
+      scope: "none",
+      egress: "none",
+      replay: "safe",
+      source: "builtin",
+    },
+  };
+  const combined = createAsideToolRegistry([...adapted, builtin]);
+  assert.ok(combined.entries.some((entry) => entry.descriptor.name === "aside.echo"));
+});
+
+// ---------------------------------------------------------------------------
+// A04 — the result the model reads is `content`, not `details`
+//
+// Found by the independent audit. Pi serializes a tool result's `content` into
+// the provider request; `details` reaches the UI and the session store only.
+// The adapter put every payload field in `details`, so a successful MCP call
+// showed the model "server completed tool" and nothing else.
+//
+// These assert on `content` specifically. Asserting on `details` would have
+// passed before the fix and proved the wrong thing — which is how this shipped.
+// ---------------------------------------------------------------------------
+
+function contentText(result) {
+  return (result.content ?? []).map((block) => block.text ?? "").join("\n");
+}
+
+test("A04: the server's text reaches the model-visible content", async () => {
+  const { controller, broker } = await controllerFor({
+    tools: [tool("echo-search")],
+    onCall: () => ({ content: [{ type: "text", text: "AUDIT_BODY_4291" }] }),
+  });
+  const result = await runTool(controller, broker, "echo-search", {});
+  assert.match(contentText(result), /AUDIT_BODY_4291/);
+});
+
+test("A04: links and structured content reach the model too", async () => {
+  const { controller, broker } = await controllerFor({
+    tools: [tool("echo-search")],
+    onCall: () => ({
+      content: [{ type: "resource_link", uri: "https://example.test/AUDIT_LINK_77" }],
+      structuredContent: { marker: "AUDIT_STRUCT_88" },
+    }),
+  });
+  const result = await runTool(controller, broker, "echo-search", {});
+  const text = contentText(result);
+  assert.match(text, /AUDIT_LINK_77/, "a source link the server sent is citable");
+  assert.match(text, /AUDIT_STRUCT_88/, "structured content is usable");
+});
+
+test("A04: an omitted block is stated rather than silently absent", async () => {
+  const { controller, broker } = await controllerFor({
+    tools: [tool("echo-search")],
+    onCall: () => ({
+      content: [
+        { type: "text", text: "visible" },
+        { type: "image", data: "aGVsbG8=", mimeType: "image/png" },
+      ],
+    }),
+  });
+  const result = await runTool(controller, broker, "echo-search", {});
+  const text = contentText(result);
+  assert.match(text, /visible/);
+  // Without this the model cannot distinguish "nothing came back" from "Aside
+  // could not carry what came back".
+  assert.match(text, /Not carried: image/);
+});
+
+test("A04: a failing result still carries what the server said", async () => {
+  const { controller, broker } = await controllerFor({
+    tools: [tool("echo-search")],
+    onCall: () => ({ isError: true, content: [{ type: "text", text: "AUDIT_FAIL_REASON_5" }] }),
+  });
+  const result = await runTool(controller, broker, "echo-search", {});
+  assert.equal(result.isError, true);
+  assert.match(contentText(result), /AUDIT_FAIL_REASON_5/);
+});
+
+test("A04: a truncated result says so in the model-visible content", async () => {
+  const { controller, broker } = await controllerFor({
+    tools: [tool("echo-search")],
+    onCall: () => ({ content: [{ type: "text", text: "z".repeat(400_000) }] }),
+  });
+  const result = await runTool(controller, broker, "echo-search", {});
+  const text = contentText(result);
+  assert.ok(text.length > 100, "some content survived");
+  assert.match(text, /truncated/i, "the model is told the content was cut");
 });

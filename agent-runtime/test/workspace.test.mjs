@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, symlink, unlink, utimes, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, symlink, unlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import test from "node:test";
@@ -166,6 +166,67 @@ test("keeps task workspace resolution separate from process cwd", async () => {
     const reused = await resolveTaskWorkspace({ previousWorkspace: previous });
     assert.equal(reused.state.canonical_path, root);
     assert.equal(process.cwd(), before);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// A02 — a commit that must not replace has to be one operation
+//
+// Found by the independent audit. `writeAtomic` checked the destination and
+// then renamed onto it. On Windows `rename` replaces, so a file created between
+// the check and the commit was silently overwritten — the user loses a file,
+// which is the exact outcome C6-I009 and C6-24 promise cannot happen.
+//
+// The existing race test creates the file while the permission decision is
+// pending, which the pre-commit check catches. It does not reach the window the
+// audit found: between the last check and the commit. No number of checks
+// closes that window, because it is wherever the last check happens to be.
+// ---------------------------------------------------------------------------
+
+test("A02: a file created after the final check is not replaced by the commit", async () => {
+  const { root } = await fixture();
+  try {
+    const resolution = await resolveTaskWorkspace({ workspaceHint: root });
+    const target = join(root, "output.bin");
+
+    await assert.rejects(
+      () => resolution.environment.writeBytesAtomic("output.bin", new Uint8Array([1, 2, 3]), {
+        maxBytes: 1_024,
+        expectMissing: true,
+        // The gap itself: another writer commits between the check and ours.
+        beforeRename: async () => {
+          await writeFile(target, "CONCURRENT_OUTPUT", "utf8");
+        },
+      }),
+      (error) => {
+        assert.ok(error instanceof WorkspaceError, `expected WorkspaceError, got ${error?.name}`);
+        assert.equal(error.code, "stale_target");
+        return true;
+      },
+    );
+
+    assert.equal(
+      await readFile(target, "utf8"),
+      "CONCURRENT_OUTPUT",
+      "the concurrent writer's file was overwritten",
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("A02: an ordinary new-file commit still works", async () => {
+  // The primitive must not be so careful that it refuses every write.
+  const { root } = await fixture();
+  try {
+    const resolution = await resolveTaskWorkspace({ workspaceHint: root });
+    await resolution.environment.writeBytesAtomic("fresh.bin", new Uint8Array([9, 9, 9]), {
+      maxBytes: 1_024,
+      expectMissing: true,
+    });
+    assert.equal((await readFile(join(root, "fresh.bin"))).byteLength, 3);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

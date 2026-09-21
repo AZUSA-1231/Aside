@@ -1028,7 +1028,23 @@ export async function createConversationRuntime({
           message: resolution.state.message,
         });
       }
-      installRegistry(await registryForRun(run, resolution));
+      const runRegistry = await registryForRun(run, resolution);
+
+      // Cancellation is checked again on the far side of the setup awaits.
+      //
+      // `registryForRun` reaches user-configured MCP servers, which can be slow
+      // or unresponsive, and `cancel()` sets `run.cancel_requested` without
+      // being able to interrupt work already in flight. Without this check the
+      // run carried on to emit `run_started` and submit the prompt to the
+      // provider: the user pressed Stop, the request went out, and the
+      // conversation ended as `cancelled` — a correct terminal state that said
+      // nothing about the request having been sent. See A06.
+      if (run.settled || active !== run || run.cancel_requested) {
+        if (!run.settled) await settle(run, "cancelled");
+        return;
+      }
+
+      installRegistry(runRegistry);
       send({
         type: "run_started",
         request_id: requestId,

@@ -98,6 +98,56 @@ async function dependencyClosure(roots) {
   return seen;
 }
 
+/**
+ * Checks the staged closure against what the runtime actually imports.
+ *
+ * The dependency roots above are hand-maintained, which is exactly how
+ * `pdfjs-dist` was missed: it is imported dynamically, so it appears in no
+ * `package.json` dependency list and nothing flagged its absence. A staged tree
+ * missing it starts normally and fails on the first PDF read — the failure
+ * arrives far from its cause, in an installed build, where it is hardest to
+ * diagnose.
+ *
+ * This walks the runtime's own source instead of trusting the list, so an
+ * import added later is caught here.
+ */
+async function verifyStagedImports(closure) {
+  const { readdir } = await import("node:fs/promises");
+  const sourceDir = join(repoRoot, "agent-runtime", "src");
+  const bare = new Set();
+  const pattern = /(?:from\s+|import\s*\(\s*)["']([^"'.][^"']*)["']/g;
+
+  const walk = async (dir) => {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(full);
+        continue;
+      }
+      if (!entry.name.endsWith(".mjs")) continue;
+      const text = await readFile(full, "utf8");
+      for (const match of text.matchAll(pattern)) {
+        const specifier = match[1];
+        if (specifier.startsWith("node:")) continue;
+        // `@scope/pkg/sub/path` -> `@scope/pkg`; `pkg/sub` -> `pkg`
+        const parts = specifier.split("/");
+        bare.add(specifier.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0]);
+      }
+    }
+  };
+  await walk(sourceDir);
+
+  const missing = [...bare].filter((name) => !closure.has(name));
+  if (missing.length > 0) {
+    throw new Error(
+      `The staged closure is missing ${missing.length} package(s) the runtime imports: `
+      + `${missing.join(", ")}.\n`
+      + "Add them to the `direct` list in this script.",
+    );
+  }
+  log(`   verified all ${bare.size} imported packages are in the closure`);
+}
+
 async function stageNodeSource() {
   log("\n1. runtime source and skills");
   await rm(runtimeDir, { recursive: true, force: true });
@@ -110,8 +160,23 @@ async function stageDependencies() {
   log("\n2. runtime dependency closure");
   const entryPoints = ["@earendil-works/pi-agent-core", "@earendil-works/pi-ai"];
   const manifest = JSON.parse(await readFile(join(repoRoot, "package.json"), "utf8"));
-  // Anything the runtime imports directly is a root, plus whatever Pi needs.
-  const direct = ["@modelcontextprotocol/sdk", "@xmldom/xmldom", "docx", "fflate"];
+  // Every bare specifier `agent-runtime/src` imports, plus the Pi entry points.
+  //
+  // Keep this list in step with the source. `pdfjs-dist` was missing from the
+  // first version of this script, which the independent audit caught: it is
+  // imported dynamically (`pdf-adapter.mjs`, `import("pdfjs-dist/legacy/build/pdf.mjs")`),
+  // so it does not look like a dependency of anything and a staged tree without
+  // it starts fine and then fails on the first PDF read. `verifyStagedImports`
+  // below exists so the next omission is caught here rather than in an installed
+  // build.
+  const direct = [
+    "@modelcontextprotocol/sdk",
+    "@xmldom/xmldom",
+    "docx",
+    "fflate",
+    "pdfjs-dist",
+    "typebox",
+  ];
   const closure = await dependencyClosure([...entryPoints, ...direct]);
 
   let copied = 0;
@@ -131,6 +196,8 @@ async function stageDependencies() {
   const bytes = await pathSize(join(runtimeDir, "node_modules"));
   log(`   runtime/node_modules is ${(bytes / 1024 / 1024).toFixed(1)} MB`);
   void manifest;
+
+  await verifyStagedImports(closure);
 }
 
 /**
@@ -231,7 +298,13 @@ async function main() {
     + "at build time and fails when the staged tree is absent, which would break\n"
     + "the build for anyone who has not run this script.\n\n"
     + '  "resources": ["resources/runtime/**/*", "resources/node/**/*"],\n'
-    + '  "externalBin": ["binaries/node"]   // see scripts/stage-node-bin.mjs\n',
+    + '  "externalBin": ["binaries/node"]\n\n'
+    + "`externalBin` expects a platform-suffixed name, so the Node binary also has\n"
+    + "to be copied to src-tauri/binaries/node-<target-triple>.exe. That copy step\n"
+    + "does not exist yet -- the script previously pointed at a stage-node-bin.mjs\n"
+    + "that was never written, which the independent audit caught. Until it does,\n"
+    + "the `resources/node/**/*` entry alone serves runtime.rs, which reads\n"
+    + "resources/node/node.exe directly.\n",
   );
 }
 

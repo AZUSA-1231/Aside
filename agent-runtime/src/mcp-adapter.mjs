@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
-import { previewValue, sanitizeRuntimeText } from "./agent-contracts.mjs";
-import { encodeMcpToolName } from "./capability-contract.mjs";
+import {
+  MAX_TOOL_DESCRIPTION_LENGTH,
+  previewValue,
+  sanitizeRuntimeText,
+} from "./agent-contracts.mjs";
+import { createAsideToolRegistry, encodeMcpToolName } from "./capability-contract.mjs";
 import {
   cancelledToolResult,
   deniedToolResult,
@@ -106,7 +110,11 @@ export function classifyMcpTool(config, toolName, parameters) {
  */
 function buildDescription(config, accepted) {
   const prefix = `[MCP: ${config.display_name}] `;
-  return boundedText(`${prefix}${accepted.description}`, 1_200);
+  // Bounded to the registry's own limit, not to a number chosen here. The first
+  // version used 1200, which the registry rejects at 800: an adapted tool with a
+  // long description therefore passed this layer and failed in the registry,
+  // taking every other tool down with it. See A05.
+  return boundedText(`${prefix}${accepted.description}`, MAX_TOOL_DESCRIPTION_LENGTH);
 }
 
 /**
@@ -129,6 +137,32 @@ function buildPreview({ config, toolName, args, classification }) {
     MAX_MCP_PREVIEW_BYTES,
   );
   return bounded.truncated ? { truncated: true, summary: bounded.text } : bounded.text;
+}
+
+/**
+ * Composes the model-visible body of an MCP result.
+ *
+ * Everything the model could use is included, and nothing the server did not
+ * send is invented. Omissions are stated rather than left implicit, because a
+ * silently dropped image reads as "the tool returned nothing" — which is a
+ * different claim from "the tool returned something this adapter could not
+ * carry", and the model cannot tell them apart otherwise.
+ */
+function mcpResultBody(normalized) {
+  const parts = [];
+  if (normalized.text.length > 0) parts.push(normalized.text);
+  if (normalized.links.length > 0) parts.push(`Sources:\n${normalized.links.join("\n")}`);
+  if (normalized.structured !== undefined) parts.push(normalized.structured);
+  if (normalized.omissions.length > 0) {
+    const described = normalized.omissions
+      .map((entry) => (entry.detail ? `${entry.omitted} (${entry.detail})` : entry.omitted))
+      .join(", ");
+    parts.push(`[Not carried: ${described}]`);
+  }
+  // No truncation notice here: the envelope adds its own when it cuts the
+  // content, and a second marker placed inside the body is the first thing lost
+  // when the body is what gets cut.
+  return parts.join("\n\n");
 }
 
 function failureEnvelope(tool, error, extra = {}) {
@@ -245,6 +279,12 @@ function buildTool({ config, connection, accepted, classification }) {
               message: normalized.is_error
                 ? `The server "${config.display_name}" reported that "${accepted.name}" failed.`
                 : `The server "${config.display_name}" completed "${accepted.name}".`,
+              // The payload the model is meant to work from. `content` is what Pi
+              // serializes into the provider request; `details` below reaches the
+              // UI and the session store only. Putting the result in `details`
+              // alone produced a call that reported success and handed the model
+              // nothing — it was shown "server completed tool" and no more. See A04.
+              body: mcpResultBody(normalized),
               details: {
                 server_id: config.id,
                 tool: accepted.name,
@@ -302,12 +342,42 @@ function adaptTools({ config, connection, rawTools, diagnostics }) {
           ),
         }));
       }
-      tools.push(buildTool({
+      const tool = buildTool({
         config,
         connection,
         accepted,
         classification,
-      }));
+      });
+
+      // Validated as the *final* Aside descriptor, not as the server's
+      // definition of it. Accepting a server's tool individually does not mean
+      // the tool Aside produces from it is acceptable: two same-named server
+      // tools encode to the same Aside name, and a description the adapter
+      // allowed can exceed the registry's limit. Either one used to reach the
+      // aggregate registry and throw there, which happens before `agent.prompt`
+      // and so took down every unrelated capability in the task, not just the
+      // offending tool. See A05.
+      //
+      // Asking the registry is deliberate: it is the authority on what it
+      // accepts, and reimplementing its rules here would be a second copy that
+      // could drift.
+      try {
+        createAsideToolRegistry([...tools, tool]);
+      } catch (error) {
+        diagnostics.push(Object.freeze({
+          server_id: config.id,
+          tool: accepted.name,
+          code: typeof error?.code === "string" ? error.code : "mcp_tool_rejected",
+          message: boundedText(
+            `The tool "${accepted.name}" was rejected by the capability registry: `
+            + `${error instanceof Error ? error.message : String(error)}`,
+            512,
+          ),
+        }));
+        continue;
+      }
+
+      tools.push(tool);
     } catch (error) {
       diagnostics.push(Object.freeze({
         server_id: config.id,
@@ -408,6 +478,30 @@ export class McpController {
         const rawTools = await connection.listTools();
         const before = tools.length;
         tools.push(...adaptTools({ config, connection, rawTools, diagnostics: this.#diagnostics }));
+
+        // The aggregate is what the runtime will hand to `normalizeToolSet`, so
+        // it is validated here while dropping this server's contribution is
+        // still possible. Without this a collision the adapter did not
+        // anticipate — across servers, or against something neither layer
+        // tracked — would throw before `agent.prompt` and take the whole task
+        // with it, built-ins included. A server's tools are the right thing to
+        // lose; everyone else's are not.
+        try {
+          createAsideToolRegistry(tools);
+        } catch (error) {
+          tools.length = before;
+          this.#diagnostics.push(Object.freeze({
+            server_id: config.id,
+            code: typeof error?.code === "string" ? error.code : "mcp_server_rejected",
+            message: boundedText(
+              `The tools from "${config.display_name}" were rejected as a group: `
+              + `${error instanceof Error ? error.message : String(error)}`,
+              512,
+            ),
+          }));
+          continue;
+        }
+
         if (tools.length > MAX_MCP_TOOLS_TOTAL) {
           tools.length = before;
           this.#diagnostics.push(Object.freeze({

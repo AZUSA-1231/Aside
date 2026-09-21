@@ -350,3 +350,50 @@ test("the read tool renders blocks with page markers and a page continuation", a
     await rm(root, { recursive: true, force: true });
   }
 });
+
+// ---------------------------------------------------------------------------
+// A01 — a page-range argument must not be able to stop the runtime
+//
+// Found by the independent audit. A digit string longer than a double can
+// represent exactly passed every guard: the span arithmetic reported a length
+// of 1, and the iteration could not advance because `page += 1` is a no-op past
+// 2^53. The loop never terminated, and because it runs synchronously it blocked
+// the event loop, where no AbortSignal can reach it.
+//
+// These tests assert the refusal. They cannot assert the hang itself: a test
+// that ran the unfixed code would never return, taking the whole suite with it.
+// The hang was demonstrated separately, in a child process under an external
+// kill, before the fix.
+// ---------------------------------------------------------------------------
+
+test("A01: refuses a page number a double cannot represent exactly", () => {
+  for (const input of ["9007199254740992", "9007199254740993", "1-9007199254740992"]) {
+    assert.throws(
+      () => parsePageRange(input),
+      (error) => {
+        assert.equal(error.code, "invalid_page_range", `${input} should be refused`);
+        return true;
+      },
+      `${input} must be refused rather than iterated`,
+    );
+  }
+});
+
+test("A01: the safe-integer boundary is exact in both directions", () => {
+  const largest = String(Number.MAX_SAFE_INTEGER);
+  // At the boundary the value is still representable, so it is accepted here and
+  // then rejected downstream for being beyond the document. Refusing it at parse
+  // time would be a different, wrong claim.
+  assert.deepEqual(parsePageRange(largest).pages, [Number.MAX_SAFE_INTEGER]);
+  // One past it is not representable, and must not reach the iteration.
+  assert.throws(
+    () => parsePageRange(String(Number.MAX_SAFE_INTEGER + 1)),
+    (error) => error.code === "invalid_page_range",
+  );
+});
+
+test("A01: ordinary page numbers still work", () => {
+  assert.deepEqual(parsePageRange("1,3,5-7").pages, [1, 3, 5, 6, 7]);
+  assert.deepEqual(parsePageRange("2000").pages, [2_000]);
+  assert.deepEqual(parsePageRange(" 1 , 2 ").pages, [1, 2]);
+});

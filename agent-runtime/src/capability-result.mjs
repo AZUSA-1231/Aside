@@ -67,10 +67,37 @@ export function toolResultStatusForError(error) {
   return "failed";
 }
 
+const TRUNCATION_MARKER = "\n[tool output truncated]";
+
+/**
+ * Below this much content, the truncation notice is dropped rather than the
+ * payload. A notice must never be the whole result.
+ *
+ * Small enough that an ordinary small budget still carries the notice: at 64
+ * bytes total the content gets 40 and the notice 24. Only a budget too small to
+ * hold both spends itself entirely on content.
+ */
+const MIN_CONTENT_BYTES = 32;
+
 export function boundedToolResult(result, maxBytes) {
   if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) invalid("maxBytes");
   const content = Array.isArray(result?.content) ? result.content : [];
-  let remaining = maxBytes;
+  // Room for the marker is reserved up front, but only when there is room to
+  // spare. Both halves of that matter, and each was learned by getting it wrong:
+  //
+  //  - Appending the marker afterwards, if bytes remain, never fires. After a
+  //    content-filled truncation `remaining` is 0 exactly when the notice is
+  //    needed, so it was absent in the one case it existed for.
+  //  - Reserving unconditionally crowds out the content itself when the budget
+  //    is smaller than the marker, turning a truncated result into a result
+  //    consisting only of a notice about truncation.
+  //
+  // So: reserve when the budget can hold both, and otherwise spend it all on
+  // content. The `truncated` flag is the contract callers rely on; the marker is
+  // a courtesy for the model, and a courtesy must not displace the payload.
+  const markerBytes = byteLength(TRUNCATION_MARKER);
+  const reserve = maxBytes > markerBytes + MIN_CONTENT_BYTES ? markerBytes : 0;
+  let remaining = Math.max(0, maxBytes - reserve);
   let truncated = false;
   const boundedContent = [];
   for (const block of content) {
@@ -83,9 +110,11 @@ export function boundedToolResult(result, maxBytes) {
     remaining -= byteLength(bounded.text);
     truncated ||= bounded.truncated;
   }
-  const marker = "\n[tool output truncated]";
-  if (truncated && remaining >= byteLength(marker)) {
-    boundedContent.push({ type: "text", text: marker });
+  // `reserve > 0` is the condition, not `remaining >= markerBytes`: the content
+  // was allowed exactly `maxBytes - reserve`, so a truncation consumes all of
+  // `remaining` while the reserved bytes sit untouched beside it.
+  if (truncated && reserve > 0) {
+    boundedContent.push({ type: "text", text: TRUNCATION_MARKER });
   }
 
   const detailsPreview = previewValue(
@@ -116,11 +145,25 @@ export function boundedToolResult(result, maxBytes) {
  * operation data: `session.mjs` persists tool results verbatim, so trusted
  * policy metadata (descriptor, risk, origin, policy) must never reach it.
  */
+/**
+ * Builds a bounded tool result envelope.
+ *
+ * `content` is what Pi serializes into the provider request — it is the only
+ * part of a result the model actually reads. `details` reaches the UI and the
+ * session store, and is deliberately richer.
+ *
+ * `body` exists because that distinction was got wrong. An adapter that placed
+ * a tool's payload only in `details` produced a result the model saw as
+ * "succeeded" with no content: the call worked, and the model had nothing to
+ * work with. Anything the model is meant to use belongs in `body`, and
+ * anything only the UI needs belongs in `details`.
+ */
 export function toolResultEnvelope({
   tool,
   status,
   code,
   message,
+  body,
   details = {},
   maxBytes = MAX_TOOL_RESULT_DETAIL_BYTES,
 } = {}) {
@@ -134,9 +177,13 @@ export function toolResultEnvelope({
       : `${tool} ${normalizedStatus}`,
     MAX_TOOL_RESULT_MESSAGE_BYTES,
   ).text;
+  const header = `${tool} ${normalizedStatus}\n${boundedMessage}`;
+  const contentText = typeof body === "string" && body.length > 0
+    ? `${header}\n\n${body}`
+    : header;
   const bounded = boundedToolResult(
     {
-      content: [{ type: "text", text: `${tool} ${normalizedStatus}\n${boundedMessage}` }],
+      content: [{ type: "text", text: contentText }],
       details: {
         status: normalizedStatus,
         tool,
