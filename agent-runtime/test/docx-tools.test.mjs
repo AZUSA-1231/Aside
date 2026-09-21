@@ -315,3 +315,70 @@ test("transforming a non-Word document is refused", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+// ---------------------------------------------------------------------------
+// A09 — the source must still be the one the user approved
+//
+// Found by the independent audit. The permission card shows the source's
+// fidelity warnings and block count, and the user approves that reading. The
+// commit revalidated the destination but never the source, so a source changed
+// while the card was open produced an output claiming a provenance that no
+// longer held.
+//
+// The identity comparison already existed and the reading already recorded it;
+// nothing consulted it at commit time.
+// ---------------------------------------------------------------------------
+
+test("A09: a source changed while the decision was pending is refused", async () => {
+  const { root, environment } = await fixture();
+  try {
+    const create = await bindDocumentTool(root, environment, "document.create");
+    await create.implementation.execute("create-1", { path: "source.docx", document: SPEC });
+
+    const { implementation } = await bindDocumentTool(root, environment, "document.transform", {
+      // The window: the user is looking at the permission card, and the source
+      // changes underneath them before they answer.
+      //
+      // The write is deliberately not awaited. `onPermission` is called
+      // synchronously from the broker's emit, so an async handler's promise is
+      // never observed and an `await` inside it would simply not have happened
+      // by the time the decision is resolved — the test would pass without ever
+      // changing the source.
+      onPermission: () => {
+        void writeFile(join(root, "source.docx"), Buffer.alloc(4_096, 65));
+      },
+    });
+
+    const result = await implementation.execute("transform-changed", {
+      path: "source.docx",
+      output_path: "out.docx",
+      document: SPEC,
+    });
+
+    assert.equal(result.isError, true, "a changed source must not produce an output");
+    assert.equal(result.details.code, "stale_target");
+    // The point of refusing: no output was written from the unapproved version.
+    await assert.rejects(() => readFile(join(root, "out.docx")), /ENOENT/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("A09: an unchanged source still transforms", async () => {
+  // The check must not refuse every transformation.
+  const { root, environment } = await fixture();
+  try {
+    const create = await bindDocumentTool(root, environment, "document.create");
+    await create.implementation.execute("create-1", { path: "source.docx", document: SPEC });
+    const { implementation } = await bindDocumentTool(root, environment, "document.transform");
+    const result = await implementation.execute("transform-ok", {
+      path: "source.docx",
+      output_path: "out.docx",
+      document: SPEC,
+    });
+    assert.equal(result.isError, false, JSON.stringify(result.details));
+    assert.equal(result.details.operation, "transform");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

@@ -374,14 +374,6 @@ export type RuntimeEvent =
     }
   | { type: "workspace_cleared"; task_id?: string }
   | {
-      /** An explicit selection outranked a capture in the same prompt. */
-      type: "workspace_overridden";
-      request_id: string;
-      task_id: string;
-      replaced_by: string;
-      captured_path: string;
-    }
-  | {
       type: "run_started";
       request_id: string;
       task_id?: string;
@@ -389,6 +381,35 @@ export type RuntimeEvent =
       tools?: RuntimeToolDescriptor[];
       workspace?: RuntimeWorkspaceState;
       active_skill?: RuntimeSkillEvent;
+      /**
+       * An explicit selection outranked a capture for this run.
+       *
+       * Carried on `run_started` rather than as its own preceding event,
+       * because `run_started` is what resets the surface's per-run state —
+       * emitting the notice before it meant the reset cleared it.
+       */
+      workspace_overridden?: {
+        replaced_by: string;
+        captured_path: string;
+      };
+    }
+  | {
+      /**
+       * A pending permission was answered, expired, or cancelled.
+       *
+       * The surface needs this to stop saying it is waiting. Without it the
+       * waiting state persisted until the run ended, so a user who pressed
+       * Allow watched the model resume while the rail still read "Waiting for
+       * you".
+       */
+      type: "permission_resolved";
+      permission_id: string;
+      request_id: string;
+      task_id: string;
+      tool_call_id: string;
+      decision: string;
+      status: string;
+      code?: string;
     }
   | {
       type: "tool_call_started";

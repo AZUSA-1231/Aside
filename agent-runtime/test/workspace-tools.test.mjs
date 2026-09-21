@@ -886,3 +886,265 @@ test("A03: an unrecognized block type is visible, never a silent blank", async (
   assert.match(rendered.text, /unsupported block: future_widget/);
   assert.match(rendered.text, /after/, "rendering continues past an unknown block");
 });
+
+// ---------------------------------------------------------------------------
+// A07 / A08 — a cut must say where to resume, and must not claim completeness
+//
+// Found by the independent audit. The resume point was a *page* number derived
+// from the last rendered block, so a budget cut part-way through a page told
+// the model to continue at the next page — the rest of that page was skipped
+// permanently, with nothing reporting it. And `partial` came from the adapter
+// alone, so a read cut by the output budget reported `partial: false` beside
+// `truncated: true`, which reads as "nothing lost, some just long".
+//
+// Both are the same mistake in different clothes: the renderer knew something
+// was missing and had no way to say it.
+// ---------------------------------------------------------------------------
+
+test("A07: a cut mid-page resumes inside that page, not at the next one", () => {
+  const blocks = [
+    { type: "page_break", locator: { page: 1 } },
+    { type: "paragraph", text: "AUDIT_FIRST_1", locator: { page: 1, block: 1 } },
+    { type: "paragraph", text: "x".repeat(4_000), locator: { page: 1, block: 2 } },
+    { type: "paragraph", text: "AUDIT_AFTER_3", locator: { page: 1, block: 3 } },
+    { type: "page_break", locator: { page: 2 } },
+    { type: "paragraph", text: "AUDIT_PAGE2_5", locator: { page: 2, block: 1 } },
+  ];
+  const rendered = renderDocumentBlocks(blocks, { maxOutputBytes: 700 });
+
+  assert.equal(rendered.truncated, true);
+  // The block that did not fit is where the next read starts.
+  assert.equal(rendered.resume, 2, "the resume point must be the block that was cut");
+  assert.equal(
+    blocks[rendered.resume].locator.block,
+    2,
+    "resuming here is what keeps AUDIT_AFTER_3 from being skipped",
+  );
+  // A page-level pointer would be wrong here, and saying so is the point.
+  assert.equal(
+    rendered.nextPage,
+    undefined,
+    "the cut is not on a page boundary, so no page number may be reported",
+  );
+  assert.equal(rendered.resumePage, 1, "the resume point is still on page 1");
+});
+
+test("A07: a cut on a page boundary may report the next page", () => {
+  const blocks = [
+    { type: "page_break", locator: { page: 1 } },
+    { type: "paragraph", text: "y".repeat(160), locator: { page: 1, block: 1 } },
+    { type: "page_break", locator: { page: 2 } },
+    { type: "paragraph", text: "AUDIT_PAGE2", locator: { page: 2, block: 1 } },
+  ];
+  const rendered = renderDocumentBlocks(blocks, { maxOutputBytes: 700 });
+  assert.equal(rendered.truncated, true);
+  assert.equal(rendered.resume, 2, "the page_break that did not fit is the resume point");
+  // Here the page number is correct, because the next block begins a page.
+  // Taken from that block rather than computed as `lastPage + 1`: a page_break
+  // carries the page it opens, not the one it closes.
+  assert.equal(rendered.nextPage, 2);
+});
+
+test("A07: a single block larger than the budget is still resumable", () => {
+  // The sharpest case, and the one the first version of this test accidentally
+  // reproduced: when the *first* block exceeds the budget, nothing is rendered
+  // and the resume point is that same block. Reporting it is what stops the
+  // reader from concluding there is nothing more to read.
+  const blocks = [
+    { type: "page_break", locator: { page: 1 } },
+    { type: "paragraph", text: "z".repeat(5_000), locator: { page: 1, block: 1 } },
+  ];
+  const rendered = renderDocumentBlocks(blocks, { maxOutputBytes: 700 });
+  assert.equal(rendered.truncated, true);
+  assert.equal(rendered.resume, 1, "the oversized block is where reading resumes");
+  assert.equal(rendered.resumePage, 1);
+});
+
+test("A08: a read cut by the output budget reports itself as partial", async () => {
+  const root = await mkdtemp(join(tmpdir(), "aside-partial-"));
+  try {
+    await writeFile(
+      join(root, "long.docx"),
+      buildDocx([{ type: "paragraph", text: "z".repeat(30_000) }]),
+    );
+    const limits = { ...DEFAULT_WORKSPACE_TOOL_LIMITS, maxOutputBytes: 4_096 };
+    const { implementation } = await bindTool(root, "workspace.read", { limits });
+    const result = await implementation.execute("partial-1", { path: "long.docx" });
+
+    assert.equal(result.details.status, "succeeded");
+    assert.equal(result.details.truncated, true);
+    // The defect: `partial` said false beside `truncated: true`.
+    assert.equal(result.details.partial, true, "a cut read is not a complete one");
+    // And the resume point is present, because there is somewhere to resume.
+    assert.equal(Number.isSafeInteger(result.details.next_block), true);
+    // What was actually delivered, which is less than what the document holds.
+    assert.ok(result.details.blocks_read < result.details.block_count);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("A08: a read that fits reports itself as complete", async () => {
+  const root = await mkdtemp(join(tmpdir(), "aside-complete-"));
+  try {
+    await writeFile(join(root, "short.docx"), buildDocx([{ type: "paragraph", text: "short" }]));
+    const { implementation } = await bindTool(root, "workspace.read");
+    const result = await implementation.execute("complete-1", { path: "short.docx" });
+
+    assert.equal(result.details.truncated, false);
+    assert.equal(result.details.partial, false);
+    assert.equal(result.details.blocks_read, result.details.block_count);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("A07: continuing from the reported point loses nothing", () => {
+  // The assertion the earlier A07 tests were missing. They checked that the
+  // new fields exist and are correct, which passes whether or not the old
+  // behavior was wrong — a test written against the fix rather than against the
+  // defect. This one exercises the property the defect violated: read, resume,
+  // read again, and account for every block exactly once.
+  //
+  // Under the old page-derived resume point the second read started at page 2,
+  // so the remainder of page 1 was never delivered by any read. That is what
+  // this detects.
+  const blocks = [
+    { type: "page_break", locator: { page: 1 } },
+    { type: "paragraph", text: `AUDIT_A_${"a".repeat(160)}`, locator: { page: 1, block: 1 } },
+    { type: "paragraph", text: "AUDIT_B", locator: { page: 1, block: 2 } },
+    { type: "paragraph", text: "AUDIT_C", locator: { page: 1, block: 3 } },
+    { type: "page_break", locator: { page: 2 } },
+    { type: "paragraph", text: "AUDIT_D", locator: { page: 2, block: 1 } },
+  ];
+
+  const first = renderDocumentBlocks(blocks, { maxOutputBytes: 700 });
+  assert.equal(first.truncated, true, "the fixture must actually be cut");
+  assert.ok(Number.isSafeInteger(first.resume), "a cut must report where to resume");
+
+  const second = renderDocumentBlocks(blocks.slice(first.resume), { maxOutputBytes: 4_096 });
+  const delivered = first.text + second.text;
+
+  // Every marker is delivered by one read or the other, and the page-1 markers
+  // are delivered by the first two reads rather than skipped by a jump to page 2.
+  for (const marker of ["AUDIT_A_", "AUDIT_B", "AUDIT_C", "AUDIT_D"]) {
+    assert.ok(delivered.includes(marker), `${marker} was never delivered by any read`);
+  }
+  // Nothing was delivered twice, which is the other way a resume can be wrong.
+  assert.equal(delivered.split("AUDIT_B").length - 1, 1, "AUDIT_B was delivered more than once");
+});
+
+// ---------------------------------------------------------------------------
+// A10 — a cursor must not splice two versions of a file
+//
+// Found by the independent audit. A truncated read returns `next_byte_offset`,
+// and resuming it in a file that has since changed returns "the rest" of a
+// different version. The model asked for the remainder of what it read and got
+// the remainder of something else, with nothing in the result saying so.
+// ---------------------------------------------------------------------------
+
+test("A10: resuming a cursor against a changed file is refused", async () => {
+  const root = await mkdtemp(join(tmpdir(), "aside-version-"));
+  try {
+    await writeFile(join(root, "notes.txt"), "A".repeat(30_000));
+    const limits = { ...DEFAULT_WORKSPACE_TOOL_LIMITS, maxOutputBytes: 4_096 };
+    const { implementation } = await bindTool(root, "workspace.read", { limits });
+
+    const first = await implementation.execute("v1", { path: "notes.txt" });
+    assert.equal(first.details.truncated, true);
+    const cursor = first.details.next_byte_offset;
+    const version = first.details.content_version;
+    assert.equal(Number.isSafeInteger(cursor), true, "a truncated read must offer a cursor");
+    assert.equal(typeof version, "string", "a cursor must name the version it came from");
+
+    // The file changes between the two reads.
+    await writeFile(join(root, "notes.txt"), "B".repeat(31_000));
+
+    // The tool layer converts a thrown error into a bounded failure result
+    // rather than rejecting — errors reaching the model as results is the
+    // design, not an accident. Asserting a rejection here would have tested
+    // the harness rather than the behavior.
+    const second = await implementation.execute("v2", {
+      path: "notes.txt",
+      byte_offset: cursor,
+      content_version: version,
+    });
+    assert.equal(second.isError, true, "a changed file must not continue a cursor");
+    assert.equal(second.details.code, "stale_content");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("A10: resuming an unchanged file still works", async () => {
+  const root = await mkdtemp(join(tmpdir(), "aside-version-ok-"));
+  try {
+    await writeFile(join(root, "notes.txt"), "C".repeat(30_000));
+    const limits = { ...DEFAULT_WORKSPACE_TOOL_LIMITS, maxOutputBytes: 4_096 };
+    const { implementation } = await bindTool(root, "workspace.read", { limits });
+
+    const first = await implementation.execute("ok1", { path: "notes.txt" });
+    const second = await implementation.execute("ok2", {
+      path: "notes.txt",
+      byte_offset: first.details.next_byte_offset,
+      content_version: first.details.content_version,
+    });
+    assert.equal(second.details.status, "succeeded");
+    assert.ok(resultText(second).includes("C"), "the continuation delivered content");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("A10: a truncated search can be continued rather than repeated", async () => {
+  const root = await mkdtemp(join(tmpdir(), "aside-search-cursor-"));
+  try {
+    // More matching files than the result limit, so the search must stop early.
+    for (let index = 0; index < 6; index += 1) {
+      await writeFile(join(root, `match-${index}.txt`), "AUDIT_MATCH");
+    }
+    const limits = { ...DEFAULT_WORKSPACE_TOOL_LIMITS, maxSearchResults: 2 };
+    const { implementation } = await bindTool(root, "workspace.search", { limits });
+
+    const first = await implementation.execute("s1", { query: "match", mode: "name" });
+    assert.equal(first.details.truncated, true);
+    assert.equal(first.details.result_count, 2);
+    assert.equal(
+      Number.isSafeInteger(first.details.next_scanned_offset),
+      true,
+      "a truncated search must say where to continue",
+    );
+
+    const second = await implementation.execute("s2", {
+      query: "match",
+      mode: "name",
+      scanned_offset: first.details.next_scanned_offset,
+    });
+    const firstPaths = new Set(first.details.results.map((entry) => entry.path));
+    const secondPaths = second.details.results.map((entry) => entry.path);
+    assert.ok(secondPaths.length > 0, "the continuation returned something");
+    for (const path of secondPaths) {
+      assert.equal(
+        firstPaths.has(path),
+        false,
+        `${path} was returned by both searches, so the cursor does not advance`,
+      );
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("A10: an exhausted search offers no cursor", async () => {
+  // A cursor on a complete result would invite a pointless continuation.
+  const root = await mkdtemp(join(tmpdir(), "aside-search-done-"));
+  try {
+    await writeFile(join(root, "one.txt"), "AUDIT_ONLY");
+    const { implementation } = await bindTool(root, "workspace.search");
+    const result = await implementation.execute("done", { query: "one", mode: "name" });
+    assert.equal(result.details.truncated, false);
+    assert.equal("next_scanned_offset" in result.details, false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

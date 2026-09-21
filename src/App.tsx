@@ -610,16 +610,30 @@ function App() {
             updatePendingPermission(null);
             setToolActivity(null);
             setVerification(null);
-            setWorkspaceOverride(null);
             setDocumentRead(null);
             setDocumentWrite(null);
+            // Read from the run it belongs to. This replaces a standalone
+            // `workspace_overridden` event that the runtime emitted *before*
+            // `run_started`, which meant this reset cleared the notice before
+            // the user could see it. See A11.
+            setWorkspaceOverride(
+              event.workspace_overridden
+                ? {
+                    replacedBy: event.workspace_overridden.replaced_by,
+                    capturedPath: event.workspace_overridden.captured_path,
+                  }
+                : null,
+            );
             // Built from the run's own descriptors. A tool the runtime did not
             // report as `user_mcp` is built-in, so the surface can only claim
             // external provenance the runtime actually declared.
             setToolProvenance(provenanceFrom(event.tools ?? []));
             break;
-          case "workspace_overridden":
-            setWorkspaceOverride({ replacedBy: event.replaced_by, capturedPath: event.captured_path });
+          case "permission_resolved":
+            // The run is no longer parked. Without this the waiting state
+            // persisted until the run ended, so pressing Allow left the rail
+            // reading "Waiting for you" while the model had already resumed.
+            setRunWaiting(null);
             break;
           case "run_waiting":
             // The run is parked on a decision. The permission card carries the

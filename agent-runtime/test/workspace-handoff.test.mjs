@@ -394,9 +394,23 @@ test("reports when an explicit selection outranks a capture", async () => {
       turnContext([directory(nested), selected(report)]),
     );
 
-    const overridden = events.find((event) => event.type === "workspace_overridden");
-    assert.equal(overridden.replaced_by, "explicit");
-    assert.equal(overridden.captured_path, nested);
+    // Carried on `run_started` rather than as its own preceding event. The
+    // surface resets its per-run state on `run_started`, so a standalone notice
+    // emitted before it was cleared by the very event that began the run it
+    // described — the report existed and was never seen. See A11.
+    //
+    // The assertion is about the notice reaching the surface, not about which
+    // event carries it; the old shape would satisfy a weaker version of this
+    // test while failing the user.
+    const started = events.find((event) => event.type === "run_started");
+    assert.ok(started, "expected a run_started event");
+    assert.equal(started.workspace_overridden?.replaced_by, "explicit");
+    assert.equal(started.workspace_overridden?.captured_path, nested);
+    assert.equal(
+      events.some((event) => event.type === "workspace_overridden"),
+      false,
+      "the notice must not also be emitted separately, where the reset would clear it",
+    );
     const resolved = events.find((event) => event.type === "workspace_resolved");
     assert.equal(resolved.workspace.canonical_path, root);
     assert.equal(resolved.workspace.source, "explicit");

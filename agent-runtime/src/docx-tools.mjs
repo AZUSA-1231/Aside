@@ -201,6 +201,9 @@ async function inspectSource({ workspace, documentRegistry, limits }, path, sign
     );
   }
   return {
+    // The resolved path is kept, not just its name, because the commit has to
+    // revalidate the source against this exact reading. See A09.
+    resolved: loaded.resolved,
     relative_path: loaded.resolved.relative_path,
     bytes: loaded.resolved.bytes.byteLength,
     identity: loaded.resolved.identity,
@@ -414,6 +417,21 @@ async function runDocumentOperation({
           "The output path now exists and must be reviewed again.",
           outputPath,
         );
+      }
+      // The source is revalidated too, against the reading the user approved.
+      //
+      // Without this the permission was granted for one version of the source
+      // and the output was produced from another: the card showed the warnings
+      // and the block count of what was read, and the user approved that. If
+      // the source changed while the card was open, the output claimed a
+      // provenance that no longer held. `revalidate` already compares identity
+      // — size, mtime, device, inode — and the reading already recorded it;
+      // nothing was consulting it. See A09.
+      if (source) {
+        await workspace.revalidate(source.resolved, {
+          expectedKind: "file",
+          allowMissing: false,
+        });
       }
     },
   });

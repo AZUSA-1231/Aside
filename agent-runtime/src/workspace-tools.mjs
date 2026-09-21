@@ -157,6 +157,30 @@ function resultText(value, maxBytes) {
   return { text: bounded.text, truncated: bounded.truncated };
 }
 
+/**
+ * A short token identifying the exact version of a file a cursor was made from.
+ *
+ * Continuation offsets are only meaningful against the content they were
+ * computed from. Resuming a byte offset in a file that has since changed
+ * silently splices two versions together, and the model has no way to notice —
+ * it asked for "the rest" and got the rest of something else. Binding the
+ * cursor to this token makes that detectable instead of silent. See A10.
+ *
+ * Built from the identity the workspace already records (size, mtime, device,
+ * inode), so it costs nothing extra to compute and changes whenever the file
+ * does.
+ */
+function contentVersion(resource) {
+  const identity = resource?.identity;
+  if (!identity) return undefined;
+  return [
+    identity.size,
+    identity.mtime_ms,
+    identity.device ?? "",
+    identity.inode ?? "",
+  ].join("-");
+}
+
 function pathDetails(resource) {
   return {
     addressed_path: resource.addressed_path,
@@ -453,6 +477,12 @@ export const WORKSPACE_READ_TOOL_SCHEMAS = Object.freeze({
       Type.Literal("both"),
     ])),
     max_results: Type.Optional(positiveNumber("Maximum number of search results.")),
+    scanned_offset: Type.Optional(
+      nonNegativeNumber(
+        "Files to skip. Pass back next_scanned_offset from a truncated search to "
+        + "continue where it stopped instead of re-running it.",
+      ),
+    ),
   }),
   stat: Type.Object({ path: pathSchema }),
   read: Type.Object({
@@ -474,6 +504,14 @@ export const WORKSPACE_READ_TOOL_SCHEMAS = Object.freeze({
       nonNegativeNumber(
         "Zero-based byte offset into the decoded text. Use next_byte_offset to continue a truncated read.",
       ),
+    ),
+    content_version: Type.Optional(
+      Type.String({
+        description:
+          "Pass back the content_version from the read you are continuing. "
+          + "The read is refused if the file changed since, rather than "
+          + "returning the rest of a different version.",
+      }),
     ),
     pages: Type.Optional(
       Type.String({
@@ -750,13 +788,28 @@ async function handleStat({ workspace, limits }, params, signal) {
 function structuredReadResult(loaded, limits) {
   const document = loaded.document;
   const blocks = Array.isArray(document.blocks) ? document.blocks : [];
-  const { text, truncated, lastPage } = renderDocumentBlocks(blocks, limits);
+  const {
+    text,
+    truncated,
+    lastPage,
+    resume,
+    nextPage,
+    resumePage,
+  } = renderDocumentBlocks(blocks, { ...limits, pageCount: document.metadata?.pages });
+  // How many blocks the renderer actually emitted, which is not `block_count`:
+  // that reports what the document contains, and conflating the two hides a
+  // budget cut behind a number that looks complete.
+  const blocksRead = resume === undefined ? blocks.length : resume;
   const metadata = document.metadata ?? {};
   const pageCount = metadata.pages;
-  const nextPage = truncated && lastPage !== undefined && lastPage < pageCount
-    ? lastPage + 1
-    : undefined;
   const warnings = Array.isArray(document.warnings) ? document.warnings : [];
+  // `partial` reports that the result is not the whole document, from any
+  // cause: the adapter stopped early, or this renderer ran out of budget. The
+  // second case was missing — the adapter's own flag was passed through
+  // unchanged, so a read cut by the output budget reported `partial: false`
+  // alongside `truncated: true`. Those two together read as "nothing was lost,
+  // some was just long", which is the opposite of what happened. See A08.
+  const partial = document.partial === true || truncated;
   const payload = {
     ...pathDetails(loaded.resolved),
     format: document.format,
@@ -767,16 +820,24 @@ function structuredReadResult(loaded, limits) {
     ...(metadata.title ? { title: metadata.title } : {}),
     ...(metadata.author ? { author: metadata.author } : {}),
     block_count: blocks.length,
-    partial: document.partial === true,
+    blocks_read: blocksRead,
+    partial,
     warnings,
     truncated,
     ...(nextPage === undefined ? {} : { next_page: nextPage }),
+    // The precise resume point, present whenever anything was cut. A page
+    // number cannot express a cut part-way through a page, and reporting one
+    // anyway is how content got skipped. See A07.
+    ...(resume === undefined ? {} : { next_block: resume }),
+    ...(resumePage === undefined ? {} : { resume_page: resumePage }),
   };
   const header = JSON.stringify({
     path: loaded.resolved.relative_path,
     format: document.format,
     ...(pageCount === undefined ? {} : { page_count: pageCount }),
     ...(nextPage === undefined ? {} : { next_page: nextPage }),
+    ...(resume === undefined ? {} : { next_block: resume }),
+    partial,
     truncated,
     ...(warnings.length === 0 ? {} : { warnings }),
   }, null, 2);
@@ -841,24 +902,60 @@ function renderDocumentBlock(block) {
  * blocks the adapter produced, one layer below where the loss happened. A pure
  * function this load-bearing should be reachable without a synthetic adapter.
  */
+/**
+ * Renders structured blocks into bounded text, and reports where to resume.
+ *
+ * The resume point is the fix for A07. This used to return only `lastPage`, and
+ * the caller computed `next_page = lastPage + 1`. That is wrong whenever the
+ * budget cuts a page part-way: the page's remaining blocks were never rendered,
+ * yet the caller told the model to continue at the *next* page, so they were
+ * skipped permanently. A single long paragraph on page 1 lost everything after
+ * it on that page, silently.
+ *
+ * `resume` is therefore an index into the block list, not a page number — the
+ * only locator that can express "part-way through". `nextPage` is kept as a
+ * convenience for callers that only need page granularity, and is only set when
+ * the cut fell exactly on a page boundary, where it is actually correct.
+ */
 export function renderDocumentBlocks(blocks, limits) {
   const budget = Math.max(128, limits.maxOutputBytes - 512);
   const lines = [];
   let bytes = 0;
   let truncated = false;
   let lastPage;
-  for (const block of blocks) {
+  let resume;
+  for (let index = 0; index < blocks.length; index += 1) {
+    const block = blocks[index];
     const line = renderDocumentBlock(block);
     const cost = byteLength(line) + 1;
     if (bytes + cost > budget) {
       truncated = true;
+      // The block that did not fit is where the next read starts. Everything
+      // before it was rendered; nothing after it was.
+      resume = index;
       break;
     }
     bytes += cost;
     lines.push(line);
     if (block.locator?.page !== undefined) lastPage = block.locator.page;
   }
-  return { text: lines.join("\n"), truncated, lastPage };
+  // A cut is on a page boundary when the next block begins a new page, which is
+  // the only case where "continue at page N+1" loses nothing.
+  const nextBlock = resume === undefined ? undefined : blocks[resume];
+  const startsNewPage = nextBlock?.type === "page_break";
+  return {
+    text: lines.join("\n"),
+    truncated,
+    lastPage,
+    resume,
+    // Only meaningful when the resume point is the start of a page, and taken
+    // from that block rather than from `lastPage + 1`. A `page_break` block
+    // carries the page it opens, not the one it closes, so the two are not
+    // always adjacent — deriving it arithmetically was the original mistake in
+    // miniature.
+    nextPage: truncated && startsNewPage ? nextBlock.locator?.page : undefined,
+    resumePage: nextBlock?.locator?.page,
+  };
 }
 
 async function handleRead({ workspace, documentRegistry, limits }, params, signal) {
@@ -878,6 +975,24 @@ async function handleRead({ workspace, documentRegistry, limits }, params, signa
   const totalBytes = byteLength(text);
   const totalLines = lineCountAt(text, text.length);
   const contentBudget = Math.max(128, limits.maxOutputBytes - 512);
+
+  // A cursor from a previous read is only valid against the content it was
+  // computed from. Without this check the caller resumes a byte offset in a
+  // file that has since changed, and the two halves come from different
+  // versions with nothing saying so. See A10.
+  const currentVersion = contentVersion(loaded.resolved);
+  if (
+    typeof params?.content_version === "string"
+    && currentVersion !== undefined
+    && params.content_version !== currentVersion
+  ) {
+    throw new WorkspaceError(
+      "stale_content",
+      "The file changed since this cursor was issued; read it again from the start.",
+      path,
+      { expected: params.content_version, actual: currentVersion },
+    );
+  }
 
   // A byte offset resumes a truncated read; a line offset selects whole lines.
   let remainder;
@@ -905,9 +1020,12 @@ async function handleRead({ workspace, documentRegistry, limits }, params, signa
   // including when the cut falls inside one very long line.
   const nextByteOffset = truncated ? offsetBytes + contentBytes : undefined;
   const returnedLines = countLines(boundedContent.text);
+  const version = contentVersion(loaded.resolved);
   const continuation = {
     ...(nextByteOffset === undefined ? {} : { next_byte_offset: nextByteOffset }),
     ...(hasMoreLines ? { next_offset: startLine + returnedLines } : {}),
+    // Present whenever a cursor is, so the next read can refuse to splice.
+    ...(version === undefined ? {} : { content_version: version }),
   };
   const payload = {
     ...pathDetails(loaded.resolved),
@@ -950,6 +1068,19 @@ async function handleSearch({ workspace, documentRegistry, limits }, params, sig
   );
   const queryLower = query.toLocaleLowerCase();
   const searchPath = boundedPath(params?.path ?? ".", limits);
+  // A search that stops at the result limit is resumable, and the cursor is the
+  // number of files already scanned rather than the number of results already
+  // returned.
+  //
+  // The traversal is deterministic — directories are listed in a stable order —
+  // so "skip the first N files" resumes exactly where the previous search
+  // stopped. A result-count cursor would not: results are a subset of files
+  // (most files do not match), so "start at result N" has no meaning in the
+  // file order, and the previous version offered no cursor at all, leaving the
+  // model to re-run the same search and get the same truncation. See A10.
+  const scannedOffset = params?.scanned_offset === undefined
+    ? 0
+    : positiveInteger(params.scanned_offset, "scanned_offset", Number.MAX_SAFE_INTEGER, 0);
   const results = [];
   const diagnostics = [];
   const visitedDirectories = new Set();
@@ -963,6 +1094,8 @@ async function handleSearch({ workspace, documentRegistry, limits }, params, sig
       return;
     }
     scannedFiles += 1;
+    // Already delivered by an earlier search with this cursor.
+    if (scannedFiles <= scannedOffset) return;
     const displayPath = productPath(path);
     const matches = [];
     if (mode === "name" || mode === "both") {
@@ -1057,6 +1190,9 @@ async function handleSearch({ workspace, documentRegistry, limits }, params, sig
     scanned_files: scannedFiles,
     diagnostics,
     truncated,
+    // Where to resume. Present only when the search stopped early, so an
+    // exhausted search does not invite a pointless continuation.
+    ...(truncated ? { next_scanned_offset: scannedFiles } : {}),
   };
   return successfulResult(
     "workspace.search",

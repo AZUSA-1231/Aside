@@ -11,6 +11,7 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
 import { createAsideToolRegistry } from "../src/capability-contract.mjs";
+import { MCP_CONFIG_LIMITS } from "../src/mcp-config.mjs";
 import { loadMcpServerConfigs } from "../src/mcp-runtime.mjs";
 import { buildCapabilitySummary, createConversationRuntime } from "../src/runtime.mjs";
 
@@ -462,4 +463,106 @@ test("A06: the same run without a Stop still reaches the provider", async () => 
   const { events, callCount } = await runWithSlowDiscovery({ cancelDuringDiscovery: false });
   assert.equal(callCount, 1, "an uncancelled run reaches the provider exactly once");
   assert.ok(events.some((event) => event.type === "run_started"));
+});
+
+// ---------------------------------------------------------------------------
+// A12 — the server cap must apply on the path a user actually takes
+//
+// Found by the independent audit. `validateServerConfigs` enforces
+// `maxServers`, but the file loader called `validateServerConfig` per entry and
+// never the batch validator, so a file with any number of valid definitions
+// loaded all of them. A bounded contract enforced only by an unused function is
+// not enforced.
+// ---------------------------------------------------------------------------
+
+test("A12: a configuration past the server cap loads none of them", async () => {
+  const many = Array.from({ length: MCP_CONFIG_LIMITS.maxServers + 1 }, (_v, index) =>
+    definition({ id: `server-${index}` }));
+  await withConfigDir({ servers: many }, async (dir) => {
+    const loaded = await loadMcpServerConfigs({ configDir: dir });
+    assert.deepEqual(loaded.servers, [], "an over-cap file must not load partially");
+    assert.equal(loaded.diagnostics[0].code, "mcp_config_too_many_servers");
+  });
+});
+
+test("A12: a configuration at the cap still loads", async () => {
+  const atCap = Array.from({ length: MCP_CONFIG_LIMITS.maxServers }, (_v, index) =>
+    definition({ id: `server-${index}` }));
+  await withConfigDir({ servers: atCap }, async (dir) => {
+    const loaded = await loadMcpServerConfigs({ configDir: dir });
+    assert.equal(loaded.servers.length, MCP_CONFIG_LIMITS.maxServers);
+    assert.deepEqual(loaded.diagnostics, []);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A11 — the override notice must survive the run it describes
+//
+// Found by the independent audit. The runtime emitted `workspace_overridden`
+// and then `run_started`, and the surface resets its per-run state on
+// `run_started` — so the notice was cleared by the very event that began the
+// run it was about. The user never saw it.
+//
+// The surface has no test runner (C6-I031), so the ordering is asserted here,
+// where it is decidable: the notice must arrive *with* the run, not before it.
+// ---------------------------------------------------------------------------
+
+test("A11: an overridden capture arrives with the run it belongs to", async () => {
+  const faux = fauxProvider({ tokensPerSecond: 1_000 });
+  const models = createModels();
+  models.setProvider(faux.provider);
+  faux.setResponses([fauxAssistantMessage("done")]);
+
+  const agent = new Agent({
+    initialState: { systemPrompt: "x", model: faux.getModel(), thinkingLevel: "off", tools: [] },
+    streamFn: models.streamSimple.bind(models),
+    convertToLlm: (messages) => messages,
+  });
+
+  const events = [];
+  const runtime = await createConversationRuntime({
+    emit: (event) => events.push(event),
+    agent,
+  });
+  try {
+    // An explicit workspace hint outranks a captured descriptor in the same
+    // prompt, which is the condition that produces the override.
+    const workspace = await mkdtemp(join(tmpdir(), "aside-override-"));
+    await runtime.prompt("a11", "do the thing", {
+      flow: { id: "f1", kind: "conversation" },
+      blocks: [],
+      attachments: [
+        {
+          id: "att-1",
+          host: "explorer",
+          source: "capture",
+          capturedAt: Date.now(),
+          expiresAt: Date.now() + 60_000,
+          sensitivity: "local_metadata",
+          summary: "captured",
+          blocks: [],
+          descriptors: [{ role: "active_file", path: join(workspace, "other.txt"), kind: "file" }],
+        },
+      ],
+    }, workspace);
+    await rm(workspace, { recursive: true, force: true });
+
+    const started = events.findIndex((event) => event.type === "run_started");
+    const standalone = events.findIndex((event) => event.type === "workspace_overridden");
+
+    // Either there is no override (the explicit hint and the capture agreed),
+    // or it travels on the run. What must not happen is a standalone notice
+    // arriving before the run that then clears it.
+    if (standalone >= 0) {
+      assert.fail(
+        "a standalone workspace_overridden event precedes run_started and will be cleared by it",
+      );
+    }
+    if (started >= 0 && events[started].workspace_overridden) {
+      assert.equal(typeof events[started].workspace_overridden.replaced_by, "string");
+      assert.equal(typeof events[started].workspace_overridden.captured_path, "string");
+    }
+  } finally {
+    runtime.dispose();
+  }
 });

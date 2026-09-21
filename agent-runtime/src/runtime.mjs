@@ -995,15 +995,16 @@ export async function createConversationRuntime({
           environment: undefined,
         };
       }
-      if (resolution.overridden) {
-        send({
-          type: "workspace_overridden",
-          request_id: requestId,
-          task_id: run.task_id,
-          replaced_by: resolution.overridden.source,
-          captured_path: resolution.overridden.captured_path,
-        });
-      }
+      // Recorded on the run rather than sent here. `run_started` resets the
+      // surface's per-run state, and emitting the override before it meant the
+      // notice was cleared by the very event that begins the run it describes —
+      // the user never saw it. It now travels with `run_started`. See A11.
+      run.workspace_overridden = resolution.overridden
+        ? {
+            replaced_by: resolution.overridden.source,
+            captured_path: resolution.overridden.captured_path,
+          }
+        : undefined;
       run.workspace = resolution.state.status === "resolved"
         ? workspaceEventState(resolution.state)
         : undefined;
@@ -1053,6 +1054,9 @@ export async function createConversationRuntime({
         tools: activeRegistry.describe(),
         ...(run.workspace ? { workspace: run.workspace } : {}),
         ...(run.active_skill ? { active_skill: run.active_skill } : {}),
+        // Sent with the run it belongs to, after the reset above has happened,
+        // so the notice survives the run's own start. See A11.
+        ...(run.workspace_overridden ? { workspace_overridden: run.workspace_overridden } : {}),
       });
       await conversationAgent.prompt(text);
       if (!run.settled && active === run) {

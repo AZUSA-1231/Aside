@@ -80,6 +80,24 @@ export async function loadMcpServerConfigs({
     return Object.freeze({ servers: Object.freeze([]), diagnostics: Object.freeze(diagnostics), source });
   }
 
+  // The aggregate cap is applied to the file's own length, before any parsing.
+  //
+  // `validateServerConfig` is the per-entry validator and knows nothing about
+  // how many entries there are. Calling it in a loop — which is what this did —
+  // meant `limits.maxServers` was never consulted on the path a user actually
+  // takes, so a file with any number of valid definitions loaded all of them.
+  // A bounded contract that only the unused batch validator enforces is not
+  // enforced. See A12.
+  if (entries.length > limits.maxServers) {
+    diagnostics.push(Object.freeze({
+      code: "mcp_config_too_many_servers",
+      message: boundedMessage(
+        `The MCP configuration defines ${entries.length} servers; at most ${limits.maxServers} are supported.`,
+      ),
+    }));
+    return Object.freeze({ servers: Object.freeze([]), diagnostics: Object.freeze(diagnostics), source });
+  }
+
   const servers = [];
   const seen = new Set();
   for (const entry of entries) {
