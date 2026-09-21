@@ -9,6 +9,16 @@ import { DocumentAdapterError } from "./document-contract.mjs";
  */
 
 export const PDF_ADAPTER_ID = "pdf";
+/**
+ * Pages parsed between event-loop yields.
+ *
+ * A bound rather than a time check, so the responsiveness cost is a fixed
+ * property of the document size rather than something that varies with machine
+ * load. Small enough that a cancellation is noticed promptly, large enough that
+ * the yield itself is not the dominant cost. See C6-I036.
+ */
+export const PDF_PAGES_PER_YIELD = 16;
+
 export const MAX_PDF_PAGES = 2_000;
 export const MAX_PDF_PAGE_RANGE = 50;
 export const MAX_PDF_BLOCKS = 2_000;
@@ -274,9 +284,32 @@ export function createPdfAdapter({ load = defaultLoader, id = PDF_ADAPTER_ID } =
         const warnings = [];
         let pagesWithText = 0;
         let pagesWithoutText = 0;
+        let pagesSinceYield = 0;
         for (const pageNumber of pages) {
           if (signal?.aborted) {
             throw new DocumentAdapterError("aborted", "The PDF read was cancelled.", path);
+          }
+          // Yield to the event loop periodically so a cancellation can actually
+          // arrive. See C6-I036.
+          //
+          // pdfjs parses on this thread, so without yielding the loop is
+          // occupied from the first page to the last: the `signal.aborted`
+          // check above is unreachable, because the abort callback that would
+          // set it is queued behind work that never ends. Measured: a 300-page
+          // read blocked for 256ms with zero event-loop turns, and an abort
+          // issued 1ms in fired 241ms later — after the read had already
+          // succeeded. The user cancelled and got the document.
+          //
+          // `setImmediate` rather than `setTimeout(0)`: it yields without
+          // waiting for a timer phase, and timer granularity on Windows is
+          // coarse enough to make the yielding cost more than the parse.
+          pagesSinceYield += 1;
+          if (pagesSinceYield >= PDF_PAGES_PER_YIELD) {
+            pagesSinceYield = 0;
+            await new Promise((resolve) => setImmediate(resolve));
+            if (signal?.aborted) {
+              throw new DocumentAdapterError("aborted", "The PDF read was cancelled.", path);
+            }
           }
           if (blocks.length >= MAX_PDF_BLOCKS) {
             warnings.push({
