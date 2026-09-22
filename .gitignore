@@ -17,6 +17,11 @@ dist-ssr
 .env
 .env.*
 !.env.example
+
+# Local MCP server definitions. No secrets by design — a server configuration
+# references credentials by name rather than holding them — but it is per-machine
+# setup that names local paths, so it is not repository content.
+mcp.json
 vendor/pi-full/
 
 # Staged by `node scripts/stage-runtime.mjs` before `tauri build`. Build output,
