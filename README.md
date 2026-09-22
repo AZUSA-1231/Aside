@@ -5,13 +5,16 @@
   <img src="static/pinterest.png" alt="Aside demo 2" width="420" />
 </p>
 
-> **Status: work in progress** — a semi-finished MVP. The desktop shell, window
-> behavior, agent runtime, bounded host-context capture, bounded
-> permission-gated workspace tools, PDF and Word handling, and a
-> user-connected MCP tool adapter are implemented. Manual Windows acceptance is
-> open for both Cycle 5 and Cycle 6, and an independent audit of Cycle 6 has
-> open findings; nothing here is released and no installable build is produced
-> yet.
+> **Status: work in progress** — a semi-finished MVP, and a development build.
+> The desktop shell, window behavior, agent runtime, bounded host-context
+> capture, bounded permission-gated workspace tools, PDF and Word handling, and
+> a user-connected MCP tool adapter are implemented.
+>
+> An independent audit of Cycle 6 found twelve defects; all twelve are fixed
+> with regression tests, and Cycle 6's acceptance remains **blocked** pending
+> re-verification and a manual Windows pass. Nothing here is released, and no
+> installable build is produced yet — packaging is Cycle 7 work. Everything
+> below describes what the code does, not what has been signed off.
 
 Aside is a persistent desktop companion for Windows. It's a small frameless
 side panel you can summon from anywhere with `Ctrl + Alt + A` — always within
@@ -79,9 +82,15 @@ local server. `.env.local` is git-ignored; packaged builds also read
 
 The current MVP covers the desktop and window experience, the agent runtime,
 bounded UIA-based host-context capture, and bounded permission-gated workspace
-tools. Cycle 6 adds PDF reading, Word reading and transformation, and a
+tools. Cycle 6 added PDF reading, Word reading and transformation, and a
 user-connected MCP tool adapter, all through one Aside-owned capability
 registry and policy path.
+
+Cycle 7 is planned and not started. It covers the frontend test infrastructure
+Cycle 6 lacked, surface interaction quality, an MCP configuration surface,
+settings reload, conversation management, classification binding, and the
+installable build. Each unit is scoped to one demonstrable result, because
+Cycle 6's layer-by-layer split is what let it grow past one cycle.
 
 Aside bundles no MCP server and ships no default server configuration. You
 connect your own, and the adapter applies Aside's policy, permission, bounds,
@@ -96,6 +105,7 @@ Deferred for now:
   reachable over MCP is a scraper. Not built, and no server is bundled to
   reach it.
 - PDF mutation and OCR, and full Word round-trip fidelity
+- an installable build: packaging and installed-application support are Cycle 7
 - permanent workspace trust, multi-workspace execution, and background agents
 - VSCode bridge and active-editor integration
 - Rich production host extraction
