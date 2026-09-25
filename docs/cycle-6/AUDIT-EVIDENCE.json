@@ -1,0 +1,99 @@
+{
+  "date": "2026-09-19",
+  "revision": "e5e8a09eda581c4d202e843b9ca890c761890c81",
+  "command": "node docs/cycle-6/AUDIT-REPRO.mjs",
+  "interpretation": "Diagnostic observations against the unmodified implementation; exit code 0 means evidence collection finished, not acceptance passed.",
+  "probes": [
+    {
+      "probe": "text_continuation_changed_identity",
+      "firstNextOffset": 24064,
+      "secondStatus": "succeeded",
+      "secondCode": null,
+      "secondContainsNewVersion": true
+    },
+    {
+      "probe": "search_missing_continuation",
+      "status": "succeeded",
+      "truncated": true,
+      "resultCount": 1,
+      "continuationFields": []
+    },
+    {
+      "probe": "docx_table_provider_content",
+      "status": "succeeded",
+      "markerAnywhere": false,
+      "content": "workspace.read succeeded\n{\n  \"path\": \"table.docx\",\n  \"format\": \"docx\",\n  \"truncated\": false\n}\n\n"
+    },
+    {
+      "probe": "docx_long_paragraph",
+      "status": "succeeded",
+      "truncated": true,
+      "nextOffset": null,
+      "sameOnByteOffset": true,
+      "contentBytes": 93
+    },
+    {
+      "probe": "pdf_continuation_skips_current_page",
+      "status": "succeeded",
+      "truncated": true,
+      "nextPage": 2,
+      "content": "workspace.read succeeded\n{\n  \"path\": \"dense.pdf\",\n  \"format\": \"pdf\",\n  \"page_count\": 2,\n  \"next_page\": 2,\n  \"truncated\": true\n}\n\n\n--- page 1 ---"
+    },
+    {
+      "probe": "pdf_block_limit_honesty",
+      "blocks": 2000,
+      "partial": false,
+      "warnings": [],
+      "pagesRead": 1
+    },
+    {
+      "probe": "unsafe_pdf_page_number",
+      "timedOut": true,
+      "exitStatus": null,
+      "signal": "SIGTERM"
+    },
+    {
+      "probe": "mcp_content_vs_details",
+      "status": "succeeded",
+      "markerInContent": false,
+      "markerInDetails": true,
+      "content": "mcp.audit.lookup.43370bfa16 succeeded\nThe server \"Audit server\" completed \"lookup\"."
+    },
+    {
+      "probe": "mcp_registry_isolation_duplicate_names",
+      "adaptedTools": 2,
+      "diagnostics": [],
+      "registryError": "The runtime tool \"mcp.audit.same.dacc5ca55a\" is registered more than once."
+    },
+    {
+      "probe": "mcp_registry_isolation_long_description",
+      "adaptedTools": 1,
+      "diagnostics": [],
+      "registryError": "The runtime field \"tool.description\" must be at most 800 bytes."
+    },
+    {
+      "probe": "mcp_config_server_limit",
+      "configured": 9,
+      "declaredLimit": 8,
+      "diagnostics": []
+    },
+    {
+      "probe": "cancel_during_mcp_discovery",
+      "providerCallsAfterCancel": 1,
+      "terminalEvents": [
+        "cancelled"
+      ]
+    },
+    {
+      "probe": "docx_stale_source",
+      "status": "succeeded",
+      "code": null,
+      "outputCreated": true
+    },
+    {
+      "probe": "no_overwrite_commit_race",
+      "raceHit": true,
+      "finalBytes": "ASIDE_OUTPUT"
+    }
+  ]
+}

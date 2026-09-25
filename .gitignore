@@ -39,8 +39,16 @@ vendor/docx-mcp/
 # a runtime dependency: not bundled, not default-configured, not built.
 vendor/web-search-mcp/
 
-# Internal project documentation (kept local, not published)
-/docs
+# Alternate build output used when `dist/` or the Cargo target directory is
+# locked by another process. Build artifacts, not source.
+.cache/
+.cargo-review/
+.build-review/
+
+# The WinIsland prototype is a separate git repository used as a design and
+# interaction reference. Only the pieces copied into docs/ are tracked here;
+# the tree itself is not part of this product. See docs/design/README.md.
+WinIsland/
 
 # Editor directories and files
 .vscode/*

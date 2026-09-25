@@ -1,0 +1,680 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WinIsland — visual direction</title>
+<style>
+/* ══════════════════════════════════════════════════════════════════════════
+   DESIGN TOKENS
+   The whole language in one block. Read this first — everything below is
+   just these values applied.
+   ══════════════════════════════════════════════════════════════════════════ */
+:root {
+  /* — Glass ───────────────────────────────────────────────────────────────
+     Three strengths. "weak" for large surfaces (they need less white to stay
+     legible over busy wallpaper), "strong" for small floating things that
+     must hold their own against whatever is behind them. */
+  --glass-weak:    rgb(255 255 255 / 0.42);
+  --glass-mid:     rgb(255 255 255 / 0.62);
+  --glass-strong:  rgb(255 255 255 / 0.82);
+
+  /* The blur radius is the single biggest lever on "does this read as glass
+     or as a grey box". Below ~20px it looks like fog; above ~40px it stops
+     mattering and just costs frames. */
+  --blur: 34px;
+  /* Saturating the backdrop is what makes it read as *tinted* glass rather
+     than washed-out glass. Without this, frosted surfaces look milky. */
+  --saturate: 190%;
+
+  /* The 1px inner top highlight. This is the detail that sells the material —
+     it reads as the lit edge of a physical pane. Omitting it is the most
+     common reason glass mockups look flat. */
+  --edge: inset 0 1px 0 rgb(255 255 255 / 0.75);
+  --hairline: 1px solid rgb(255 255 255 / 0.55);
+
+  /* — Elevation ───────────────────────────────────────────────────────────
+     Never a hard shadow. Large blur, low alpha, slightly cool. */
+  --e1: 0 2px 8px  rgb(16 24 40 / 0.06);
+  --e2: 0 8px 28px rgb(16 24 40 / 0.10);
+  --e3: 0 20px 56px rgb(16 24 40 / 0.16);
+
+  /* — Radius ──────────────────────────────────────────────────────────────
+     Large. The references never use a radius under 14px. */
+  --r-pill: 999px;
+  --r-xl: 28px;
+  --r-lg: 20px;
+  --r-md: 14px;
+  --r-sm: 10px;
+
+  /* — Accent & state ──────────────────────────────────────────────────────
+     Colour carries meaning, never decoration: blue = focus/engaged,
+     green = the agent is working, amber = waiting on you. */
+  --accent:      #3b7dff;
+  --accent-soft: rgb(59 125 255 / 0.14);
+  --working:     #14c39a;
+  --waiting:     #f0a020;
+  --danger:      #e5484d;
+
+  /* — Ink ─────────────────────────────────────────────────────────────────*/
+  --ink-1: rgb(12 15 22 / 0.94);
+  --ink-2: rgb(12 15 22 / 0.60);
+  --ink-3: rgb(12 15 22 / 0.36);
+
+  /* — Motion ──────────────────────────────────────────────────────────────
+     Decelerating. Things arrive, they do not bounce. */
+  --dur: 220ms;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+
+  --font: "Segoe UI Variable Display", -apple-system, "SF Pro Display",
+          "Segoe UI", Inter, system-ui, sans-serif;
+}
+
+/* Dark is a separate palette, not a tint. Same material, different light. */
+:root[data-theme="dark"] {
+  --glass-weak:   rgb(28 30 38 / 0.44);
+  --glass-mid:    rgb(28 30 38 / 0.66);
+  --glass-strong: rgb(34 36 45 / 0.86);
+  --edge: inset 0 1px 0 rgb(255 255 255 / 0.14);
+  --hairline: 1px solid rgb(255 255 255 / 0.12);
+  --e1: 0 2px 8px  rgb(0 0 0 / 0.30);
+  --e2: 0 8px 28px rgb(0 0 0 / 0.42);
+  --e3: 0 20px 56px rgb(0 0 0 / 0.55);
+  --accent:      #5c94ff;
+  --accent-soft: rgb(92 148 255 / 0.20);
+  --ink-1: rgb(255 255 255 / 0.95);
+  --ink-2: rgb(255 255 255 / 0.62);
+  --ink-3: rgb(255 255 255 / 0.38);
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: var(--font);
+  color: var(--ink-1);
+  background: #f4f5f8;
+  -webkit-font-smoothing: antialiased;
+}
+:root[data-theme="dark"] body { background: #0d0e12; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PAGE CHROME
+   ══════════════════════════════════════════════════════════════════════════ */
+.page { max-width: 1180px; margin: 0 auto; padding: 56px 32px 120px; }
+
+.eyebrow {
+  font-size: 11px; font-weight: 650; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--ink-3); margin: 0 0 10px;
+}
+h1 { font-size: 40px; font-weight: 680; letter-spacing: -0.03em; margin: 0 0 12px; }
+h2 {
+  font-size: 13px; font-weight: 650; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--ink-3); margin: 64px 0 20px; padding-bottom: 12px;
+  border-bottom: 1px solid var(--ink-3);
+}
+.lede { font-size: 17px; line-height: 1.6; color: var(--ink-2); max-width: 62ch; margin: 0 0 8px; }
+.note { font-size: 13px; line-height: 1.65; color: var(--ink-2); max-width: 68ch; }
+.note code {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 12px; background: rgb(12 15 22 / 0.06);
+  padding: 2px 6px; border-radius: 5px;
+}
+:root[data-theme="dark"] .note code { background: rgb(255 255 255 / 0.09); }
+
+.theme-toggle {
+  position: fixed; top: 20px; right: 20px; z-index: 99;
+  font: inherit; font-size: 13px; font-weight: 550;
+  padding: 9px 16px; border: var(--hairline); border-radius: var(--r-pill);
+  background: var(--glass-strong); color: var(--ink-1);
+  -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+  box-shadow: var(--e2), var(--edge); cursor: pointer;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   THE WALLPAPER
+   Frosted glass is meaningless without something behind it to blur. Every
+   demo below sits on this. Blurred blobs give the blur something to bite on
+   — a flat gradient would look identical blurred or not.
+   ══════════════════════════════════════════════════════════════════════════ */
+.wallpaper {
+  position: absolute; inset: 0; overflow: hidden;
+  background: linear-gradient(150deg, #cfe0f5 0%, #e6dcf2 42%, #d3e8ee 100%);
+}
+:root[data-theme="dark"] .wallpaper {
+  background: linear-gradient(150deg, #0f1a33 0%, #241a3d 45%, #0b2430 100%);
+}
+.wallpaper::before, .wallpaper::after {
+  content: ""; position: absolute; border-radius: 50%; filter: blur(60px);
+}
+.wallpaper::before {
+  width: 62%; height: 78%; left: -12%; top: -22%;
+  background: radial-gradient(circle, rgb(88 140 255 / 0.75), transparent 68%);
+}
+.wallpaper::after {
+  width: 58%; height: 72%; right: -10%; bottom: -26%;
+  background: radial-gradient(circle, rgb(52 200 190 / 0.62), transparent 68%);
+}
+:root[data-theme="dark"] .wallpaper::before {
+  background: radial-gradient(circle, rgb(64 96 220 / 0.80), transparent 68%);
+}
+:root[data-theme="dark"] .wallpaper::after {
+  background: radial-gradient(circle, rgb(24 150 170 / 0.62), transparent 68%);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   DEMO FRAMES
+   ══════════════════════════════════════════════════════════════════════════ */
+.frames { display: grid; grid-template-columns: repeat(2, 1fr); gap: 22px; }
+@media (max-width: 900px) { .frames { grid-template-columns: 1fr; } }
+
+.frame {
+  position: relative; aspect-ratio: 16 / 10; border-radius: var(--r-xl);
+  overflow: hidden; box-shadow: var(--e2); isolation: isolate;
+}
+.frame__tag {
+  position: absolute; top: 14px; left: 16px; z-index: 8;
+  font-size: 11px; font-weight: 650; letter-spacing: 0.1em; text-transform: uppercase;
+  color: rgb(255 255 255 / 0.95);
+  background: rgb(12 15 22 / 0.42);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  padding: 5px 11px; border-radius: var(--r-pill);
+}
+.frame__cap {
+  position: absolute; bottom: 14px; left: 16px; right: 16px; z-index: 8;
+  font-size: 12.5px; line-height: 1.5; color: rgb(255 255 255 / 0.92);
+  text-shadow: 0 1px 4px rgb(0 0 0 / 0.35);
+}
+
+/* A stand-in for "whatever the user is actually working in". */
+.appwin {
+  position: absolute; border-radius: var(--r-lg); overflow: hidden;
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+  box-shadow: var(--e2), var(--edge);
+  transition: all var(--dur) var(--ease);
+}
+.appwin__bar {
+  height: 26px; display: flex; align-items: center; gap: 5px; padding: 0 11px;
+  border-bottom: 1px solid rgb(12 15 22 / 0.07);
+}
+.appwin__dot { width: 8px; height: 8px; border-radius: 50%; background: rgb(12 15 22 / 0.14); }
+.appwin__lines { padding: 12px; display: grid; gap: 7px; }
+.appwin__line { height: 6px; border-radius: 3px; background: rgb(12 15 22 / 0.09); }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   THE ISLAND — the surface itself
+   ══════════════════════════════════════════════════════════════════════════ */
+/* The expanded panel floats too — it does not fuse to the screen edge.
+   This keeps the shape continuous with the capsule: the same object, larger,
+   rather than a lozenge that turns into a sidebar on the way open. It also
+   means all four corners stay rounded, so there is no edge-adjacent variant. */
+.island {
+  position: absolute; top: 14px; right: 14px; bottom: 14px;
+  display: flex; flex-direction: column; overflow: hidden;
+  width: 34%;                       /* ~20% of a real desktop, scaled up here */
+  border-radius: var(--r-xl);
+  background: var(--glass-mid);
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(var(--saturate));
+  backdrop-filter: blur(var(--blur)) saturate(var(--saturate));
+  border: var(--hairline);
+  box-shadow: var(--e3), var(--edge);
+  z-index: 5;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   THE CAPSULE
+   A free-floating island, not a notch. A VERTICAL lozenge: narrow, tall, one
+   icon wide. The reference is the tall icon rail on the right of the earlier
+   screenshot — not a horizontal camera housing, and not a circle.
+
+   Three details make it read as floating rather than attached:
+   the gap from the screen edge, the full pill radius, and the fact that it is
+   tall and thin — a circle would read as a button, a wide bar as a toolbar.
+   ══════════════════════════════════════════════════════════════════════════ */
+.capsule {
+  position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+  width: 46px; height: 132px;                /* narrow and tall */
+  border-radius: var(--r-pill);              /* fully rounded on all four */
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: blur(24px) saturate(var(--saturate));
+  backdrop-filter: blur(24px) saturate(var(--saturate));
+  box-shadow: var(--e2), var(--edge);
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 8px;
+  overflow: hidden; z-index: 6;
+}
+
+/* The logo mark. An "a" for aside — set in the same accent gradient as the
+   panel header so the two read as the same object at different sizes.
+
+   `position: relative; z-index: 1` lifts it above the state overlays. The
+   light belongs to the glass, not to the mark: it should pass *behind* the
+   logo, so the logo stays crisp while the material around it moves. */
+.capsule__logo {
+  position: relative; z-index: 1;
+  width: 26px; height: 26px; border-radius: 9px; flex: 0 0 auto;
+  background: linear-gradient(140deg, var(--accent), #7c5cff);
+  box-shadow: 0 2px 8px rgb(59 125 255 / 0.34);
+  display: grid; place-items: center;
+  color: #fff; font-size: 15px; font-weight: 700; line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+/* IDLE — no animation, by decision. The capsule simply rests. Anything that
+   moves in the resting state competes with the user's actual work, so the
+   idle capsule has no overlay element at all. */
+
+/* WORKING — the agent is running. Light travels top-to-bottom through the
+   vertical lozenge, clipped by the pill radius so it reads as light moving
+   through the glass rather than a bar sliding past it.
+
+   `z-index: 0` keeps it below the logo (see .capsule__logo). Without it the
+   overlay washes over the mark and the mark looks like it is being tinted
+   rather than sitting on lit glass. */
+.capsule__pulse {
+  position: absolute; inset: 0; border-radius: inherit; z-index: 0;
+  background: linear-gradient(180deg,
+    transparent 0%, var(--working) 50%, transparent 100%);
+  background-size: 100% 40%; background-repeat: no-repeat;
+  animation: shimmer 1.5s linear infinite;
+  mix-blend-mode: multiply;
+}
+@keyframes shimmer {
+  0%   { background-position: 0 -40%; opacity: 0; }
+  15%  { opacity: 1; }
+  85%  { opacity: 1; }
+  100% { background-position: 0 140%; opacity: 0; }
+}
+
+/* WAITING — needs the user. Amber, slow breathing. Below the logo, same as
+   the working pulse. */
+.capsule__breath {
+  position: absolute; inset: 0; border-radius: inherit; z-index: 0;
+  background: var(--waiting);
+  animation: breath 2.2s ease-in-out infinite;
+  mix-blend-mode: multiply;
+}
+@keyframes breath { 0%, 100% { opacity: 0.22; } 50% { opacity: 0.70; } }
+
+/* Expanded forms show a header strip instead. */
+.island__head {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 9px;
+  padding: 15px 16px 12px; border-bottom: 1px solid rgb(12 15 22 / 0.07);
+}
+:root[data-theme="dark"] .island__head { border-bottom-color: rgb(255 255 255 / 0.09); }
+.island__mark {
+  width: 22px; height: 22px; border-radius: 7px; flex: 0 0 auto;
+  background: linear-gradient(140deg, var(--accent), #7c5cff);
+  box-shadow: var(--e1);
+}
+.island__name { font-size: 13.5px; font-weight: 650; letter-spacing: -0.01em; }
+.island__sub { font-size: 11px; color: var(--ink-3); margin-left: auto; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   CHATBOX CONTENT
+   ══════════════════════════════════════════════════════════════════════════ */
+.island__body { flex: 1 1 auto; min-height: 0; padding: 14px; display: grid; gap: 10px; align-content: start; overflow: hidden; }
+
+.bubble {
+  padding: 10px 13px; border-radius: var(--r-lg);
+  font-size: 12.5px; line-height: 1.5; max-width: 92%;
+}
+.bubble--agent {
+  background: var(--glass-strong); box-shadow: var(--e1), var(--edge);
+  border-bottom-left-radius: var(--r-sm); color: var(--ink-1);
+}
+.bubble--user {
+  background: var(--accent); color: #fff; margin-left: auto;
+  border-bottom-right-radius: var(--r-sm);
+  box-shadow: 0 4px 14px rgb(59 125 255 / 0.30);
+}
+
+/* A tool call in flight — the thing that makes this feel like an agent
+   rather than a chat window. */
+.tool {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border-radius: var(--r-pill);
+  background: var(--glass-strong); box-shadow: var(--e1), var(--edge);
+  font-size: 11.5px; color: var(--ink-2); width: fit-content;
+}
+.tool__dot {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--working);
+  box-shadow: 0 0 0 3px rgb(20 195 154 / 0.18);
+  animation: breath 1.4s ease-in-out infinite;
+}
+
+/* The composer. Note it is a pill, like every primary control in the
+   references. It is also the control that ENGAGES the panel. */
+.composer {
+  margin: 0 14px 14px; flex: 0 0 auto;
+  display: flex; align-items: center; gap: 9px;
+  padding: 10px 10px 10px 16px; border-radius: var(--r-pill);
+  background: var(--glass-strong); box-shadow: var(--e2), var(--edge);
+  font-size: 12.5px; color: var(--ink-3);
+  transition: box-shadow var(--dur) var(--ease);
+}
+/* Focus state — the blue ring. From the button-state reference. */
+.composer--focused {
+  box-shadow: var(--e2), var(--edge), 0 0 0 3px var(--accent-soft);
+  color: var(--ink-2);
+}
+.composer__send {
+  margin-left: auto; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--accent); flex: 0 0 auto;
+  box-shadow: 0 2px 8px rgb(59 125 255 / 0.40);
+}
+
+/* The preview hint — preview must tell the user how to cross into engaged. */
+.hint {
+  position: absolute; right: calc(34% + 14px); top: 50%; transform: translateY(-50%);
+  padding: 8px 14px; border-radius: var(--r-pill);
+  background: rgb(12 15 22 / 0.55); color: #fff; font-size: 11.5px; font-weight: 550;
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  white-space: nowrap; z-index: 7;
+}
+
+/* Pinned indicator */
+.pin {
+  position: absolute; top: 15px; right: 16px; z-index: 7;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 2px 8px rgb(59 125 255 / 0.45);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   TOKEN STRIPS
+   ══════════════════════════════════════════════════════════════════════════ */
+.swatches { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; }
+.swatch {
+  padding: 16px; border-radius: var(--r-lg); background: var(--glass-strong);
+  box-shadow: var(--e1), var(--edge); border: var(--hairline);
+}
+.swatch__chip { height: 44px; border-radius: var(--r-md); margin-bottom: 11px; }
+.swatch__name { font-size: 12px; font-weight: 620; }
+.swatch__use { font-size: 11px; color: var(--ink-3); margin-top: 3px; }
+
+.radii { display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap; }
+.radii__item { text-align: center; }
+.radii__box {
+  background: var(--glass-strong); box-shadow: var(--e1), var(--edge);
+  border: var(--hairline); width: 84px; height: 56px;
+}
+.radii__label { font-size: 11px; color: var(--ink-3); margin-top: 8px; }
+
+/* Capsule gallery — shown large so the motion is legible. */
+.capsules { display: flex; gap: 34px; flex-wrap: wrap; }
+.cap-demo { text-align: center; }
+.cap-demo__well {
+  position: relative; width: 74px; height: 250px; border-radius: var(--r-lg);
+  overflow: hidden; box-shadow: var(--e2); margin-bottom: 12px;
+}
+.cap-demo__label { font-size: 12px; font-weight: 600; }
+.cap-demo__desc { font-size: 11px; color: var(--ink-3); margin-top: 3px; max-width: 20ch; }
+</style>
+</head>
+<body>
+
+<button class="theme-toggle" onclick="
+  const r = document.documentElement;
+  r.dataset.theme = r.dataset.theme === 'dark' ? 'light' : 'dark';
+  this.textContent = r.dataset.theme === 'dark' ? 'Light' : 'Dark';
+">Dark</button>
+
+<div class="page">
+
+  <p class="eyebrow">WinIsland — visual direction</p>
+  <h1>Frosted, tinted, and quiet.</h1>
+  <p class="lede">
+    A single material used at three strengths. The surface should read as a pane
+    of glass resting on the desktop — tinted by whatever is behind it, lit along
+    its top edge, and never casting a hard shadow.
+  </p>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <h2>The four states</h2>
+  <p class="note" style="margin-bottom:20px">
+    Hover only lets you <em>look</em>. Operating it takes a click or the hotkey —
+    so the preview state is deliberately non-committal, and only the engaged
+    state reflows the desktop around it.
+  </p>
+
+  <div class="frames">
+
+    <!-- COLLAPSED -->
+    <div class="frame">
+      <div class="wallpaper"></div>
+      <div class="appwin" style="left:5%; top:11%; width:78%; height:78%">
+        <div class="appwin__bar"><i class="appwin__dot"></i><i class="appwin__dot"></i><i class="appwin__dot"></i></div>
+        <div class="appwin__lines">
+          <div class="appwin__line" style="width:52%"></div>
+          <div class="appwin__line" style="width:88%"></div>
+          <div class="appwin__line" style="width:74%"></div>
+        </div>
+      </div>
+      <div class="capsule">
+        <div class="capsule__logo">a</div>
+      </div>
+      <span class="frame__tag">1 · Collapsed</span>
+      <span class="frame__cap">A floating lozenge. No agent process running. Costs nothing.</span>
+    </div>
+
+    <!-- PREVIEW -->
+    <div class="frame">
+      <div class="wallpaper"></div>
+      <div class="appwin" style="left:5%; top:11%; width:78%; height:78%">
+        <div class="appwin__bar"><i class="appwin__dot"></i><i class="appwin__dot"></i><i class="appwin__dot"></i></div>
+        <div class="appwin__lines">
+          <div class="appwin__line" style="width:52%"></div>
+          <div class="appwin__line" style="width:88%"></div>
+          <div class="appwin__line" style="width:74%"></div>
+        </div>
+      </div>
+      <div class="island island--preview">
+        <div class="island__head">
+          <div class="island__mark"></div>
+          <span class="island__name">aside</span>
+          <span class="island__sub">preview</span>
+        </div>
+        <div class="island__body">
+          <div class="bubble bubble--agent">I can see you're in the Q3 report. Want me to summarise it?</div>
+        </div>
+      </div>
+      <span class="hint">Click to engage</span>
+      <span class="frame__tag">2 · Preview</span>
+      <span class="frame__cap">Hover. Overlays — the window behind does <strong>not</strong> move. Not focusable.</span>
+    </div>
+
+    <!-- ENGAGED -->
+    <div class="frame">
+      <div class="wallpaper"></div>
+      <!-- Pushed left to make room. Same window, narrower. -->
+      <div class="appwin" style="left:3%; top:11%; width:58%; height:78%">
+        <div class="appwin__bar"><i class="appwin__dot"></i><i class="appwin__dot"></i><i class="appwin__dot"></i></div>
+        <div class="appwin__lines">
+          <div class="appwin__line" style="width:62%"></div>
+          <div class="appwin__line" style="width:92%"></div>
+          <div class="appwin__line" style="width:80%"></div>
+          <div class="appwin__line" style="width:70%"></div>
+        </div>
+      </div>
+      <div class="island island--engaged">
+        <div class="island__head">
+          <div class="island__mark"></div>
+          <span class="island__name">aside</span>
+          <span class="island__sub">working</span>
+        </div>
+        <div class="island__body">
+          <div class="bubble bubble--user">Summarise this report.</div>
+          <div class="tool"><i class="tool__dot"></i> reading Q3-report.docx</div>
+          <div class="bubble bubble--agent">Three findings: revenue up 12%, churn flat, and the EMEA forecast is stale.</div>
+        </div>
+        <div class="composer composer--focused">
+          <span>Ask anything…</span>
+          <i class="composer__send"></i>
+        </div>
+      </div>
+      <span class="frame__tag">3 · Engaged</span>
+      <span class="frame__cap">Clicked or hotkey. Now focusable. The window behind is pushed.</span>
+    </div>
+
+    <!-- PINNED -->
+    <div class="frame">
+      <div class="wallpaper"></div>
+      <div class="appwin" style="left:3%; top:11%; width:58%; height:78%">
+        <div class="appwin__bar"><i class="appwin__dot"></i><i class="appwin__dot"></i><i class="appwin__dot"></i></div>
+        <div class="appwin__lines">
+          <div class="appwin__line" style="width:62%"></div>
+          <div class="appwin__line" style="width:92%"></div>
+          <div class="appwin__line" style="width:80%"></div>
+        </div>
+      </div>
+      <div class="island island--pinned">
+        <div class="island__head">
+          <div class="island__mark"></div>
+          <span class="island__name">aside</span>
+          <span class="island__sub">pinned</span>
+        </div>
+        <div class="island__body">
+          <div class="bubble bubble--agent">Waiting on you — the file is read-only. Overwrite it?</div>
+        </div>
+        <div class="composer">
+          <span>Ask anything…</span>
+          <i class="composer__send"></i>
+        </div>
+      </div>
+      <span class="pin"></span>
+      <span class="frame__tag">4 · Pinned</span>
+      <span class="frame__cap">Cursor has left. Stays open until dismissed — the escape hatch for anyone who can't hover.</span>
+    </div>
+
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <h2>The capsule — a floating island</h2>
+  <p class="note" style="margin-bottom:24px">
+    Modelled on the iPhone camera housing: a self-contained lozenge that floats
+    <em>clear of</em> the edge, wide enough to hold content. The gap on the right
+    is what makes it read as floating — without it the capsule becomes a tab
+    fused to the screen border, which is a different object entirely.
+    Idle has <strong>no motion at all</strong>, by decision.
+  </p>
+
+  <div class="capsules">
+
+    <div class="cap-demo">
+      <div class="cap-demo__well">
+        <div class="wallpaper"></div>
+        <div class="capsule">
+          <div class="capsule__logo">a</div>
+        </div>
+      </div>
+      <div class="cap-demo__label">Idle</div>
+      <div class="cap-demo__desc">Completely still. The logo is the only content.</div>
+    </div>
+
+    <div class="cap-demo">
+      <div class="cap-demo__well">
+        <div class="wallpaper"></div>
+        <div class="capsule capsule--working">
+          <div class="capsule__pulse"></div>
+          <div class="capsule__logo">a</div>
+        </div>
+      </div>
+      <div class="cap-demo__label">Working</div>
+      <div class="cap-demo__desc">Light travels down through the glass. The only state allowed to ask for attention.</div>
+    </div>
+
+    <div class="cap-demo">
+      <div class="cap-demo__well">
+        <div class="wallpaper"></div>
+        <div class="capsule capsule--waiting">
+          <div class="capsule__breath"></div>
+          <div class="capsule__logo">a</div>
+        </div>
+      </div>
+      <div class="cap-demo__label">Waiting on you</div>
+      <div class="cap-demo__desc">Amber, slow breath. Something needs a decision.</div>
+    </div>
+
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <h2>Colour carries meaning</h2>
+  <p class="note" style="margin-bottom:20px">
+    Never decorative. Every colour below is a <em>state</em>, so the user can
+    read the panel's condition without reading any text.
+  </p>
+
+  <div class="swatches">
+    <div class="swatch">
+      <div class="swatch__chip" style="background:linear-gradient(140deg,#3b7dff,#7c5cff)"></div>
+      <div class="swatch__name">Accent</div>
+      <div class="swatch__use">Focused · engaged · primary action</div>
+    </div>
+    <div class="swatch">
+      <div class="swatch__chip" style="background:#14c39a"></div>
+      <div class="swatch__name">Working</div>
+      <div class="swatch__use">The agent is running</div>
+    </div>
+    <div class="swatch">
+      <div class="swatch__chip" style="background:#f0a020"></div>
+      <div class="swatch__name">Waiting</div>
+      <div class="swatch__use">Needs a decision from you</div>
+    </div>
+    <div class="swatch">
+      <div class="swatch__chip" style="background:#e5484d"></div>
+      <div class="swatch__name">Failed</div>
+      <div class="swatch__use">Something broke</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <h2>Radius</h2>
+  <p class="note" style="margin-bottom:20px">
+    Large, and never smaller than 10px. The collapsed capsule is a full pill;
+    the expanded panel squares off only its screen-edge corners so it reads as
+    <em>growing out of</em> the edge rather than as a window parked beside it.
+  </p>
+
+  <div class="radii">
+    <div class="radii__item"><div class="radii__box" style="border-radius:28px"></div><div class="radii__label">28 · panel</div></div>
+    <div class="radii__item"><div class="radii__box" style="border-radius:20px"></div><div class="radii__label">20 · card</div></div>
+    <div class="radii__item"><div class="radii__box" style="border-radius:14px"></div><div class="radii__label">14 · nested</div></div>
+    <div class="radii__item"><div class="radii__box" style="border-radius:999px"></div><div class="radii__label">pill · capsule</div></div>
+  </div>
+  <p class="note" style="margin-top:18px">
+    There is no edge-adjacent variant. Both the capsule and the panel float
+    clear of the screen border, so every corner is rounded.
+  </p>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <h2>The recipe</h2>
+  <p class="note">
+    Three properties do almost all the work. If a surface looks wrong, it is
+    nearly always one of these:
+  </p>
+  <p class="note" style="margin-top:14px">
+    <code>backdrop-filter: blur(34px) saturate(190%)</code> — the saturate is what
+    makes it read as <em>tinted</em> glass rather than milky grey.<br>
+    <code>inset 0 1px 0 rgb(255 255 255 / 0.75)</code> — the lit top edge. Its
+    absence is the single most common reason glass mockups look flat.<br>
+    <code>rgb(255 255 255 / 0.42 – 0.82)</code> — three strengths, never one.
+    Large surfaces need less white than small floating ones.
+  </p>
+
+  <p class="note" style="margin-top:22px">
+    <strong>One thing to confirm:</strong> I have preview <em>overlaying</em>
+    without reflowing the desktop, and only engaged pushing the window aside —
+    the idea being that a glance shouldn't cost the user a layout change.
+    This is a refinement of the tiling table in
+    <code>docs/MERGE-DECISION.md</code> §5, which was written per-foreground-app
+    and did not distinguish preview from engaged.
+  </p>
+
+</div>
+
+<script>
+  // Default to light; the toggle flips to dark.
+  document.documentElement.dataset.theme = "light";
+</script>
+</body>
+</html>
