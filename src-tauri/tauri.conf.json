@@ -13,20 +13,22 @@
     "windows": [
       {
         "title": "aside",
-        "width": 420,
-        "height": 680,
-        "minWidth": 340,
-        "minHeight": 460,
-        "maxWidth": 520,
-        "maxHeight": 900,
+        "width": 48,
+        "height": 144,
+        "minWidth": 1,
+        "minHeight": 1,
         "visible": false,
         "decorations": false,
         "transparent": true,
-        "resizable": true,
+        "resizable": false,
         "shadow": true,
         "windowEffects": {
           "effects": ["acrylic"]
-        }
+        },
+        "focus": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "backgroundColor": "#00000000"
       }
     ],
     "security": {

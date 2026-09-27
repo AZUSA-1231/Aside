@@ -268,6 +268,10 @@ export interface RuntimeToolProvenance {
 }
 
 export interface RuntimePermissionRequest {
+  explanation?: string;
+  workspace?: unknown;
+  targets?: unknown;
+  preview?: unknown;
   permission_id: string;
   request_id: string;
   task_id: string;

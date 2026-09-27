@@ -11,7 +11,7 @@ import type {
 } from "./contracts";
 
 const initialPreviewState: AgentState = {
-  visibility: "visible",
+  visibility: "hidden",
   surface: "side",
   pinned: false,
 };
@@ -116,7 +116,7 @@ export const nativeClient = {
     if (!isDesktopRuntime()) {
       return previewCommand((state) => ({ ...state, surface: "side" }));
     }
-    return command<AgentState>("exit_workspace");
+    return command<AgentState>("exit_workspace_mode");
   },
 
   moveAgent: async (x: number, y: number): Promise<AgentState> => {

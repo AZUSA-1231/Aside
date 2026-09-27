@@ -42,9 +42,37 @@ pub fn side_layout(work_area: Rect) -> Layout {
     }
 }
 
+pub fn capsule_layout(area: Rect, scale: f64) -> Rect {
+    let width = ((48.0 * scale).round() as i32).clamp(1, area.width.max(1));
+    let height = ((144.0 * scale).round() as i32).clamp(1, area.height.max(1));
+    let gap = ((8.0 * scale).round() as i32).min((area.width - width).max(0));
+    Rect::new(
+        area.right() - width - gap,
+        area.y + (area.height - height) / 2,
+        width,
+        height,
+    )
+}
+
 #[cfg(test)]
 mod tests {
-    use super::side_layout;
+    use super::{capsule_layout, side_layout};
+
+    #[test]
+    fn capsule_stays_on_negative_origin_scaled_monitor() {
+        let area = Rect::new(-2560, -120, 2560, 1440);
+        let capsule = capsule_layout(area, 1.5);
+        assert_eq!(capsule.width, 72);
+        assert_eq!(capsule.height, 216);
+        assert_eq!(capsule.right(), area.right() - 12);
+        assert_eq!(capsule.y + capsule.height / 2, area.y + area.height / 2);
+    }
+
+    #[test]
+    fn capsule_fits_tiny_work_area() {
+        let area = Rect::new(10, 20, 30, 60);
+        assert_eq!(capsule_layout(area, 2.0), area);
+    }
     use crate::platform::Rect;
 
     #[test]

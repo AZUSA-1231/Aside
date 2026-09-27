@@ -6,11 +6,8 @@ import {
   useState,
 } from "react";
 import {
-  Bot,
-  Check,
   CheckCheck,
   CircleAlert,
-  Command,
   FileJson,
   FolderOpen,
   LoaderCircle,
@@ -21,7 +18,6 @@ import {
   ScanSearch,
   Send,
   Shield,
-  ShieldCheck,
   Sparkles,
   Square,
   Wrench,
@@ -56,7 +52,7 @@ import {
   readDocumentStatus,
   writeDocumentStatus,
 } from "./lib/document-status";
-import { isDesktopRuntime, nativeClient, toNativeError } from "./lib/ipc";
+import { nativeClient, toNativeError } from "./lib/ipc";
 import "./App.css";
 
 type ChatMessageStatus = "complete" | "streaming" | "cancelled" | "error";
@@ -87,17 +83,10 @@ interface ToolActivity {
   truncated: boolean;
 }
 
-const initialMessages: ChatMessage[] = [
-  {
-    id: "welcome",
-    role: "assistant",
-    text: "I am ready when you are. Ask a short question or drop in a thought.",
-    status: "complete",
-  },
-];
+const initialMessages: ChatMessage[] = [];
 
 const initialAgentState: AgentState = {
-  visibility: isDesktopRuntime() ? "hidden" : "visible",
+  visibility: "hidden",
   surface: "side",
   pinned: false,
 };
@@ -292,6 +281,9 @@ function App() {
   const captureDiscardBeforeRef = useRef(-1);
   const attachmentsRef = useRef<AsideHostAttachment[]>([]);
   const historyHydratedRef = useRef(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const permissionRef = useRef<HTMLElement>(null);
+  const followOutput = useRef(true);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const setCurrentRun = useCallback((run: ActiveRun | null) => {
@@ -634,6 +626,7 @@ function App() {
             // persisted until the run ended, so pressing Allow left the rail
             // reading "Waiting for you" while the model had already resumed.
             setRunWaiting(null);
+            if (pendingPermissionRef.current?.permission_id === event.permission_id) updatePendingPermission(null);
             break;
           case "run_waiting":
             // The run is parked on a decision. The permission card carries the
@@ -758,6 +751,16 @@ function App() {
     }
   }, [agentState.visibility]);
 
+  useEffect(() => {
+    if (followOutput.current && scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [messages, agentState.visibility]);
+
+  useEffect(() => {
+    if (pendingPermission && agentState.visibility === "visible") {
+      permissionRef.current?.scrollIntoView?.({ block: "nearest" });
+    }
+  }, [pendingPermission, agentState.visibility]);
+
   const execute = useCallback(
     async (operation: string, action: () => Promise<AgentState>): Promise<void> => {
       try {
@@ -791,7 +794,7 @@ function App() {
 
   const handleInputKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (event.key === "Enter" && !event.shiftKey) {
+      if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
         event.preventDefault();
         handleSubmit();
       }
@@ -892,9 +895,6 @@ function App() {
     }
   }, []);
 
-  const modeLabel = agentState.surface === "workspace" ? "Workspace" : "Side";
-  const shortcutLabel = isDesktopRuntime() ? "Ctrl + Alt + A" : "Desktop app shortcut";
-  const captureStrategy = captureHost?.strategy;
   // Provenance of whatever is currently running, resolved from the run's own
   // descriptors. Undefined means the tool was not in the run's tool list, which
   // the surface renders as unknown rather than as built-in.
@@ -914,64 +914,35 @@ function App() {
       )
     : [];
 
+  const taskLabel = pendingPermission ? "Needs your permission" : activeRun ? "Working" : nativeError ? "Needs attention" : runtimeReady ? "Ready" : "Aside";
+  if (agentState.visibility === "hidden") {
+    return <button className={`edge-capsule ${pendingPermission ? "waiting" : activeRun ? "working" : ""}`}
+      aria-label={`Expand Aside · ${taskLabel}`} title={`${taskLabel} · Ctrl + Alt + A`}
+      onClick={() => void execute("show_agent", nativeClient.showAgent)}>
+      <span className="capsule-mark" aria-hidden="true">a</span>
+      <span className="capsule-stem" aria-hidden="true" />
+      <span className="capsule-status" aria-hidden="true" />
+    </button>;
+  }
+
   return (
     <main className={`app-shell ${agentState.surface}-surface`}>
-      <header
-        className="app-header"
-        data-tauri-drag-region
-        onPointerDown={(event) => {
-          if (event.button === 0) void nativeClient.startDragging();
-        }}
-      >
-        <div className="brand-lockup" data-tauri-drag-region>
-          <div className="brand-mark" aria-hidden="true">
-            <Sparkles size={15} strokeWidth={2.4} />
-          </div>
-          <div>
-            <div className="brand-name">Aside</div>
-            <div className="brand-context">Quietly nearby</div>
-          </div>
-        </div>
-
-        <div className="header-actions">
-          <span className={`mode-pill ${agentState.surface}`}>
-            <span className="mode-dot" aria-hidden="true" />
-            {modeLabel}
-          </span>
-          <button
-            className={`icon-button ${agentState.pinned ? "active" : ""}`}
-            type="button"
-            aria-label={agentState.pinned ? "Unpin Aside" : "Pin Aside"}
-            aria-pressed={agentState.pinned}
-            title={agentState.pinned ? "Unpin Aside" : "Pin Aside"}
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={() => void execute("pin", () => nativeClient.setPinned(!agentState.pinned))}
-          >
-            <Pin size={16} />
-          </button>
-          <button
-            className="icon-button"
-            type="button"
-            aria-label="Hide Aside"
-            title="Hide Aside"
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={() => void execute("hide_agent", nativeClient.hideAgent)}
-          >
-            <X size={17} />
-          </button>
-        </div>
-      </header>
-
+      <div className="island-controls">
+        <span className="island-name">Aside</span>
+        <span className="island-state" role="status">{taskLabel === "Aside" ? "" : taskLabel}</span>
+        <button className={`icon-button ${agentState.pinned ? "active" : ""}`} type="button"
+          aria-label={agentState.pinned ? "Unpin Aside" : "Pin Aside"} aria-pressed={agentState.pinned}
+          title="Keep panel on top" onClick={() => void execute("pin", () => nativeClient.setPinned(!agentState.pinned))}>
+          <Pin size={15} />
+        </button>
+        <button className="icon-button" type="button" aria-label="Collapse Aside" title="Collapse · Esc"
+          onClick={() => void execute("hide_agent", nativeClient.hideAgent)}><PanelRightClose size={17} /></button>
+      </div>
+      <div className="panel-scroll" ref={scrollRef} onScroll={() => {
+        const el = scrollRef.current;
+        if (el) followOutput.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+      }}>
       <section className="status-strip" aria-live="polite">
-        <div className={`status-indicator ${runtimeReady ? "ready" : "idle"}`}>
-          <span className="status-dot" aria-hidden="true" />
-          {runtimeReady ? "Ready" : "Local session"}
-        </div>
-        <span className="status-divider" aria-hidden="true" />
-        <span className="shortcut-hint">
-          <Command size={12} />
-          {shortcutLabel}
-        </span>
         <button
           className="capture-button"
           type="button"
@@ -988,7 +959,7 @@ function App() {
           <span className="capture-status-dot" aria-hidden="true" />
           {captureStatusLabel(captureStatus)}
           {captureHost && ` | ${hostKindLabel(captureHost.kind)}`}
-          {captureStrategy && ` | ${captureStrategy}`}
+
         </span>
         {agentState.surface === "workspace" && (
           <button
@@ -997,11 +968,12 @@ function App() {
             onClick={() => void execute("exit_workspace", nativeClient.exitWorkspace)}
           >
             <PanelRightClose size={13} />
-            Leave workspace
+            Restore window layout
           </button>
         )}
       </section>
 
+      <details className="context-details" open={Boolean(workspaceOverride || runWaiting || silentServers.length || documentRead?.partial || documentRead?.truncated || documentWrite?.sourceWarnings.length || verification?.status === "failed" || toolActivity?.status === "failed")}><summary>Context & activity{runtimeWorkspace ? " · " + runtimeWorkspace.canonical_path.split(/[\\/]/).pop() : ""}</summary>
       <section className="runtime-surface" aria-label="Runtime state">
         {runtimeWorkspace ? (
           <div className="runtime-chip workspace-chip">
@@ -1171,8 +1143,11 @@ function App() {
         </div>
       )}
 
+      </details>
+
       {pendingPermission && (
         <section
+          ref={permissionRef}
           className="permission-card"
           role="dialog"
           aria-modal="false"
@@ -1205,14 +1180,18 @@ function App() {
                 "This operation requires an explicit decision."}
             </span>
           </div>
+          <p className="permission-explanation">{pendingPermission.explanation}</p>
+          <details className="permission-details"><summary>Review targets & preview</summary>
+            <pre>{JSON.stringify({ workspace: pendingPermission.workspace, targets: pendingPermission.targets, preview: pendingPermission.preview }, null, 2)}</pre>
+          </details>
+          <p className="permission-expiry">Expires {new Date(pendingPermission.expires_at).toLocaleTimeString()}</p>
           <div className="permission-actions">
             <button
               type="button"
               className="permission-allow"
               onClick={() => void decidePermission("allow")}
             >
-              <ShieldCheck size={14} />
-              Allow
+              Allow once
             </button>
             <button
               type="button"
@@ -1226,24 +1205,10 @@ function App() {
       )}
 
       <section className="conversation" aria-label="Conversation">
-        <div className="conversation-intro">
-          <div className="intro-icon" aria-hidden="true">
-            <Bot size={19} />
-          </div>
-          <div>
-            <p className="eyebrow">AGENT PANEL</p>
-            <h1>What is on your mind?</h1>
-          </div>
-        </div>
-
+        {messages.length === 0 && <div className="conversation-intro"><h1>A little space<br />to think together.</h1></div>}
         <div className="message-list" aria-live="polite">
           {messages.map((message) => (
             <article className={`message-row ${message.role}`} key={message.id}>
-              {message.role === "assistant" && (
-                <div className="message-avatar" aria-hidden="true">
-                  <Sparkles size={13} />
-                </div>
-              )}
               <div className={`message-bubble ${message.status}`}>
                 {message.text && <p>{message.text}</p>}
                 {message.status === "streaming" && (
@@ -1284,6 +1249,8 @@ function App() {
           )}
         </div>
       </section>
+
+      </div>
 
       {nativeError && (
         <div className="error-banner" role="alert">
@@ -1450,13 +1417,7 @@ function App() {
         )}
       </form>
 
-      <footer className="app-footer">
-        <span>
-          <Check size={12} />
-          Local-first session
-        </span>
-        <span className="footer-hint">Esc to close</span>
-      </footer>
+
     </main>
   );
 }

@@ -8,6 +8,7 @@ mod path;
 mod platform;
 mod runtime;
 mod uia;
+mod window_corner;
 mod workspace;
 
 use commands::AppState;
@@ -18,6 +19,11 @@ use tauri_plugin_global_shortcut::ShortcutState;
 pub fn run() {
     let app = tauri::Builder::default()
         .manage(AppState::default())
+        .setup(|app| {
+            commands::initialize_capsule(app.handle())
+                .map_err(|error| std::io::Error::other(error.message))?;
+            Ok(())
+        })
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_shortcut("CommandOrControl+Alt+A")

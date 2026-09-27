@@ -214,6 +214,36 @@ fn set_side_bounds(window: &WebviewWindow, work_area: Rect) -> Result<(), Native
     }
 }
 
+// Hidden describes the panel, not the resident edge control. Keep the old IPC
+// contract while giving the collapsed surface its own small, non-activating window.
+pub(crate) fn initialize_capsule(app: &AppHandle) -> Result<(), NativeError> {
+    let window = agent_window(app)?;
+    let area = work_area_from_tauri(&window)?;
+    set_capsule_bounds(&window, area)?;
+    window
+        .show()
+        .map_err(|error| native_error("capsule", error.to_string(), true))?;
+    apply_window_corners(app, &window);
+    Ok(())
+}
+
+// Apply only after show(); unsupported DWM preferences are reported without
+// taking away the already-visible window.
+fn apply_window_corners(app: &AppHandle, window: &WebviewWindow) {
+    if let Err(error) = crate::window_corner::apply(window) {
+        emit_error(app, native_error("window_corner", error, true));
+    }
+}
+
+fn set_capsule_bounds(window: &WebviewWindow, area: Rect) -> Result<(), NativeError> {
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let bounds = workspace::capsule_layout(area, scale);
+    window
+        .set_always_on_top(true)
+        .map_err(|error| native_error("capsule", error.to_string(), true))?;
+    set_agent_native_bounds(window, bounds)
+}
+
 fn work_area_from_tauri(window: &WebviewWindow) -> Result<Rect, NativeError> {
     if let Some(work_area) = platform::cursor_work_area() {
         return Ok(work_area);
@@ -319,6 +349,7 @@ fn show_agent_locked(app: &AppHandle, state: &AppState) -> Result<AgentState, Na
     window
         .show()
         .map_err(|_| native_error("show_agent", "Aside could not be shown.", true))?;
+    apply_window_corners(app, &window);
     if window.set_focus().is_err() {
         emit_error(
             app,
@@ -343,10 +374,6 @@ pub(crate) fn hide_agent_locked(
     app: &AppHandle,
     state: &AppState,
 ) -> Result<AgentState, NativeError> {
-    if matches!(lock_native(state)?.visibility, Visibility::Hidden) {
-        return emit_state(app, state);
-    }
-
     let snapshot = lock_native(state)?.workspace.clone();
     if let Some(snapshot) = snapshot {
         if let Err(error) = platform::restore_target(&snapshot.target) {
@@ -361,9 +388,30 @@ pub(crate) fn hide_agent_locked(
     }
 
     let window = agent_window(app)?;
+    let area = window
+        .current_monitor()
+        .ok()
+        .flatten()
+        .map(|monitor| {
+            let area = monitor.work_area();
+            Rect::new(
+                area.position.x,
+                area.position.y,
+                area.size.width as i32,
+                area.size.height as i32,
+            )
+        })
+        .unwrap_or(work_area_from_tauri(&window)?);
+    // Release native foreground ownership before showing the non-activating
+    // capsule. Capture must still see the application behind the old panel.
     window
         .hide()
-        .map_err(|_| native_error("hide_agent", "Aside could not be hidden.", true))?;
+        .map_err(|error| native_error("collapse", error.to_string(), true))?;
+    set_capsule_bounds(&window, area)?;
+    window
+        .show()
+        .map_err(|error| native_error("collapse", error.to_string(), true))?;
+    apply_window_corners(app, &window);
     {
         let mut native = lock_native(state)?;
         native.visibility = Visibility::Hidden;
