@@ -52,8 +52,9 @@ import {
   readDocumentStatus,
   writeDocumentStatus,
 } from "./lib/document-status";
-import { nativeClient, toNativeError } from "./lib/ipc";
+import { isDesktopRuntime, nativeClient, toNativeError } from "./lib/ipc";
 import "./App.css";
+import "./plate.css";
 
 type ChatMessageStatus = "complete" | "streaming" | "cancelled" | "error";
 type CaptureStatus = "idle" | "capturing" | "captured" | "unavailable" | "failed";
@@ -65,6 +66,8 @@ interface ChatMessage {
   status: ChatMessageStatus;
   prompt?: string;
   error?: string;
+  retryable?: boolean;
+  truncated?: boolean;
 }
 
 interface ActiveRun {
@@ -77,8 +80,11 @@ interface ActiveRun {
 }
 
 interface ToolActivity {
+  callId: string;
   tool: string;
   status: string;
+  arguments?: string;
+  argumentsTruncated?: boolean;
   text: string;
   truncated: boolean;
 }
@@ -89,6 +95,7 @@ const initialAgentState: AgentState = {
   visibility: "hidden",
   surface: "side",
   pinned: false,
+  material: "solid",
 };
 
 function makeId(prefix: string): string {
@@ -168,8 +175,14 @@ function workspaceSourceLabel(source: string): string {
     case "explicit":
       return "Selected";
     case "descriptor":
+    case "workspace_descriptor":
       return "Captured";
+    case "file_descriptor":
+      return "Captured file";
+    case "descriptor_handoff":
+      return "Captured root & target";
     case "previous":
+    case "previous_task_workspace":
       return "Previous";
     case "attachment":
       return "Attachment";
@@ -208,6 +221,10 @@ function shortToolName(tool: string): string {
   return dot >= 0 ? tool.slice(dot + 1) : tool;
 }
 
+function fileName(path: string): string {
+  return path.split(/[\\/]/).pop() || path;
+}
+
 /**
  * Tool provenance, taken from the run's descriptors rather than inferred.
  *
@@ -243,15 +260,18 @@ function App() {
   const [nativeError, setNativeError] = useState<NativeError | null>(null);
   const [activeRun, setActiveRun] = useState<ActiveRun | null>(null);
   const [runtimeReady, setRuntimeReady] = useState(false);
+  const [runtimeInfo, setRuntimeInfo] = useState<Extract<RuntimeEvent, { type: "ready" }> | null>(null);
   const [runtimeWorkspace, setRuntimeWorkspace] = useState<RuntimeWorkspaceState | null>(null);
   const [activeSkill, setActiveSkill] = useState<RuntimeSkillEvent | null>(null);
   const [pendingPermission, setPendingPermission] =
     useState<RuntimePermissionRequest | null>(null);
+  const [permissionDecisionId, setPermissionDecisionId] = useState<string | null>(null);
   const pendingPermissionRef = useRef<RuntimePermissionRequest | null>(null);
   const updatePendingPermission = useCallback(
     (value: RuntimePermissionRequest | null) => {
       pendingPermissionRef.current = value;
       setPendingPermission(value);
+      setPermissionDecisionId(null);
     },
     [],
   );
@@ -306,11 +326,12 @@ function App() {
   );
 
   const failRun = useCallback(
-    (run: ActiveRun, message: string) => {
+    (run: ActiveRun, message: string, retryable = true) => {
       updateAssistant(run.assistantId, (assistant) => ({
         ...assistant,
         status: "error",
         error: message,
+        retryable,
       }));
       setCurrentRun(null);
     },
@@ -361,9 +382,9 @@ function App() {
   }, []);
 
   const startRun = useCallback(
-    async (prompt: string, assistantId?: string): Promise<void> => {
+    async (prompt: string, assistantId?: string): Promise<boolean> => {
       const trimmed = prompt.trim();
-      if (!trimmed || activeRunRef.current) return;
+      if (!trimmed || activeRunRef.current) return false;
       const promptAttachments = attachmentsRef.current;
 
       const retryAssistantIndex = assistantId
@@ -388,6 +409,8 @@ function App() {
           status: "streaming",
           prompt: trimmed,
           error: undefined,
+          retryable: undefined,
+          truncated: false,
         }));
       } else {
         setMessages((current) => [
@@ -426,10 +449,12 @@ function App() {
         setCaptureStatus("idle");
         setCaptureHost(null);
         setPreviewAttachment(null);
+        return true;
       } catch (error) {
         const normalized = toNativeError(error, "conversation", true);
         failRun(run, normalized.message);
         setNativeError(normalized);
+        return false;
       }
     },
     [failRun, messages, setCurrentRun, updateAssistant],
@@ -511,12 +536,16 @@ function App() {
     let runtimeUnlisten: (() => void) | undefined;
     let hostCaptureUnlisten: (() => void) | undefined;
     let disposed = false;
+    let stateEventReceived = false;
 
     void nativeClient.getAgentState().then((state) => {
-      if (!disposed) setAgentState(state);
+      if (!disposed && !stateEventReceived) setAgentState(state);
+    }).catch((error) => {
+      if (!disposed) setNativeError(toNativeError(error, "get_agent_state", true));
     });
     void nativeClient
       .onAgentState((state) => {
+        stateEventReceived = true;
         setAgentState(state);
         if (state.visibility === "visible") {
           window.setTimeout(() => inputRef.current?.focus(), 45);
@@ -544,6 +573,7 @@ function App() {
         }
         if (event.type === "ready") {
           setRuntimeReady(true);
+          setRuntimeInfo(event);
           return;
         }
         if (event.type === "session_warning") {
@@ -564,6 +594,14 @@ function App() {
         if (event.type === "runtime_unavailable") {
           historyHydratedRef.current = false;
           setRuntimeReady(false);
+          setRuntimeInfo(null);
+          setRuntimeWorkspace(null);
+          setActiveSkill(null);
+          setMcpServers([]);
+          setToolProvenance({});
+          updatePendingPermission(null);
+          setRunWaiting(null);
+          setVerification((current) => current?.status === "in_progress" ? null : current);
           const current = activeRunRef.current;
           if (current) failRun(current, event.message);
           setNativeError(runtimeError(event.message));
@@ -597,9 +635,10 @@ function App() {
         switch (event.type) {
           case "run_started":
             setRuntimeReady(true);
-            if (event.workspace) setRuntimeWorkspace(event.workspace);
-            if (event.active_skill) setActiveSkill(event.active_skill);
+            setRuntimeWorkspace(event.workspace ?? null);
+            setActiveSkill(event.active_skill ?? null);
             updatePendingPermission(null);
+            setRunWaiting(null);
             setToolActivity(null);
             setVerification(null);
             setDocumentRead(null);
@@ -639,30 +678,37 @@ function App() {
               ...assistant,
               text: assistant.text + event.delta,
               status: "streaming",
+              truncated: assistant.truncated || event.truncated,
             }));
             break;
           case "tool_call_started":
             setToolActivity({
+              callId: event.tool_call_id,
               tool: event.tool,
               status: "running",
+              arguments: event.arguments,
+              argumentsTruncated: event.arguments_truncated,
               text: "",
               truncated: false,
             });
             break;
           case "tool_call_update":
             setToolActivity((activity) =>
-              activity && activity.tool === event.tool
+              activity && activity.callId === event.tool_call_id
                 ? { ...activity, text: activity.text + event.text, truncated: activity.truncated || event.truncated }
                 : activity,
             );
             break;
           case "tool_result":
-            setToolActivity({
+            setToolActivity((activity) => ({
+              callId: event.tool_call_id,
               tool: event.tool,
               status: event.status,
-              text: event.text.slice(0, 320),
+              arguments: activity?.callId === event.tool_call_id ? activity.arguments : undefined,
+              argumentsTruncated: activity?.callId === event.tool_call_id ? activity.argumentsTruncated : undefined,
+              text: event.text,
               truncated: event.truncated,
-            });
+            }));
             // A failed result is not a document status, whatever fields it
             // carries. Only a succeeded result is projected, and only when its
             // details are recognizably a document read or a generated file.
@@ -695,7 +741,7 @@ function App() {
             }));
             setCurrentRun(null);
             updatePendingPermission(null);
-            setVerification(null);
+            setVerification((current) => current?.status === "in_progress" ? null : current);
             setRunWaiting(null);
             break;
           case "cancelled":
@@ -705,13 +751,13 @@ function App() {
             }));
             setCurrentRun(null);
             updatePendingPermission(null);
-            setVerification(null);
+            setVerification((current) => current?.status === "in_progress" ? null : current);
             setRunWaiting(null);
             break;
           case "failed":
-            failRun(current, event.message);
+            failRun(current, event.message, event.retryable);
             updatePendingPermission(null);
-            setVerification(null);
+            setVerification((current) => current?.status === "in_progress" ? null : current);
             setRunWaiting(null);
             break;
           default:
@@ -766,7 +812,7 @@ function App() {
       try {
         const next = await action();
         setAgentState(next);
-        setNativeError(null);
+        setNativeError((current) => current?.operation === operation ? null : current);
       } catch (error) {
         setNativeError(toNativeError(error, operation, true));
       }
@@ -788,8 +834,21 @@ function App() {
     return () => window.removeEventListener("keydown", handleEscape);
   }, [agentState.visibility, execute, previewAttachment]);
 
+  useEffect(() => {
+    if (isDesktopRuntime()) return;
+    const handlePreviewShortcut = (event: globalThis.KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || !event.altKey || event.code !== "KeyA") return;
+      event.preventDefault();
+      void execute("toggle_agent", nativeClient.toggleAgent);
+    };
+    window.addEventListener("keydown", handlePreviewShortcut);
+    return () => window.removeEventListener("keydown", handlePreviewShortcut);
+  }, [execute]);
+
   const handleSubmit = useCallback(() => {
-    void startRun(draft).then(() => setDraft(""));
+    void startRun(draft).then((sent) => {
+      if (sent) setDraft("");
+    });
   }, [draft, startRun]);
 
   const handleInputKeyDown = useCallback(
@@ -814,8 +873,8 @@ function App() {
   const decidePermission = useCallback(
     async (decision: "allow" | "deny" | "cancel") => {
       const permission = pendingPermission;
-      if (!permission) return;
-      updatePendingPermission(null);
+      if (!permission || permissionDecisionId === permission.permission_id) return;
+      setPermissionDecisionId(permission.permission_id);
       try {
         await nativeClient.runtimePermissionResponse(
           permission.permission_id,
@@ -827,10 +886,11 @@ function App() {
           },
         );
       } catch (error) {
+        setPermissionDecisionId(null);
         setNativeError(toNativeError(error, "conversation", true));
       }
     },
-    [pendingPermission, updatePendingPermission],
+    [pendingPermission, permissionDecisionId],
   );
 
   const handleSetWorkspace = useCallback(() => {
@@ -886,12 +946,12 @@ function App() {
     );
   }, []);
 
-  const revealCapturePath = useCallback(async (path: string) => {
+  const revealFilePath = useCallback(async (path: string) => {
     try {
       await nativeClient.revealPath(path);
       setNativeError(null);
     } catch (error) {
-      setNativeError(toNativeError(error, "reveal_capture_file", true));
+      setNativeError(toNativeError(error, "reveal_file", true));
     }
   }, []);
 
@@ -915,18 +975,10 @@ function App() {
     : [];
 
   const taskLabel = pendingPermission ? "Needs your permission" : activeRun ? "Working" : nativeError ? "Needs attention" : runtimeReady ? "Ready" : "Aside";
-  if (agentState.visibility === "hidden") {
-    return <button className={`edge-capsule ${pendingPermission ? "waiting" : activeRun ? "working" : ""}`}
-      aria-label={`Expand Aside · ${taskLabel}`} title={`${taskLabel} · Ctrl + Alt + A`}
-      onClick={() => void execute("show_agent", nativeClient.showAgent)}>
-      <span className="capsule-mark" aria-hidden="true">a</span>
-      <span className="capsule-stem" aria-hidden="true" />
-      <span className="capsule-status" aria-hidden="true" />
-    </button>;
-  }
+  if (agentState.visibility === "hidden") return null;
 
   return (
-    <main className={`app-shell ${agentState.surface}-surface`}>
+    <main className={`app-shell ${agentState.surface}-surface`} data-material={agentState.material}>
       <div className="island-controls">
         <span className="island-name">Aside</span>
         <span className="island-state" role="status">{taskLabel === "Aside" ? "" : taskLabel}</span>
@@ -935,13 +987,10 @@ function App() {
           title="Keep panel on top" onClick={() => void execute("pin", () => nativeClient.setPinned(!agentState.pinned))}>
           <Pin size={15} />
         </button>
-        <button className="icon-button" type="button" aria-label="Collapse Aside" title="Collapse · Esc"
+        <button className="icon-button" type="button" aria-label="Hide Aside" title="Hide · Esc · Ctrl + Alt + A"
           onClick={() => void execute("hide_agent", nativeClient.hideAgent)}><PanelRightClose size={17} /></button>
       </div>
-      <div className="panel-scroll" ref={scrollRef} onScroll={() => {
-        const el = scrollRef.current;
-        if (el) followOutput.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-      }}>
+      <div className="panel-scroll">
       <section className="status-strip" aria-live="polite">
         <button
           className="capture-button"
@@ -961,20 +1010,46 @@ function App() {
           {captureHost && ` | ${hostKindLabel(captureHost.kind)}`}
 
         </span>
-        {agentState.surface === "workspace" && (
-          <button
-            className="workspace-exit"
-            type="button"
-            onClick={() => void execute("exit_workspace", nativeClient.exitWorkspace)}
-          >
-            <PanelRightClose size={13} />
-            Restore window layout
-          </button>
-        )}
       </section>
 
-      <details className="context-details" open={Boolean(workspaceOverride || runWaiting || silentServers.length || documentRead?.partial || documentRead?.truncated || documentWrite?.sourceWarnings.length || verification?.status === "failed" || toolActivity?.status === "failed")}><summary>Context & activity{runtimeWorkspace ? " · " + runtimeWorkspace.canonical_path.split(/[\\/]/).pop() : ""}</summary>
+      <details className="context-details" open={Boolean(workspaceOverride || runWaiting || silentServers.length || runtimeInfo?.skill_diagnostics?.length || documentRead?.partial || documentRead?.truncated || documentRead?.warnings.length || documentWrite || verification?.status === "failed" || toolActivity?.status === "failed")}><summary>Context & activity{runtimeWorkspace ? " · " + fileName(runtimeWorkspace.canonical_path) : ""}</summary>
       <section className="runtime-surface" aria-label="Runtime state">
+        {runtimeInfo && (
+          <div className="runtime-chip model-chip">
+            <Sparkles size={12} />
+            <div className="runtime-chip-copy">
+              <strong>{runtimeInfo.provider} · {runtimeInfo.model}</strong>
+              <span>Current model</span>
+            </div>
+          </div>
+        )}
+        {runtimeInfo?.skills && runtimeInfo.skills.length > 0 && (
+          <details className="runtime-catalog">
+            <summary>Available skills ({runtimeInfo.skills.length})</summary>
+            <ul>{runtimeInfo.skills.map((skill) => (
+              <li key={skill.name}><strong>{skill.name}</strong> · {skill.source}<p>{skill.description}</p></li>
+            ))}</ul>
+          </details>
+        )}
+        {runtimeInfo?.skill_diagnostics && runtimeInfo.skill_diagnostics.length > 0 && (
+          <div className="runtime-chip skill-diagnostics" role="status">
+            <CircleAlert size={12} />
+            <div className="runtime-chip-copy">
+              <strong>Some skills could not load</strong>
+              {runtimeInfo.skill_diagnostics.map((diagnostic, index) => (
+                <span key={`${diagnostic.code}:${index}`}>{diagnostic.code}: {diagnostic.message}{diagnostic.path ? ` · ${diagnostic.path}` : ""}</span>
+              ))}
+            </div>
+          </div>
+        )}
+        {mcpServers.length > 0 && (
+          <details className="runtime-catalog">
+            <summary>Configured programs ({mcpServers.length})</summary>
+            <ul>{mcpServers.map((server) => (
+              <li key={server.id}><strong>{server.display_name}</strong> · {!server.enabled ? "Disabled" : !server.trust_acknowledged ? "Trust not acknowledged" : "Configured · tools checked for each task"}</li>
+            ))}</ul>
+          </details>
+        )}
         {runtimeWorkspace ? (
           <div className="runtime-chip workspace-chip">
             <FolderOpen size={12} />
@@ -983,6 +1058,7 @@ function App() {
                 {runtimeWorkspace.canonical_path}
               </strong>
               <span>Workspace · {workspaceSourceLabel(runtimeWorkspace.source)}</span>
+              {runtimeWorkspace.target && <span>Target · {runtimeWorkspace.target.canonical_path}</span>}
             </div>
             <button
               className="runtime-chip-action"
@@ -1070,7 +1146,7 @@ function App() {
               <strong>
                 {silentServers.map((server) => server.display_name).join(", ")}
               </strong>
-              <span>Connected program(s) provided no tools for this task</span>
+              <span>Configured program(s) provided no tools for this task</span>
             </div>
           </div>
         )}
@@ -1088,13 +1164,12 @@ function App() {
               {documentRead.format.toUpperCase()} · {documentRead.scope}
             </strong>
             <span>
-              {documentRead.partial || documentRead.truncated ? "Partial extraction · " : ""}
+              {documentRead.partial || documentRead.truncated ? "Partial extraction" : "Read complete"}
               {documentRead.warnings.length > 0
-                ? documentRead.warnings
-                    .slice(0, 2)
+                ? " · " + documentRead.warnings
                     .map((warning) => warning.message)
                     .join(" ")
-                : "Read complete"}
+                : ""}
             </span>
           </div>
         </div>
@@ -1109,8 +1184,10 @@ function App() {
           <div className="runtime-chip-copy">
             <strong title={documentWrite.outputPath}>
               {documentWrite.operation === "transform" ? "Transformed" : "Created"} ·{" "}
-              {shortToolName(documentWrite.outputPath)}
+              {fileName(documentWrite.outputPath)}
             </strong>
+            <code className="document-path">{documentWrite.outputPath}</code>
+            {documentWrite.sourcePath && <span>Source: {documentWrite.sourcePath}</span>}
             <span>
               {describeStructure(documentWrite.structure)}
               {documentWrite.verification ? ` · reopened: ${documentWrite.verification}` : " · not reopened"}
@@ -1119,6 +1196,11 @@ function App() {
                 : ""}
             </span>
           </div>
+          <button className="runtime-chip-action" type="button"
+            aria-label={`Show ${fileName(documentWrite.outputPath)} in folder`} title="Show output in folder"
+            onClick={() => void revealFilePath(documentWrite.outputPath)}>
+            <FolderOpen size={14} />
+          </button>
         </div>
       )}
 
@@ -1135,10 +1217,12 @@ function App() {
               outside Aside · {activityProvenance.originLabel}
             </span>
           )}
-          {toolActivity.text && toolActivity.status !== "running" && (
-            <span className="tool-activity-text" title={toolActivity.text}>
-              {toolActivity.text}
-            </span>
+          {(toolActivity.arguments !== undefined || toolActivity.text || toolActivity.truncated) && (
+            <details className="tool-activity-details">
+              <summary>Tool input & output{toolActivity.truncated || toolActivity.argumentsTruncated ? " · shortened by runtime limits" : ""}</summary>
+              {toolActivity.arguments !== undefined && <><strong>Input{toolActivity.argumentsTruncated ? " (truncated)" : ""}</strong><pre>{toolActivity.arguments}</pre></>}
+              {toolActivity.text && <><strong>Output{toolActivity.truncated ? " (truncated)" : ""}</strong><pre>{toolActivity.text}</pre></>}
+            </details>
           )}
         </div>
       )}
@@ -1189,6 +1273,7 @@ function App() {
             <button
               type="button"
               className="permission-allow"
+              disabled={permissionDecisionId === pendingPermission.permission_id}
               onClick={() => void decidePermission("allow")}
             >
               Allow once
@@ -1196,6 +1281,7 @@ function App() {
             <button
               type="button"
               className="permission-deny"
+              disabled={permissionDecisionId === pendingPermission.permission_id}
               onClick={() => void decidePermission("deny")}
             >
               Deny
@@ -1206,11 +1292,15 @@ function App() {
 
       <section className="conversation" aria-label="Conversation">
         {messages.length === 0 && <div className="conversation-intro"><h1>A little space<br />to think together.</h1></div>}
-        <div className="message-list" aria-live="polite">
+        <div className="message-list" ref={scrollRef} aria-live="polite" onScroll={() => {
+          const el = scrollRef.current;
+          if (el) followOutput.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+        }}>
           {messages.map((message) => (
             <article className={`message-row ${message.role}`} key={message.id}>
               <div className={`message-bubble ${message.status}`}>
                 {message.text && <p>{message.text}</p>}
+                {message.truncated && <span className="message-limit">Response shortened by runtime limits</span>}
                 {message.status === "streaming" && (
                   <span className="typing-caret" aria-label="Responding" />
                 )}
@@ -1223,7 +1313,7 @@ function App() {
                       <CircleAlert size={13} />
                       {message.error ?? "The response could not be completed."}
                     </div>
-                    <button
+                    {message.retryable !== false && <button
                       className="retry-button"
                       type="button"
                       onClick={() =>
@@ -1235,7 +1325,7 @@ function App() {
                     >
                       <RotateCcw size={13} />
                       Retry
-                    </button>
+                    </button>}
                   </div>
                 )}
               </div>
@@ -1297,7 +1387,7 @@ function App() {
                       type="button"
                       aria-label={`Show JSON location for ${attachment.source}`}
                       title="Show captured JSON in folder"
-                      onClick={() => void revealCapturePath(filePath)}
+                      onClick={() => void revealFilePath(filePath)}
                     >
                       <FolderOpen size={14} />
                     </button>

@@ -2,8 +2,10 @@
 
 > **Status: SUPERSEDED / PAUSED FOR REPLAN (2026-09-25).** This file records
 > the pre-merge planning state. It is not an active implementation schedule.
-> Use [`../PROJECT-BASELINE.md`](../PROJECT-BASELINE.md) as the current entry
-> point. The next requirement list will produce one replacement active plan.
+> Current work now uses [`../RECOVERY-PLAN.md`](../RECOVERY-PLAN.md), with
+> confirmed sidebar requirements in [`SUMMONED-SIDEBAR.md`](../design/SUMMONED-SIDEBAR.md).
+> The baseline and the feature-list request below describe the earlier stage;
+> they are not prerequisites for starting the current R1 work.
 
 Status: planning. **Feature list not yet supplied** — see
 [Open input](#open-input-the-feature-list).

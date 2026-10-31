@@ -1,5 +1,7 @@
 # Cycle 6 独立审查报告
 
+**2026-10-31 follow-up:** [R2 automated recheck](./R2-RECHECK.md) and [current evidence](./R2-EVIDENCE.json) record A01-A12 checks and the additional A07/A08/A10 fixes. Historical counts and findings below retain their dated scope. Manual acceptance and release remain deferred; no criterion is closed solely by this follow-up.
+
 审查日期：2026-09-19。代码基线：`e5e8a09eda581c4d202e843b9ca890c761890c81`。
 问题主记录：[C6-I035](./ISSUES.md#c6-i035---passing-gates-do-not-establish-cycle-acceptance)。
 复现入口：[AUDIT-REPRO.mjs](./AUDIT-REPRO.mjs)；当次输出：[AUDIT-EVIDENCE.json](./AUDIT-EVIDENCE.json)。

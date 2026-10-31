@@ -9,6 +9,24 @@ This document contains project-level principles, ownership boundaries, and
 technical rules. Cycle-specific behavior and acceptance criteria belong in the
 relevant product requirements document.
 
+**2026-10-31 priority note:**
+[`RECOVERY-PLAN.md`](./RECOVERY-PLAN.md) is the current sequence: simplify the
+frontend, resolve inherited issues, and complete the existing Pi-backed runtime.
+External-agent adapters are deferred until at least functional completion of
+that runtime, as a separate feature. The window, material and IPC sections below
+now describe the shortcut/hidden lifecycle; the source audit and focused checks
+are in [`FRONTEND-REVIEW.md`](./FRONTEND-REVIEW.md). The longer-term discussion
+in [`PRODUCT-DIRECTION.md`](./PRODUCT-DIRECTION.md) does not require a runtime
+rewrite or change current capture, retention, or permission guarantees.
+
+**R1 implementation follow-up:** The current working copy restores automatic
+capture, 80/20 tiling and original-window placement restoration through the
+existing show/hide lifecycle. Native Acrylic configuration and opaque white
+components are implemented. Development checks pass; native desktop observation
+and full manual acceptance remain unperformed. Requirements are in
+[`design/SUMMONED-SIDEBAR.md`](./design/SUMMONED-SIDEBAR.md), with evidence in
+[`FRONTEND-REVIEW.md`](./FRONTEND-REVIEW.md).
+
 ## 1. Product Identity
 
 Aside is a persistent contextual sidecar for the applications where the user
@@ -31,9 +49,9 @@ Aside is not:
 - an OS-wide activity-monitoring or surveillance product.
 
 The product should feel attached to the user's current work without taking
-over that work. The visible surface is an independent right-hand Side rail,
-with a temporary Workspace arrangement available for eligible maximized
-windows. Host context capture and host actions must be fast, bounded, visible,
+over that work. The visible surface is a summoned full-height right-hand Side rail.
+Summoning automatically arranges eligible maximized or work-area-filling windows
+alongside it, without a separate split-mode step. Host context capture and host actions must be fast, bounded, visible,
 and explainable.
 
 ## 2. Architectural Principles
@@ -115,7 +133,7 @@ The Rust application layer owns desktop orchestration:
 - global shortcut registration and lifecycle;
 - always-on-top state;
 - foreground-window and monitor queries;
-- workspace snapshot capture, resizing, restoration, and errors;
+- positioning Aside without rearranging other applications;
 - the pre-focus target snapshot and host application classification;
 - routing capture and future action requests to the matching host strategy;
 - permission, target identity, timeout, and stale-target checks at the native
@@ -258,6 +276,16 @@ same runtime and policy path, with effect, scope, egress, source trust, and
 replay policy expressible independently. See the
 [Cycle 6 plan](./cycle-6/PLAN.md) for the delivery order.
 
+R4 defines the retained finite development contract as RT-01–11 in
+[RECOVERY-PLAN.md](./RECOVERY-PLAN.md). Its automated completion does not imply
+product/manual acceptance. MCP classification overrides must match both the
+accepted schema digest and server launch fingerprint stored in user-managed
+`mcp.json`; missing or changed bindings retain conservative defaults, emit an
+existing `runtime_warning`, and still require a fresh decision on every call.
+Discovery never approves or persists a binding. The fingerprints do not prove
+external behavior or provide a process sandbox. Settings editors, hot reload,
+conversation management and manual skill selection remain separate features.
+
 ### Background insights
 
 Application inventory, foreground duration, and similar signals are an
@@ -296,12 +324,16 @@ The core state has independent dimensions:
 
 ```text
 visibility: hidden | visible
-surface:    side | workspace
+surface:    side
 pinned:     boolean
+material:   acrylic | solid
 ```
 
-This produces the user-facing modes `HIDDEN`, `SIDE`, and `WORKSPACE`. Pin is a
-property of a visible surface, not a replacement for Side or Workspace.
+Hidden means the native window is hidden and no resident control is rendered.
+Visible uses the current Side presentation. Pin only changes the visible
+window's always-on-top state. Native state also owns the pending capture request,
+bound host and original WINDOWPLACEMENT. Those stay in Rust; only presentation
+state crosses IPC. The runtime's file workspace remains an independent concept.
 
 ### Command contract
 
@@ -313,42 +345,40 @@ Native commands should be:
 - explicit about failure and fallback behavior;
 - independent of React component structure.
 
-The initial command vocabulary is expected to include:
+The current native command vocabulary is:
 
 ```text
+get_agent_state()
 show_agent()
 hide_agent()
 toggle_agent()
 set_pinned(pinned)
 get_active_window_state()
-enter_workspace_mode()
-exit_workspace_mode()
-get_workspace_state()
 get_active_host()
 capture_active_host_context()
-prepare_host_action()
-confirm_host_action()
-cancel_host_action()
+move_agent(x, y)
+resize_agent(width, height)
+runtime_prompt(...)
+runtime_cancel(...)
+runtime_permission_response(...)
+runtime_set_workspace(...)
+runtime_clear_workspace(...)
 ```
 
-Names may change as implementation begins, but each command needs a documented
-input, result, and failure shape.
+Input and result types live in `commands.rs`, `runtime.rs` and the frontend
+contracts. `move_agent` and `resize_agent` are retained low-level entry points;
+the current surface does not expose manual movement or resize controls. Current
+command/event projections and unimplemented controls are listed in the frontend
+review, rather than inferred from a historical command proposal.
 
 ### Event contract
 
 Events should communicate durable state changes or runtime events:
 
 ```text
-agent://visibility-changed
-agent://pin-changed
-workspace://entered
-workspace://exited
-workspace://restore-failed
-host://detected
-host://context-staged
-host://capture-failed
-host://action-preview
-host://action-completed
+agent://state-changed
+agent://error
+host://capture-completed
 runtime://event
 ```
 
@@ -357,114 +387,92 @@ the frontend and must be able to handle skipped or repeated events.
 
 ## 5. Window and Workspace Rules
 
-The agent window is a normal Tauri window with product-oriented behavior:
+The frameless Tauri window starts hidden. Ctrl + Alt + A binds the original
+foreground host and work area and saves a complete WINDOWPLACEMENT for eligible
+maximized, work-area-filling or fullscreen windows. Background capture completes
+before tiling, show or focus. A generation identifier prevents a cancelled or
+superseded capture from opening the panel. Repeating the shortcut during capture
+cancels that summon; repeated show calls are idempotent while it is pending.
 
-- frameless and using the Windows-native corner treatment;
-- positionable near the right edge of the active display;
-- full-height when visible in Side or Workspace mode;
-- focusable on summon;
-- optionally always-on-top;
-- hidden without terminating the background application.
+Eligible hosts use the left 80% and Aside the right 20% of one physical work area,
+both full-height. Normal windows keep their existing layout. The next shortcut,
+Escape, Hide or close request shares cleanup: hide Aside, restore the original
+placement and maximized state, and attempt to return focus. Escape first closes
+an open JSON preview. Normal process exit also performs cleanup. Windows foreground
+events now retain the latest external window for explicit Capture without hiding
+or retiling. Aside's own foreground events do not overwrite it. The invocation
+copies and revalidates that target; an unsupported or stale target does not fall
+back to the old host. This target is separate from both the immutable restoration
+snapshot and the summon-time focus-return target, including for ordinary windows
+that were never tiled. The listener retains only latest-window metadata in memory,
+and sends no focus event stream or background host content to the runtime.
 
-Workspace Mode is a temporary arrangement of the user's existing windows. It
-must follow these rules:
+Window identity is checked before native mutations. A rejected layout or partial
+show failure triggers restoration; failed restoration retains its snapshot for
+retry and prevents a new layout from replacing it. A closed or stale target is
+not replaced by the later foreground window. Layout refusal may fall back to
+showing the sidebar with an explicit error after rollback. These are implemented
+paths, not evidence that all Windows hosts accept tiling. Forced termination and
+OS failure are outside this cleanup guarantee.
 
-1. Inspect the foreground window before Aside receives focus.
-2. Enter Workspace Mode only for a maximized or work-area-sized target.
-3. Capture the target identity, original bounds, maximized state, display, and
-   enough metadata to validate restoration.
-4. Use the target window's monitor work area for the 80/20 arrangement.
-5. Place the target on the left and Aside on the right.
-6. Restore only the captured target, never whichever window happens to be
-   foreground later.
-7. Fall back to Side when the target is unsupported or cannot be safely
-   changed.
-
-Side is the full-height right rail used whenever Aside is visible without an
-active Workspace snapshot. It uses the foreground target's monitor work area
-when a target is available, or the cursor display work area for the desktop.
-An ordinary foreground window is left unchanged; Aside does not resize or
-replace it. Side and Workspace use the same rail geometry.
-
-There is one active workspace snapshot per session. Clear it only after a
-successful restore or an explicit unrecoverable failure decision. Recovery
-behavior must be considered for normal hide, application exit, target closure,
-display changes, and interrupted process shutdown.
+Pin only changes always-on-top. Hidden means the actual window is hidden, with
+no capsule, hover preview or resident strip. React stays mounted and subscribed;
+drafts, staged attachments, permissions and results survive hiding. Completion
+and permission events do not show or retile the window. Successfully submitted
+attachments are consumed from the staging tray as before. The runtime file
+workspace, its root, captured target, authority and lifetime remain independent.
 
 ### Logical and physical pixels
 
-**Windows reports geometry in physical pixels. The WebView lays out in logical
-(CSS) pixels. Every value that crosses between them must be converted, and the
-conversion is `window.scale_factor()`.**
+Work-area and Win32 geometry use physical pixels; CSS uses logical pixels.
+`workspace::side_layout` rounds one 20% physical segment and assigns its exact
+complement to the host, without the old logical width clamps. Win32 positioning
+accounts for DWM visible-frame insets and recalculates after moving the panel to
+the destination monitor. Tests cover complementary segments, negative origins,
+large and narrow displays, frame correction and fullscreen candidacy. CSS is
+checked down to 256 logical pixels; actual mixed-DPI transitions remain unobserved.
 
-Mixing them is not a rounding error. It is a visible defect that was shipped
-once: the edge capsule was sized from CSS constants (46x132) and clipped by a
-window region built from the same numbers treated as physical. On a display at
-150% scaling the capsule was drawn 69x198 physical inside a 46x132 region, so
-its left edge was cut straight and a pill rendered as a rectangle.
+### Current material and corner boundaries
 
-The rule, stated so it can be checked:
+Configuration uses `transparent: true`, `decorations: false`, `shadow: true`,
+a transparent WebView background, a Light theme and
+`windowEffects.effects: ["acrylic"]`. `App.tsx` loads `plate.css` after
+`App.css`; that file now defines a continuous full-window base with opaque
+white message bubbles, permission, attachment, input and control surfaces. The
+conversation container itself stays transparent, with a shared 12px component
+radius and aligned surface widths. Further native rendering experiments are
+being handled by the user in a separate project.
+There is no oversized desktop-transparent margin or island-gap contract.
 
-- **`src-tauri/src/proximity.rs` writes every constant in logical pixels**, to
-  match the CSS that draws the same shape, and every function takes `scale` as
-  an argument. It does not read the scale itself, so tests cover more than one
-  display.
-- **`src-tauri/src/platform.rs` works in physical pixels**, because
-  `SetWindowRgn`, `CreateRoundRectRgn`, `GetClientRect`, `GetWindowRect`, and
-  `SetWindowPos` all do. The region functions take `scale` and convert.
-- `commands::display_scale()` is the single place the scale is read. A failure
-  falls back to 1.0 and reports rather than aborting — a wrong-sized surface is
-  better than none, but a silent one is not.
-- The collapsed host window stays **wider than the region that clips it**. The
-  host exists only to keep the WebView's client area usable; the region defines
-  the visible and clickable shape, and clicks outside it pass through to
-  whatever is behind. The reverse relationship produces a negative client width
-  and the application fails to start.
+After show, `window_corner.rs` requests `DWMWCP_ROUND` and suppresses the DWM
+border using `DWMWA_COLOR_NONE`. These are native requests, not a configurable
+8px radius or proof of final shadow/corner rendering. Acrylic availability is
+checked against the window's DWM backdrop type and system transparency /
+high-contrast settings. The `material` presentation state selects one continuous
+solid fallback when native Acrylic cannot be confirmed; older systems without
+the checked DWM property conservatively get that fallback. CSS also honors
+reduced-transparency and forced-colors preferences.
 
-A new pixel constant is not finished until it is clear which side of this line
-it lives on.
-
-### The frost is composed inside the webview, not by DWM
-
-**Do not declare `windowEffects` in `src-tauri/tauri.conf.json` for this
-window.** It was tried and reverted; the reasoning is recorded so it is not
-tried again.
-
-`window_vibrancy` implements acrylic through
-`DwmSetWindowAttribute(DWMWA_SYSTEMBACKDROP_TYPE, DWMSBT_TRANSIENTWINDOW)`.
-That asks DWM to draw a backdrop for the window's **entire rectangle**. It does
-not honour the GDI region installed by `SetWindowRgn`, and Tauri never sets
-`DWMWA_WINDOW_CORNER_PREFERENCE`, so nothing clips the result to the intended
-shape. The observable effect is a translucent grey rectangle sitting behind the
-capsule and around the panel's rounded corners, and it moves whenever the
-window is resized. That is worse than no effect at all.
-
-The alternative — dropping `SetWindowRgn` and rounding the *window itself* —
-does not work either. The collapsed form is a 46x132 capsule floating clear of
-the screen edge, which is a pill; `DWMWCP_ROUND` is a fixed small radius, not a
-pill, so it cannot produce the shape.
-
-So the frost is a **webview material**: the three white strengths, the blur
-radius, and the inset top highlight defined in
-[`design/mockup.html`](./design/mockup.html). It blurs the app's own layers
-rather than the desktop behind it. The product accepts that difference — the
-mockup's own recipe note says the saturate and the lit top edge are what make a
-surface read as glass, and both are CSS properties that work without DWM.
-
-If a true desktop-blurred surface is wanted later, it is a deliberate project
-with its own spike: it needs a non-rectangular, layered window whose composition
-clip is set through the WinRT composition API, not through `SetWindowRgn`.
+The old proximity module, region silhouettes, acrylic-v1 archive and transparent
+plate experiments remain historical references. Browser screenshots of the
+current solid fallback establish CSS layout and opacity only, not native Acrylic,
+tiling, corners, shadows or mixed-DPI behavior. See
+[`FRONTEND-REVIEW.md`](./FRONTEND-REVIEW.md) for development evidence.
 
 ### Contextual sidecar rules
 
-The foreground target is captured before Aside receives focus. The target
-snapshot binds host capture and later actions to the window the user actually
-invoked Aside from; a later foreground window must not silently replace it.
+The summon target is captured before Aside receives focus and stays bound to
+that summon, its initial capture, and layout restoration. A later explicit
+Capture instead snapshots the most recently focused external window. Each
+captured attachment remains bound to its own source; later focus changes cannot
+redirect an in-progress capture or change the original layout restoration target.
 
 Host identity and capability status may be detected automatically. Host content
 is staged only through an approved adapter and the summon/capture interaction.
-The panel opens immediately around a one-shot adapter call. A captured block is
-visible to the user, can be removed before submission, has a bounded lifetime,
+The summon capture completes before layout or focus changes, then opens the
+panel; cancelling a pending summon prevents a late result from reopening it.
+A captured block is visible to the user, can be removed before submission,
+has a bounded lifetime,
 and is not written to the durable conversation by default.
 
 An action must carry an opaque target capability issued by the native layer.

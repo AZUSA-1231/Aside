@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -11,8 +11,9 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
 import { createAsideToolRegistry } from "../src/capability-contract.mjs";
-import { MCP_CONFIG_LIMITS } from "../src/mcp-config.mjs";
-import { loadMcpServerConfigs } from "../src/mcp-runtime.mjs";
+import { MCP_CONFIG_LIMITS, validateServerConfig } from "../src/mcp-config.mjs";
+import { createMcpIntegration, loadMcpServerConfigs } from "../src/mcp-runtime.mjs";
+import { schemaDigest } from "../src/mcp-adapter.mjs";
 import { buildCapabilitySummary, createConversationRuntime } from "../src/runtime.mjs";
 
 /**
@@ -333,6 +334,84 @@ test("a server that contributes nothing leaves the built-in registry intact", as
   }
 });
 
+test("persisted MCP pins survive reload, report schema changes, and require explicit rebinding", async () => {
+  const originalSchema = { type: "object", properties: {} };
+  const changedSchema = { type: "object", properties: { url: { type: "string" } } };
+  const configured = definition({ tool_classifications: {
+    search: {
+      effect: "read",
+      schema_digest: schemaDigest(originalSchema),
+      server_fingerprint: validateServerConfig(definition()).fingerprint,
+    },
+  } });
+  await withConfigDir({ servers: [configured] }, async (directory) => {
+    const configurationPath = join(directory, "mcp.json");
+    const before = await readFile(configurationPath, "utf8");
+    for (const [schema, expected] of [[originalSchema, "read"], [originalSchema, "read"], [changedSchema, "execute"]]) {
+      const loaded = await loadMcpServerConfigs({ configDir: directory });
+      assert.deepEqual(loaded.diagnostics, []);
+      const integration = createMcpIntegration({
+        servers: loaded.servers,
+        connectionFactory: async () => ({
+          state: "ready",
+          async listTools() {
+            return [{ name: "search", inputSchema: schema }];
+          },
+          async close() {},
+        }),
+      });
+      const faux = fauxProvider({ tokensPerSecond: 1_000 });
+      const models = createModels();
+      models.setProvider(faux.provider);
+      faux.setResponses([fauxAssistantMessage("done"), fauxAssistantMessage("done again")]);
+      const events = [];
+      const agent = new Agent({
+        initialState: { systemPrompt: "Use available tools.", model: faux.getModel(), thinkingLevel: "off", tools: [] },
+        streamFn: models.streamSimple.bind(models),
+        convertToLlm: (messages) => messages,
+      });
+      const runtime = await createConversationRuntime({ emit: (event) => events.push(event), agent, mcp: integration });
+      try {
+        for (const requestId of ["first", "second"]) {
+          await runtime.prompt(requestId, "Inspect available tools.");
+          const started = events.find((event) => event.type === "run_started" && event.request_id === requestId);
+          const descriptor = started.tools.find((entry) => entry.source === "user_mcp");
+          assert.equal(descriptor.effect, expected);
+        }
+        const warnings = events.filter((event) => event.type === "runtime_warning");
+        if (expected === "execute") {
+          assert.equal(warnings.length, 2);
+          assert.ok(warnings.every((event) => event.code === "mcp_classification_changed"));
+          assert.ok(warnings[0].message.includes(schemaDigest(changedSchema)));
+        } else {
+          assert.deepEqual(warnings, []);
+        }
+      } finally {
+        runtime.dispose();
+        await integration.close();
+      }
+      assert.equal(await readFile(configurationPath, "utf8"), before);
+    }
+    configured.tool_classifications.search.schema_digest = schemaDigest(changedSchema);
+    await writeFile(configurationPath, JSON.stringify({ servers: [configured] }), "utf8");
+    const rebound = await loadMcpServerConfigs({ configDir: directory });
+    const integration = createMcpIntegration({
+      servers: rebound.servers,
+      connectionFactory: async () => ({
+        state: "ready",
+        async listTools() { return [{ name: "search", inputSchema: changedSchema }]; },
+        async close() {},
+      }),
+    });
+    try {
+      assert.equal((await integration.toolFactory())[0].descriptor.effect, "read");
+      assert.deepEqual(integration.controller.diagnostics, []);
+    } finally {
+      await integration.close();
+    }
+  });
+});
+
 test("an MCP tool reaches the model as a callable tool, end to end", async () => {
   const faux = fauxProvider({ tokensPerSecond: 1_000 });
   const models = createModels();
@@ -413,6 +492,8 @@ async function runWithSlowDiscovery({ cancelDuringDiscovery }) {
   const events = [];
   let release;
   const gate = new Promise((resolve) => { release = resolve; });
+  let reportDiscoveryStarted;
+  const discoveryStarted = new Promise((resolve) => { reportDiscoveryStarted = resolve; });
 
   const runtime = await createConversationRuntime({
     emit: (event) => events.push(event),
@@ -421,6 +502,7 @@ async function runWithSlowDiscovery({ cancelDuringDiscovery }) {
     // lands in when a server is slow to start.
     mcp: {
       toolFactory: async () => {
+        reportDiscoveryStarted();
         await gate;
         return [];
       },
@@ -428,8 +510,8 @@ async function runWithSlowDiscovery({ cancelDuringDiscovery }) {
   });
 
   const pending = runtime.prompt("a06", "do the thing");
+  await discoveryStarted;
   if (cancelDuringDiscovery) {
-    await Promise.resolve();
     runtime.cancel("a06");
   }
   release();
@@ -528,6 +610,8 @@ test("A11: an overridden capture arrives with the run it belongs to", async () =
     // An explicit workspace hint outranks a captured descriptor in the same
     // prompt, which is the condition that produces the override.
     const workspace = await mkdtemp(join(tmpdir(), "aside-override-"));
+    const capturedRoot = await mkdtemp(join(tmpdir(), "aside-captured-"));
+    await writeFile(join(capturedRoot, "other.txt"), "captured file");
     await runtime.prompt("a11", "do the thing", {
       flow: { id: "f1", kind: "conversation" },
       blocks: [],
@@ -540,28 +624,25 @@ test("A11: an overridden capture arrives with the run it belongs to", async () =
           expiresAt: Date.now() + 60_000,
           sensitivity: "local_metadata",
           summary: "captured",
-          blocks: [],
-          descriptors: [{ role: "active_file", path: join(workspace, "other.txt"), kind: "file" }],
+          blocks: [{ type: "text", text: "captured file" }],
+          descriptors: [{ role: "active_file", path: join(capturedRoot, "other.txt"), kind: "file" }],
         },
       ],
     }, workspace);
     await rm(workspace, { recursive: true, force: true });
+    await rm(capturedRoot, { recursive: true, force: true });
 
     const started = events.findIndex((event) => event.type === "run_started");
     const standalone = events.findIndex((event) => event.type === "workspace_overridden");
 
-    // Either there is no override (the explicit hint and the capture agreed),
-    // or it travels on the run. What must not happen is a standalone notice
-    // arriving before the run that then clears it.
     if (standalone >= 0) {
       assert.fail(
         "a standalone workspace_overridden event precedes run_started and will be cleared by it",
       );
     }
-    if (started >= 0 && events[started].workspace_overridden) {
-      assert.equal(typeof events[started].workspace_overridden.replaced_by, "string");
-      assert.equal(typeof events[started].workspace_overridden.captured_path, "string");
-    }
+    assert.ok(started >= 0, JSON.stringify(events));
+    assert.equal(typeof events[started].workspace_overridden?.replaced_by, "string");
+    assert.equal(typeof events[started].workspace_overridden?.captured_path, "string");
   } finally {
     runtime.dispose();
   }

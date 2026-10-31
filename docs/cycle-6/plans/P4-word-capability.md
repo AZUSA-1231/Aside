@@ -1,9 +1,16 @@
 # P4 - Word Read, Create, and Transform
 
-Status: implemented 2026-09-18; manual Word-open evidence and part of task 11 outstanding
+Status: implemented 2026-09-18; R3 task 11 automated flows completed 2026-10-31; manual Word-open evidence and list-kind limitation remain
 Depends on: P3 - Document Representation and PDF Read
 Unblocks: P7
 Source requirements: PRD sections 7, 9, 12 through 16, and C6-20 through C6-25
+
+**R3 follow-up (2026-10-31):** [integration evidence](../R3-INTEGRATION.md)
+adds an existing-Word summary and both allowed/denied transformations after
+the provider receives source fidelity warnings. Tests inspect actual provider
+content, the permission preview, single approval, unchanged source bytes,
+output reopen, and verification events. Scripted faux replies do not establish
+real-model quality; manual Word-open evidence remains indefinitely deferred.
 
 ## Outcome
 
@@ -300,10 +307,10 @@ what C6-I013 was built for, and it is the first shipped tool to exercise it.
 
 ### Outstanding
 
-- **Task 11 is partly done.** Creating and transforming through the runtime are
-  covered, including the denied path. Summarising an existing Word document as
-  an agent workflow, and reacting to a source's fidelity warnings, are not
-  separately exercised.
+- **Task 11's original partial coverage is supplemented by R3.** Creating and
+  transforming were already covered. The existing-document summary and
+  allowed/denied workflows reacting to fidelity warnings are now separately
+  exercised through provider-visible content and approval/result events.
 - **Manual Word-open evidence** has not been gathered. The Checks section asks
   for representative generated documents opened in Microsoft Word on Windows.
   This is the strongest available evidence that the output is a real Word file
@@ -312,3 +319,6 @@ what C6-I013 was built for, and it is the first shipped tool to exercise it.
   `list_item`, because the envelope's block vocabulary has no ordering flag even
   though `numbering.xml` carries it. Generation and reading therefore round-trip
   text correctly but not list kind.
+  R4 explicitly accepts this as LIMIT-01 in the current extraction contract;
+  preserving list numbering/type or original layout is not promised. A future
+  fidelity feature needs its own scope; see [the finite ledger](../../RECOVERY-PLAN.md).

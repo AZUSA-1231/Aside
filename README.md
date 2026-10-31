@@ -15,8 +15,18 @@ you are.
 
 ## What it does differently
 
-**It stays out of the way.** A frameless rail near the screen edge. No window to
-manage, no tab to find. `Ctrl + Alt + A` shows, hides, and focuses it.
+**It stays out of the way.** The panel starts hidden. `Ctrl + Alt + A` shows or
+hides it; `Esc` hides it after closing any JSON preview. Background tasks continue
+while hidden.
+
+**A reversible sidebar.** Summoning captures the original host before focus or
+layout changes, arranges eligible maximized/fullscreen windows in the left 80%
+beside Aside's full-height right 20%, then restores the original placement when
+hidden again. R1 implements this with a continuous native Acrylic base and
+opaque white components, with a solid fallback. Development checks pass;
+native desktop observation remains unperformed. See the
+[current design](docs/design/SUMMONED-SIDEBAR.md) and
+[implementation evidence](docs/FRONTEND-REVIEW.md).
 
 **Context is a reference, not permission.** Capturing a file tells Aside where
 you are. It does not grant read access, write access, or anything else — the
@@ -37,14 +47,11 @@ enforced in the runtime rather than described in a prompt.
 
 ## Features
 
-- **Frameless side rail** — a consistent full-height panel near the right edge
-  of the active display.
+- **On-demand panel** — a frameless full-height panel near the right edge of
+  the active display, hidden between uses with no resident edge control.
 - **Summon from anywhere** — a global `Ctrl + Alt + A` shortcut shows, hides,
   and focuses the panel.
-- **Pin mode** — keep Aside above other windows.
-- **Workspace Mode** — temporarily gives ~80% of the work area to the active
-  maximized application and 20% to Aside, restoring the original window state
-  when you leave.
+- **Pin mode** — keep the visible panel above other windows.
 - **Bounded host context** — reads limited context from the current window
   (browser pages, Explorer, PDF, Word, Excel paths) via Windows UI Automation,
   without reading file contents or unbounded screen data.
@@ -59,10 +66,13 @@ enforced in the runtime rather than described in a prompt.
   revalidated against the current target.
 - **MCP tool adapter** — connect your own MCP server and its tools appear
   alongside the built-in ones, namespaced, classified, and permission-gated.
+  Classification overrides require matching schema and server launch pins in
+  your configuration; missing or changed pins use conservative defaults and
+  report a warning. See the [runtime configuration guide](agent-runtime/README.md#mcp-classification-bindings).
   Aside bundles no server and ships no default configuration.
 - **Skills** — three bundled bounded `SKILL.md` workflows. Skill content is
   untrusted reference data: it can never register a tool or expand authority.
-- **Task-aware rail** — workspace, active skill, tool activity, verification,
+- **Task state** — workspace, active skill, tool activity, verification,
   and permission controls, all display projections over the runtime's
   serialized state.
 
@@ -80,7 +90,9 @@ npm.cmd install
 npm.cmd run tauri dev
 ```
 
-The window starts hidden — press `Ctrl + Alt + A` to show or hide it.
+The window starts hidden — press `Ctrl + Alt + A` to show or hide it. Current
+window behavior, material history and interface verification are documented in
+[the frontend review](docs/FRONTEND-REVIEW.md).
 
 Aside needs a model provider before it can hold a conversation. See the next
 section.

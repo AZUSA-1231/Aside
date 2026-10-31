@@ -158,7 +158,7 @@ mcp.<srv>.<t>.x  read  / service   / query   / user_mcp / safe        / []
 
 The third row was written as `web.search (P5) read / service / query /
 builtin / safe / []`. Web Search was removed from Cycle 6 on 2026-09-18
-([C6-I026](../../ISSUES.md#c6-i026---web-search-leaves-cycle-6-entirely)), so
+([C6-I026](../ISSUES.md#c6-i026---web-search-leaves-cycle-6-entirely)), so
 that row no longer describes anything this cycle ships, and neither does any
 other `builtin` row with a non-workspace scope. The `scope`-keyed gap recorded
 in C6-I019 is therefore unfired by every shipped tool for the whole cycle.

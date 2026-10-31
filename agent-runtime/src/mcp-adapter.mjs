@@ -12,7 +12,7 @@ import {
   toolResultEnvelope,
 } from "./capability-result.mjs";
 import { McpClientError, McpConnection, MCP_CLIENT_LIMITS } from "./mcp-client.mjs";
-import { resolveServerEnvironment } from "./mcp-config.mjs";
+import { resolveServerEnvironment, serverFingerprint } from "./mcp-config.mjs";
 import { normalizeMcpResult } from "./mcp-result.mjs";
 import { acceptMcpToolDefinition, assertMcpArguments } from "./mcp-schema.mjs";
 
@@ -62,7 +62,8 @@ function boundedText(value, maxBytes) {
  * Bindings are keyed by tool *name*, and a name is not a contract: a server can
  * ship a benign schema, collect a lowered classification, then change what the
  * tool does without changing what it is called. Recording the digest lets a
- * user who cares pin their approval to the schema they actually read.
+ * user pin their approval to the schema they actually read. A matching server
+ * fingerprint is also required before an override applies.
  */
 export function schemaDigest(parameters) {
   return createHash("sha256").update(JSON.stringify(parameters), "utf8").digest("hex").slice(0, 16);
@@ -76,10 +77,9 @@ export function schemaDigest(parameters) {
  * registry — not this module — remains the authority that rejects an invalid
  * descriptor.
  *
- * If the override declares `schema_digest` and it does not match the schema the
- * server is currently advertising, the override is refused and the conservative
- * default applies. That is the one part of schema-change invalidation that can
- * be enforced without a settings store; see the note on the unbound case below.
+ * Both the schema and server launch identity must match the user's stored pins.
+ * Missing or changed bindings retain the conservative default until the user
+ * explicitly updates the configuration. Discovery never approves a binding.
  */
 export function classifyMcpTool(config, toolName, parameters) {
   const override = config?.tool_classifications?.[toolName];
@@ -87,11 +87,11 @@ export function classifyMcpTool(config, toolName, parameters) {
   if (typeof override !== "object" || override === null) {
     throw new McpClientError("mcp_classification_invalid", "A tool classification override must be an object.");
   }
-  if (override.schema_digest !== undefined) {
-    const observed = schemaDigest(parameters);
-    if (override.schema_digest !== observed) {
-      return MCP_DEFAULT_CLASSIFICATION;
-    }
+  if (
+    override.schema_digest !== schemaDigest(parameters)
+    || override.server_fingerprint !== serverFingerprint(config)
+  ) {
+    return MCP_DEFAULT_CLASSIFICATION;
   }
   const classification = {};
   for (const field of CLASSIFICATION_FIELDS) {
@@ -326,21 +326,24 @@ function adaptTools({ config, connection, rawTools, diagnostics }) {
       });
       const override = config.tool_classifications?.[accepted.name];
       const classification = classifyMcpTool(config, accepted.name, accepted.parameters);
-      if (override !== undefined && override.schema_digest === undefined) {
-        // The override is applied, but it is bound to a name rather than a
-        // schema. Recorded so it is visible rather than assumed safe: see
-        // C6-I030.
-        diagnostics.push(Object.freeze({
-          server_id: config.id,
-          tool: accepted.name,
-          code: "mcp_classification_unbound",
-          message: boundedText(
-            `The classification for "${accepted.name}" is applied without a schema_digest, `
-            + `so it is not invalidated if the server changes the tool's schema. `
-            + `Current schema digest: ${schemaDigest(accepted.parameters)}.`,
-            512,
-          ),
-        }));
+      if (override !== undefined) {
+        const observedSchema = schemaDigest(accepted.parameters);
+        const observedServer = serverFingerprint(config);
+        const unbound = override.schema_digest === undefined || override.server_fingerprint === undefined;
+        if (unbound || override.schema_digest !== observedSchema || override.server_fingerprint !== observedServer) {
+          diagnostics.push(Object.freeze({
+            server_id: config.id,
+            tool: accepted.name,
+            code: unbound ? "mcp_classification_unbound" : "mcp_classification_changed",
+            message: boundedText(
+              `The classification for "${accepted.name}" was ignored: `
+              + `${unbound ? "both binding fields are required" : "the schema or server launch identity changed"}. `
+              + `Conservative defaults apply. Review and update mcp.json to reapprove. `
+              + `Current schema_digest=${observedSchema}; server_fingerprint=${observedServer}.`,
+              512,
+            ),
+          }));
+        }
       }
       const tool = buildTool({
         config,
@@ -469,6 +472,7 @@ export class McpController {
    * flow rather than a try/catch bolted around the outside.
    */
   async tools() {
+    this.resetDiagnostics();
     if (this.#closed) return Object.freeze([]);
     const tools = [];
     for (const config of this.#activeServers()) {

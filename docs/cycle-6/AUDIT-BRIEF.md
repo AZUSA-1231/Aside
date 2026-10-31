@@ -4,9 +4,12 @@ For a fresh process auditing Cycle 6. It assumes no context from the sessions
 that produced the work, and it is written to be read **before** the other
 documents rather than instead of them.
 
-**Note:** this file is in `/docs`, which is git-ignored by design ("Internal
-project documentation, kept local, not published"). Read it from the file
-system, not from git history.
+**Current navigation (2026-10-31):** this is the original Cycle 6 audit brief,
+not the project's active execution plan. Read [`../README.md`](../README.md)
+for document roles and [`../RECOVERY-PLAN.md`](../RECOVERY-PLAN.md) for current
+defect follow-up. The former blanket claim that `/docs` is git-ignored is
+outdated: core documents are tracked, while newer working-tree drafts may still
+be uncommitted. Audit the actual working tree and identify its revision/diff.
 
 ---
 

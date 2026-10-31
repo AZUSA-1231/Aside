@@ -1,6 +1,28 @@
-# Cycle 7 Execution Plan (active)
+# Cycle 7 Execution Record
 
-Status: active development, 2026-09-26. Product and host remain Aside. The
+**2026-10-31 priority update:** Current work is tracked in
+[`../RECOVERY-PLAN.md`](../RECOVERY-PLAN.md): frontend simplification, inherited
+issue resolution, and completion of the existing Pi-backed runtime. External
+agent integration is deferred as a later feature. This file records previous
+UI work; its E1–E4 delivery order is no longer the active plan.
+
+Current source and new focused checks are documented in
+[`../FRONTEND-REVIEW.md`](../FRONTEND-REVIEW.md). The resident capsule and automatic
+host-window arrangement described below have been removed from the active path.
+Removing automatic arrangement/restoration was a mistake: shortcut-driven
+capture, 80/20 tiling, and restoration on the next press remain core behavior
+and must be restored under FE-07. See the confirmed
+[`full-height sidebar design`](../design/SUMMONED-SIDEBAR.md). This correction
+does not reinstate the capsule, hover, or morph proposals below.
+
+**Evidence qualification:** The proximity/morph modules, stylesheet names,
+and frontend test counts described below do not match the current file set.
+These observations have not been reconstructed against a matching revision.
+Do not treat them, or their passing gate counts, as current capsule/plate or
+future simplified-surface verification. Audit and acceptance items keep their
+source issue status; this note closes none of them.
+
+Status at 2026-09-26: active development. Product and host remain Aside. The
 interaction model is in [`UI-PROPOSAL.md`](./UI-PROPOSAL.md); the **visual
 direction is [`../design/mockup.html`](../design/mockup.html)** (see
 [`../design/README.md`](../design/README.md)), which supersedes every earlier

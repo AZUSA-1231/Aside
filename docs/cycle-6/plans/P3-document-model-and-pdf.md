@@ -1,6 +1,15 @@
 # P3 - Document Representation and PDF Read
 
-Status: implemented 2026-09-17; C6-19 event-loop measurement and task 11 faux-agent flows open
+Status: implemented 2026-09-17; R3 task 11 faux-agent flows completed 2026-10-31; synchronous parsing limits and manual evidence remain open
+
+**2026-10-31 follow-up:** R2 measured C6-19/G01 and rechecked page-loop
+cancellation; [C6-I036](../ISSUES.md#c6-i036---cancelling-a-pdf-read-was-dropped-not-delayed)
+retains synchronous loading / per-page parsing limits. R3 now covers task 11
+with four runtime/faux-provider flows: summary and page-cited Q&A, partial
+warnings, public-cursor continuation, and edit refusal. The latter exposed a
+real text-replacement exception, now fixed before parsing/approval. See
+[R3-INTEGRATION.md](../R3-INTEGRATION.md). Historical measurements below are
+not current performance guarantees; manual and release acceptance is unchanged.
 Depends on: P0 - Capability Contract and Policy Plane; P2 - Shell-Free Workspace Foundation
 Unblocks: P4 and P7
 Source requirements: PRD sections 7, 8, 13, 15, 16, and C6-15 through C6-19
@@ -226,10 +235,11 @@ format. `child_process`/`spawn`/`fetch` appear nowhere in `agent-runtime/src`.
   alone cannot interrupt synchronous parsing" — is met by the abort path, not by
   worker isolation. Measuring responsiveness and, if needed, moving parsing to a
   worker thread is open.
-- **Task 11 (faux-agent flows)** — summarize, question answering with page
-  references, partial extraction, and explicit PDF-edit refusal through the
-  runtime — is not implemented. The adapter-level coverage above exists; the
-  model-facing flows do not.
+- **Task 11 (faux-agent flows)** was not implemented in the original P3 result.
+  R3 now exercises summary / page references, partial warnings, public-cursor
+  continuation and edit refusal through actual provider-visible tool content,
+  with captured root/target binding and final output checks. This closes the
+  automated workflow gap, not real-model quality or desktop acceptance.
 - **Task 8 (description audit)** was initially skipped and had to be fixed
   after manual testing showed the model refusing to read PDFs it could read.
   See C6-I023, which also records the search defect the same change introduced.

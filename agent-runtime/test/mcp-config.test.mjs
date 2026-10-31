@@ -135,6 +135,37 @@ test("the fingerprint does not change when only presentation or enablement chang
   assert.equal(config.fingerprint, renamed.fingerprint);
 });
 
+test("classification pins are retained without changing the server identity", () => {
+  const original = validateServerConfig(base);
+  const configured = validateServerConfig({
+    ...base,
+    tool_classifications: {
+      search: {
+        effect: "read",
+        schema_digest: "ABCDEF0123456789",
+        server_fingerprint: original.fingerprint.toUpperCase(),
+      },
+    },
+  });
+  assert.equal(configured.fingerprint, original.fingerprint);
+  assert.deepEqual(configured.tool_classifications.search, {
+    effect: "read",
+    schema_digest: "abcdef0123456789",
+    server_fingerprint: original.fingerprint,
+  });
+});
+
+test("classification pins reject malformed values before connecting", () => {
+  for (const [field, validLength] of [["schema_digest", 16], ["server_fingerprint", 32]]) {
+    for (const value of [null, 12345678, {}, "", "z".repeat(validLength), "a".repeat(validLength - 1)]) {
+      expectRefusal(() => validateServerConfig({
+        ...base,
+        tool_classifications: { search: { effect: "read", [field]: value } },
+      }), "mcp_config_invalid");
+    }
+  }
+});
+
 test("environment resolves from Aside's own configuration, not the process environment", () => {
   const config = validateServerConfig({
     ...base,

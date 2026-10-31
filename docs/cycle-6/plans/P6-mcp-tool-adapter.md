@@ -3,6 +3,16 @@
 Status: **implemented 2026-09-18** against deterministic and adversarial fixtures
 and a real child process; the manual `server-everything` smoke test on Windows
 is the remaining evidence, and belongs with P7's Windows pass.
+
+**R4 follow-up (2026-10-31):** classification overrides now require matching
+schema and server launch pins persisted in user-managed `mcp.json`. Missing or
+changed pins retain conservative defaults and emit discovery diagnostics via
+the existing warning surface. This completes the finite file-based part of
+task 6 without a settings UI; see [R4 evidence](../R4-RUNTIME.md) and
+[C6-I030](../ISSUES.md#c6-i030---tool-classification-is-name-keyed-without-a-settings-store).
+The in-app editor remains feature backlog and the manual smoke is still
+unperformed.
+
 Depends on: P0 - Capability Contract and Policy Plane; M2 local capability checkpoint
 Unblocks: P7
 Source requirements: PRD sections 3.3, 5, 11 through 16, and C6-31 through

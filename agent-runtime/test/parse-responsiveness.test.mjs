@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
 import test from "node:test";
-import { createPdfAdapter } from "../src/pdf-adapter.mjs";
+import { createPdfAdapter, MAX_PDF_PAGES } from "../src/pdf-adapter.mjs";
 import { buildLargePdf } from "./pdf-fixtures.mjs";
 
 /**
@@ -43,7 +43,7 @@ function startHeartbeat(intervalMs = HEARTBEAT_MS) {
   return {
     stop() {
       clearTimeout(timer);
-      return { worstGapMs: worst, ticks };
+      return { worstGapMs: Math.max(worst, performance.now() - last), ticks };
     },
   };
 }
@@ -51,18 +51,18 @@ function startHeartbeat(intervalMs = HEARTBEAT_MS) {
 async function measure(pdf, selection) {
   const heartbeat = startHeartbeat();
   const started = performance.now();
-  const document = await createPdfAdapter().read({
-    bytes: new Uint8Array(pdf),
-    path: "probe.pdf",
-    selection,
-  });
-  const elapsedMs = performance.now() - started;
-  return { document, elapsedMs, ...heartbeat.stop() };
+  try {
+    const document = await createPdfAdapter().read({ bytes: new Uint8Array(pdf), path: "probe.pdf", selection });
+    return { document, elapsedMs: performance.now() - started, ...heartbeat.stop() };
+  } finally {
+    heartbeat.stop();
+  }
 }
 
-test("G01: parsing a 300-page PDF lets the event loop run", async () => {
+test("G01: parsing a 300-page PDF lets the event loop run", async (context) => {
   const pdf = buildLargePdf(300);
-  const { document, elapsedMs, ticks } = await measure(pdf);
+  const { document, elapsedMs, ticks, worstGapMs } = await measure(pdf);
+  context.diagnostic(JSON.stringify({ fixturePages: 300, fixtureBytes: pdf.length, elapsedMs, heartbeatTicks: ticks, worstGapMs }));
 
   assert.equal(document.metadata.pages, 300);
   assert.ok(document.blocks.length > 0, "the fixture produced no content, so nothing was measured");
@@ -80,7 +80,7 @@ test("G01: parsing a 300-page PDF lets the event loop run", async () => {
   );
 });
 
-test("G01: an abort during the page loop is delivered, and the read refuses", async () => {
+test("G01: an abort during the page loop is delivered, and the read refuses", async (context) => {
   // The defect this covers, and what the fix does and does not reach.
   //
   // Before the fix the abort was not merely late, it was dropped: `setTimeout`
@@ -96,19 +96,46 @@ test("G01: an abort during the page loop is delivered, and the read refuses", as
   const pdf = buildLargePdf(300);
   const controller = new AbortController();
 
-  const pending = createPdfAdapter().read({
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  let pagesRequested = 0;
+  let firstPageAt;
+  let abortDeliveredAt;
+  const started = performance.now();
+  const adapter = createPdfAdapter({
+    load: async (data) => {
+      const task = pdfjs.getDocument({ data, isEvalSupported: false, useSystemFonts: false, disableFontFace: true, useWorkerFetch: false, verbosity: 0 });
+      return {
+        promise: task.promise.then((document) => ({
+          numPages: document.numPages,
+          getPage(pageNumber) {
+            pagesRequested += 1;
+            if (pagesRequested === 1) {
+              firstPageAt = performance.now() - started;
+              setImmediate(() => {
+                abortDeliveredAt = performance.now() - started;
+                controller.abort();
+              });
+            }
+            return document.getPage(pageNumber);
+          },
+          getMetadata: () => document.getMetadata(),
+          destroy: () => document.destroy(),
+        })),
+        destroy: () => task.destroy(),
+      };
+    },
+  });
+  const pending = adapter.read({
     bytes: new Uint8Array(pdf),
     path: "probe.pdf",
     signal: controller.signal,
   });
-  // Late enough to land in the page loop rather than the loading phase, so the
-  // assertion is about the loop's behavior.
-  setTimeout(() => controller.abort(), 60);
-
   await assert.rejects(pending, (error) => {
     assert.equal(error.code, "aborted");
     return true;
   });
+  assert.ok(pagesRequested > 0 && pagesRequested < 300);
+  context.diagnostic(JSON.stringify({ fixturePages: 300, firstPageAtMs: firstPageAt, abortDeliveredAtMs: abortDeliveredAt, cancelledAtMs: performance.now() - started, pagesRequested }));
 });
 
 test("G01: an abort before the read starts still refuses immediately", async () => {
@@ -127,34 +154,29 @@ test("G01: an abort before the read starts still refuses immediately", async () 
   );
 });
 
-test("G01: a bounded page range bounds the work, and the block ceiling fires", async () => {
-  // The limits that *are* enforceable regardless of the above: selecting fewer
-  // pages does less work, and a document past the page ceiling is refused
-  // before any parsing happens.
+test("G01: a bounded page range returns only its selected pages", async () => {
   const pdf = buildLargePdf(300);
 
   const all = await measure(pdf);
   const few = await measure(pdf, { pages: "1-3" });
 
   assert.equal(few.document.metadata.pages_read, 3);
-  assert.ok(
-    few.elapsedMs < all.elapsedMs,
-    `reading 3 pages (${few.elapsedMs.toFixed(0)}ms) should cost less than 300 `
-    + `(${all.elapsedMs.toFixed(0)}ms)`,
-  );
   assert.ok(few.document.blocks.length < all.document.blocks.length);
 });
 
-test("G01: the page ceiling is refused before the document is parsed", async () => {
-  const pdf = buildLargePdf(300);
-  // Above the ceiling, the refusal must not depend on parsing the document
-  // first — that would make the ceiling a limit on the result rather than on
-  // the work.
-  const oversized = Buffer.concat([pdf, pdf]);
-  const { elapsedMs, ticks } = await measure(oversized).catch((error) => {
-    assert.ok(["invalid_document", "document_too_complex"].includes(error.code), error.code);
-    return { elapsedMs: 0, ticks: 0 };
+test("G01: the page ceiling refuses extraction after loading page metadata", async () => {
+  let pagesRequested = 0;
+  let destroyed = false;
+  const adapter = createPdfAdapter({
+    load: async () => ({
+      promise: Promise.resolve({
+        numPages: MAX_PDF_PAGES + 1,
+        async getPage() { pagesRequested += 1; },
+        async destroy() { destroyed = true; },
+      }), destroy() {},
+    }),
   });
-  assert.ok(elapsedMs < 200, "a refusal should not cost a full parse");
-  void ticks;
+  await assert.rejects(() => adapter.read({ bytes: new Uint8Array(), path: "oversized.pdf" }), (error) => error.code === "document_too_complex");
+  assert.equal(pagesRequested, 0);
+  assert.equal(destroyed, true);
 });

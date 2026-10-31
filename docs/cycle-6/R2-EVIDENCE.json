@@ -1,0 +1,200 @@
+{
+  "date": "2026-10-31",
+  "head": "ffd87807379a3016f9b09613c4ed5da775b539f0",
+  "scope": "Uncommitted working tree; automated rechecks, no second-person review or manual acceptance",
+  "node": "v22.23.2",
+  "checks": {
+    "runtime": {
+      "command": "node --test --test-timeout=60000 agent-runtime/test/runtime.test.mjs agent-runtime/test/session.test.mjs agent-runtime/test/protocol.test.mjs agent-runtime/test/config.test.mjs agent-runtime/test/agent-contracts.test.mjs agent-runtime/test/workspace.test.mjs agent-runtime/test/workspace-handoff.test.mjs agent-runtime/test/pdf-adapter.test.mjs agent-runtime/test/docx-adapter.test.mjs agent-runtime/test/docx-tools.test.mjs agent-runtime/test/workspace-tools.test.mjs agent-runtime/test/workspace-write-tools.test.mjs agent-runtime/test/skill-loader.test.mjs agent-runtime/test/skill-runtime.test.mjs agent-runtime/test/capability-availability.test.mjs agent-runtime/test/capability-result.test.mjs agent-runtime/test/capability-contract.test.mjs agent-runtime/test/capability-policy.test.mjs agent-runtime/test/capability-permission.test.mjs agent-runtime/test/capability-runtime.test.mjs agent-runtime/test/mcp-schema.test.mjs agent-runtime/test/mcp-result.test.mjs agent-runtime/test/mcp-config.test.mjs agent-runtime/test/mcp-client.test.mjs agent-runtime/test/mcp-adapter.test.mjs agent-runtime/test/mcp-runtime.test.mjs agent-runtime/test/p7-audit.test.mjs agent-runtime/test/parse-responsiveness.test.mjs agent-runtime/test/recovery-audit.test.mjs",
+      "exitCode": 0,
+      "summary": [
+        "ℹ tests 379",
+        "ℹ suites 0",
+        "ℹ pass 379",
+        "ℹ fail 0",
+        "ℹ cancelled 0",
+        "ℹ skipped 0",
+        "ℹ todo 0",
+        "ℹ duration_ms 9107.808"
+      ],
+      "tests": 379,
+      "passed": 379,
+      "failed": 0
+    },
+    "frontend": {
+      "command": "npm.cmd run frontend:test",
+      "tests": 23,
+      "passed": 23
+    },
+    "rust": {
+      "command": "cargo test --manifest-path src-tauri/Cargo.toml --lib --offline",
+      "tests": 41,
+      "passed": 41
+    },
+    "build": {
+      "command": "npm.cmd run build",
+      "passed": true
+    },
+    "layout": [
+      {
+        "width": 384,
+        "height": 1040,
+        "documentOverflow": false,
+        "composerVisible": true,
+        "horizontalOverflow": [],
+        "solidSurfaces": true,
+        "transparentConversation": true,
+        "alignedSurfaces": true,
+        "uniformRadii": true,
+        "permissionPresent": true,
+        "contentScrollable": false,
+        "material": "solid",
+        "missing": [],
+        "request": "request-1793443532371-1zerdu",
+        "attachmentSolid": true
+      },
+      {
+        "width": 256,
+        "height": 720,
+        "documentOverflow": false,
+        "composerVisible": true,
+        "horizontalOverflow": [],
+        "solidSurfaces": true,
+        "transparentConversation": true,
+        "alignedSurfaces": true,
+        "uniformRadii": true,
+        "permissionPresent": true,
+        "contentScrollable": true,
+        "material": "solid",
+        "missing": [],
+        "request": "request-1793443532758-ncfq1h",
+        "attachmentSolid": true
+      },
+      {
+        "width": 320,
+        "height": 600,
+        "documentOverflow": false,
+        "composerVisible": true,
+        "horizontalOverflow": [],
+        "solidSurfaces": true,
+        "transparentConversation": true,
+        "alignedSurfaces": true,
+        "uniformRadii": true,
+        "permissionPresent": true,
+        "contentScrollable": true,
+        "material": "solid",
+        "missing": [],
+        "request": "request-1793443533109-3rmdzt",
+        "attachmentSolid": true
+      },
+      {
+        "width": 256,
+        "height": 480,
+        "documentOverflow": false,
+        "composerVisible": true,
+        "horizontalOverflow": [],
+        "solidSurfaces": true,
+        "transparentConversation": true,
+        "alignedSurfaces": true,
+        "uniformRadii": true,
+        "permissionPresent": true,
+        "contentScrollable": true,
+        "material": "solid",
+        "missing": [],
+        "request": "request-1793443533470-r2uxqv",
+        "attachmentSolid": true
+      }
+    ]
+  },
+  "g01": {
+    "measurements": [
+      {
+        "fixturePages": 300,
+        "fixtureBytes": 93508,
+        "elapsedMs": 749.1843,
+        "heartbeatTicks": 18,
+        "worstGapMs": 473.3218
+      },
+      {
+        "fixturePages": 300,
+        "firstPageAtMs": 10.56759999999997,
+        "abortDeliveredAtMs": 25.096599999999967,
+        "cancelledAtMs": 28.042299999999955,
+        "pagesRequested": 15
+      }
+    ],
+    "limitation": "Loading and synchronous parsing segments have no proven universal time bound; periodic page-loop yields do deliver cancellation. Measurements are fixture observations."
+  },
+  "findings": {
+    "A01": {
+      "status": "automated recheck passed"
+    },
+    "A02": {
+      "status": "automated recheck passed"
+    },
+    "A03": {
+      "status": "automated recheck passed"
+    },
+    "A04": {
+      "status": "automated recheck passed"
+    },
+    "A05": {
+      "status": "automated recheck passed"
+    },
+    "A06": {
+      "status": "automated recheck passed"
+    },
+    "A07": {
+      "status": "fix revised; automated recheck passed"
+    },
+    "A08": {
+      "status": "fix revised; automated recheck passed"
+    },
+    "A09": {
+      "status": "automated recheck passed"
+    },
+    "A10": {
+      "status": "fix revised; automated recheck passed"
+    },
+    "A11": {
+      "status": "automated recheck passed"
+    },
+    "A12": {
+      "status": "automated recheck passed"
+    }
+  },
+  "observed_failures": {
+    "initial_named_regressions": {
+      "passed": 37,
+      "failed": 0
+    },
+    "initial_new_rechecks": {
+      "passed": 0,
+      "failed": 7
+    },
+    "additional": [
+      "Search continuation stopped progressing across scan/list limits",
+      "Warning list bounds were not disclosed",
+      "A11 accepted an invalid empty attachment without ever starting a run"
+    ],
+    "fixture_correction": "A long PDF line extended beyond the fixture MediaBox; replaced with visible multi-page text for the no-loss assertion"
+  },
+  "deferred": [
+    "FE-08 dynamic external focus tracking and explicit capture",
+    "G02 and full Windows/provider/manual acceptance",
+    "Installer and clean-environment verification",
+    "Codex/Claude Code adapters"
+  ],
+  "sha256": {
+    "src/plate.css": "c1f5e800d5752e531206230aef688e3c8971c538d2d52ace34b7250c0b272208",
+    "src/App.tsx": "ddc66e60b34c4cbc248a414c8cc3b9cafe62e5e4fc357023373a100bd176cba5",
+    "agent-runtime/src/workspace-tools.mjs": "6e1f32eeccd9ef15b799e5994c03b8eea138edbd0f652acf1ec8973a838b0e0a",
+    "agent-runtime/src/pdf-adapter.mjs": "4f99b4fb8000cbc4eac6559137ef6755cab0ab2c8480576b744f581dcd56534d",
+    "agent-runtime/src/docx-adapter.mjs": "6b89ff09499e221fdab0042cbf421e379bf7ad7e4652c1f2ad2e6fd27a65e899",
+    "agent-runtime/test/recovery-audit.test.mjs": "6a6602a192aececc6405ecbf354cbbff0c6eae59d0b72b9629227a3d6696e9d9",
+    "agent-runtime/test/mcp-runtime.test.mjs": "c75f449c6b7a6542c66b17c5efe46451ed2013b9f22cbdafa8641e4e71d06e60",
+    "agent-runtime/test/docx-tools.test.mjs": "1b9bcf4a5075809f04fee5ca3e5a765bae975418eb1ec414d8d121dfa6f04bda",
+    "agent-runtime/test/parse-responsiveness.test.mjs": "d2d6fc4708366ae87d1ce48af8f04051cdc7a00762f0ed77d557174fce9d465e",
+    "package.json": "3be685a984028316783025a7c2fa0a72192acbb35c9f33bafc1b61f1a68964d9"
+  }
+}

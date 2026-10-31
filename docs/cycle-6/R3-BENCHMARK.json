@@ -1,0 +1,170 @@
+{
+  "date": "2026-10-31",
+  "recorded_at": "2026-10-31T12:10:13.393Z",
+  "scope": "Synthetic local workspace development benchmark; no desktop, provider, installer, or clean-environment acceptance.",
+  "node": "v22.23.2",
+  "platform": "win32",
+  "os_release": "10.0.26200",
+  "arch": "x64",
+  "limits": {
+    "maxListEntries": 128,
+    "maxSearchFiles": 128,
+    "maxSearchResults": 64,
+    "maxSearchDepth": 24,
+    "maxSearchFileBytes": 65536,
+    "maxReadBytes": 262144,
+    "maxJsonExpandedBytes": 524288,
+    "maxJsonNodes": 10000,
+    "maxOutputBytes": 24576,
+    "maxDetailsBytes": 16384,
+    "maxQueryBytes": 512,
+    "maxPathBytes": 1024
+  },
+  "cases": [
+    {
+      "name": "small",
+      "files": 32,
+      "bytesPerFile": 64,
+      "setup_ms": 45.165,
+      "operations": [
+        {
+          "tool": "workspace.list",
+          "arguments": {
+            "path": "."
+          },
+          "elapsed_ms": 89.502,
+          "content_bytes": 4825,
+          "status": "succeeded",
+          "truncated": false,
+          "entry_count": 32,
+          "details_preview_entries": 32
+        },
+        {
+          "tool": "workspace.read",
+          "arguments": {
+            "path": "file-0000.txt"
+          },
+          "elapsed_ms": 11.294,
+          "content_bytes": 251,
+          "status": "succeeded",
+          "truncated": false
+        },
+        {
+          "tool": "workspace.search",
+          "arguments": {
+            "query": "BENCHMARK_NEEDLE",
+            "mode": "content"
+          },
+          "elapsed_ms": 129.288,
+          "content_bytes": 1279,
+          "status": "succeeded",
+          "truncated": false,
+          "result_count": 4,
+          "scanned_files": 32
+        }
+      ]
+    },
+    {
+      "name": "medium",
+      "files": 512,
+      "bytesPerFile": 1024,
+      "setup_ms": 308.349,
+      "operations": [
+        {
+          "tool": "workspace.list",
+          "arguments": {
+            "path": "."
+          },
+          "elapsed_ms": 175.205,
+          "content_bytes": 19215,
+          "status": "succeeded",
+          "truncated": true,
+          "entry_count": 128,
+          "details_preview_entries": 32,
+          "next_offset": 128
+        },
+        {
+          "tool": "workspace.read",
+          "arguments": {
+            "path": "file-0000.txt"
+          },
+          "elapsed_ms": 2.752,
+          "content_bytes": 1213,
+          "status": "succeeded",
+          "truncated": false
+        },
+        {
+          "tool": "workspace.search",
+          "arguments": {
+            "query": "BENCHMARK_NEEDLE",
+            "mode": "content"
+          },
+          "elapsed_ms": 543.056,
+          "content_bytes": 9790,
+          "status": "succeeded",
+          "truncated": true,
+          "result_count": 16,
+          "scanned_files": 128,
+          "next_scanned_offset": 128
+        }
+      ]
+    },
+    {
+      "name": "over-limit",
+      "files": 2048,
+      "bytesPerFile": 1024,
+      "oversizedBytes": 307200,
+      "setup_ms": 1217.733,
+      "operations": [
+        {
+          "tool": "workspace.list",
+          "arguments": {
+            "path": "."
+          },
+          "elapsed_ms": 93.43,
+          "content_bytes": 19216,
+          "status": "succeeded",
+          "truncated": true,
+          "entry_count": 128,
+          "details_preview_entries": 32,
+          "next_offset": 128
+        },
+        {
+          "tool": "workspace.read",
+          "arguments": {
+            "path": "file-0000.txt"
+          },
+          "elapsed_ms": 1.719,
+          "content_bytes": 1213,
+          "status": "succeeded",
+          "truncated": false
+        },
+        {
+          "tool": "workspace.search",
+          "arguments": {
+            "query": "BENCHMARK_NEEDLE",
+            "mode": "content"
+          },
+          "elapsed_ms": 405.733,
+          "content_bytes": 9790,
+          "status": "succeeded",
+          "truncated": true,
+          "result_count": 16,
+          "scanned_files": 128,
+          "next_scanned_offset": 128
+        },
+        {
+          "tool": "workspace.read",
+          "arguments": {
+            "path": "oversized.txt"
+          },
+          "elapsed_ms": 1.533,
+          "content_bytes": 321,
+          "status": "failed",
+          "code": "result_too_large",
+          "truncated": false
+        }
+      ]
+    }
+  ]
+}

@@ -374,24 +374,45 @@ test("the tool budget is enforced across servers", async () => {
   assert.equal(controller.diagnostics[0].code, "mcp_tool_budget_exceeded");
 });
 
-test("a user classification lowers a tool, and the server cannot", async () => {
-  const { controller } = await controllerFor({
-    tools: [tool("echo-search")],
-    servers: [configFor({ tool_classifications: { "echo-search": { effect: "read", egress: "none" } } })],
+test("a pinned user classification still requires approval for an external call", async () => {
+  const parameters = { type: "object", properties: {} };
+  const { controller, connection, broker } = await controllerFor({
+    tools: [tool("echo-search", parameters)],
+    servers: [configFor({
+      tool_classifications: {
+        "echo-search": {
+          effect: "read",
+          egress: "none",
+          schema_digest: schemaDigest(parameters),
+          server_fingerprint: configFor().fingerprint,
+        },
+      },
+    })],
+    decision: "deny",
   });
   const [adapted] = await controller.tools();
   assert.equal(adapted.descriptor.effect, "read");
   assert.equal(adapted.descriptor.egress, "none");
-  // Fields the user did not override keep the cautious default.
   assert.equal(adapted.descriptor.scope, "host");
   assert.equal(adapted.descriptor.replay, "non_replayable");
+  assert.deepEqual(controller.diagnostics, []);
+  const result = await runTool(controller, broker, "echo-search");
+  assert.equal(result.details.status, "denied");
+  assert.equal(broker.requests.length, 1);
+  assert.equal(broker.requests[0].effect, "read");
+  assert.equal(connection.calls.length, 0);
 });
 
 test("a classification bound to a schema dies with that schema", async () => {
   const parameters = { type: "object", properties: { query: { type: "string" } } };
   const bound = configFor({
     tool_classifications: {
-      "echo-search": { effect: "read", egress: "none", schema_digest: schemaDigest(parameters) },
+      "echo-search": {
+        effect: "read",
+        egress: "none",
+        schema_digest: schemaDigest(parameters),
+        server_fingerprint: configFor().fingerprint,
+      },
     },
   });
   assert.equal(classifyMcpTool(bound, "echo-search", parameters).effect, "read");
@@ -402,14 +423,91 @@ test("a classification bound to a schema dies with that schema", async () => {
   assert.equal(classifyMcpTool(bound, "echo-search", changed).effect, "execute");
 });
 
-test("an unbound classification is applied but recorded as unbound", async () => {
-  const { controller } = await controllerFor({
+test("an unbound classification falls back before the permission preview or server call", async () => {
+  const parameters = { type: "object", properties: {} };
+  const { controller, connection, broker } = await controllerFor({
     tools: [tool("echo-search")],
     servers: [configFor({ tool_classifications: { "echo-search": { effect: "read" } } })],
+    decision: "deny",
   });
   const [adapted] = await controller.tools();
-  assert.equal(adapted.descriptor.effect, "read");
+  assert.equal(adapted.descriptor.effect, "execute");
   assert.equal(controller.diagnostics[0].code, "mcp_classification_unbound");
+  assert.ok(controller.diagnostics[0].message.includes(schemaDigest(parameters)));
+  assert.ok(controller.diagnostics[0].message.includes(configFor().fingerprint));
+  const result = await runTool(controller, broker, "echo-search");
+  assert.equal(result.details.status, "denied");
+  assert.equal(broker.requests[0].effect, "execute");
+  assert.equal(connection.calls.length, 0);
+});
+
+test("a schema pin or a server pin alone cannot lower a classification", async () => {
+  const parameters = { type: "object", properties: {} };
+  for (const binding of [
+    { schema_digest: schemaDigest(parameters) },
+    { server_fingerprint: configFor().fingerprint },
+  ]) {
+    const { controller } = await controllerFor({
+      tools: [tool("echo-search", parameters)],
+      servers: [configFor({ tool_classifications: { "echo-search": { effect: "read", ...binding } } })],
+    });
+    const [adapted] = await controller.tools();
+    assert.equal(adapted.descriptor.effect, "execute");
+    assert.equal(controller.diagnostics[0].code, "mcp_classification_unbound");
+  }
+});
+
+test("changed server launch identity invalidates a pin even when the schema is unchanged", async () => {
+  const parameters = { type: "object", properties: {} };
+  const toolClassifications = {
+    "echo-search": {
+      effect: "read",
+      schema_digest: schemaDigest(parameters),
+      server_fingerprint: configFor().fingerprint,
+    },
+  };
+  for (const change of [
+    { command: "C:\\other\\node.exe" },
+    { args: [SERVER_PATH, "--changed"] },
+    { cwd: "C:\\other" },
+    { env: { SERVER_MODE: { from_config: "NEW_MODE" } } },
+  ]) {
+    const config = configFor({ ...change, tool_classifications: toolClassifications });
+    const { controller } = await controllerFor({
+      tools: [tool("echo-search", parameters)],
+      servers: [config],
+      configValues: { NEW_MODE: "changed" },
+    });
+    const [adapted] = await controller.tools();
+    assert.equal(adapted.descriptor.effect, "execute");
+    assert.equal(controller.diagnostics[0].code, "mcp_classification_changed");
+    assert.ok(controller.diagnostics[0].message.includes(config.fingerprint));
+  }
+});
+
+test("schema changes on a reused connection discard old classifications and diagnostics", async () => {
+  const original = tool("echo-search");
+  const advertised = [original];
+  const { controller } = await controllerFor({
+    tools: advertised,
+    servers: [configFor({ tool_classifications: {
+      "echo-search": {
+        effect: "read",
+        schema_digest: schemaDigest(original.inputSchema),
+        server_fingerprint: configFor().fingerprint,
+      },
+    } })],
+  });
+  assert.equal((await controller.tools())[0].descriptor.effect, "read");
+  advertised[0] = tool("echo-search", { type: "object", properties: { url: { type: "string" } } });
+  assert.equal((await controller.tools())[0].descriptor.effect, "execute");
+  assert.equal(controller.diagnostics.length, 1);
+  assert.equal(controller.diagnostics[0].code, "mcp_classification_changed");
+  await controller.tools();
+  assert.equal(controller.diagnostics.length, 1);
+  advertised[0] = original;
+  assert.equal((await controller.tools())[0].descriptor.effect, "read");
+  assert.deepEqual(controller.diagnostics, []);
 });
 
 test("changing a server's identity invalidates its cached connection", async () => {

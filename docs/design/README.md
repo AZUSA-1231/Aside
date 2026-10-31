@@ -1,11 +1,27 @@
 # Aside design references
 
-**Status:** reference material. Nothing here is acceptance evidence, and nothing
-here describes shipped behaviour.
+**Status:** `SUMMONED-SIDEBAR.md` is the current design, implemented in the R1
+working copy with development checks. Native desktop observation remains
+unperformed. `mockup.html` and the material notes below are historical.
+
+## Current sidebar direction
+
+[`SUMMONED-SIDEBAR.md`](./SUMMONED-SIDEBAR.md) records the agreed next design:
+a full-height sidebar with one continuous Acrylic base and opaque white
+components. The shortcut must capture the original window and automatically
+arrange it beside Aside at 80/20; pressing it again must restore that window.
+The R1 working copy now implements this restoration and the material change.
+See [`FRONTEND-REVIEW.md`](../FRONTEND-REVIEW.md) for automated evidence and
+remaining native observation limits.
+
+**2026-10-31 disposition:** The material and edge-shell specification below is
+historical and no longer authoritative for the next UI. Follow
+[`RECOVERY-PLAN.md`](../RECOVERY-PLAN.md) for frontend simplification and legacy
+issue tracking. The mockup is retained as a reference, not a task to finish.
 
 ## `mockup.html`
 
-The visual direction for Cycle 7's surface. Open it in a browser; it is
+The historical visual direction for Cycle 7's surface. Open it in a browser; it is
 self-contained and needs no build.
 
 It is a copy of `WinIsland/vision/mockup.html`, taken on 2026-09-26. WinIsland is

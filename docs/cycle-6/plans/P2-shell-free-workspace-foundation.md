@@ -1,9 +1,17 @@
 # P2 - Shell-Free Workspace Foundation
 
-Status: implemented 2026-09-17 for the reproduced gap and the pagination surface; see Verification for the deferred items
+Status: implemented 2026-09-17; R3 automated policy review and Windows synthetic benchmark completed 2026-10-31; manual evidence remains deferred
 Depends on: P0 - Capability Contract and Policy Plane; P1 - Context-to-Workspace Automatic Handoff
 Unblocks: P3, P4, and P7
 Source requirements: PRD sections 3.1, 5, 6, 12 through 15, C6-09 through C6-14, and C6-42
+
+**R3 follow-up (2026-10-31):** [integration evidence](../R3-INTEGRATION.md)
+and [Windows measurements](../R3-BENCHMARK.json) now cover the previously
+unreviewed UTF-8 / literal-query / no-ignore / case behavior and the synthetic
+32 / 512 / 2048-file benchmark. `mode: both` now retains matching PDF/Word names
+while reporting skipped content. No glob, ignore-file, or extra text-encoding
+feature was added. Historical deferrals below describe the P2 implementation
+date; desktop/manual acceptance remains unperformed.
 
 ## Outcome
 
@@ -181,9 +189,11 @@ is a different trust boundary that [C6-I006](../ISSUES.md) already records and
 [C6-I027](../ISSUES.md#c6-i027---windows-shell-routing-is-refused-in-mcp-server-configuration)
 tightened. Reading this line as "the runtime spawns nothing" would be wrong.
 
-### Deferred, with owners
+### Deferred at P2 implementation (historical)
 
-These P2 tasks are **not** done and are recorded rather than quietly skipped:
+At the P2 implementation date these tasks were **not** done. The dated R3
+follow-up above supersedes the review and benchmark gaps; it does not close
+the separately deferred manual evidence:
 
 - **Task 4 (encoding policy)** — reading is UTF-8 with a fatal decoder, so an
   unsupported encoding already returns `unsupported_encoding` rather than

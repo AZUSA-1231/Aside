@@ -14,10 +14,7 @@ import type {
  * type it claims to be, and an unrecognized shape produces `null` rather than a
  * half-filled projection.
  *
- * These are pure functions on purpose. The repository has no frontend test
- * runner (C6-I031), so the honest thing is to keep the projection logic in a
- * module that can be tested mechanically once one exists, rather than buried in
- * a component where it cannot be reached.
+ * These pure projections are exercised through the frontend regression tests.
  */
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -89,17 +86,23 @@ export function readDocumentStatus(
   const pageCount = asNumber(record.page_count);
   const pagesRead = asNumber(record.pages_read);
   const nextPage = asNumber(record.next_page);
+  const blocksRead = asNumber(record.blocks_read);
+  const nextBlock = asNumber(record.next_block);
+  const resumePage = asNumber(record.resume_page);
 
   return {
     format,
     blockCount,
+    blocksRead,
     pageCount,
     pagesRead,
     nextPage,
+    nextBlock,
+    resumePage,
     partial: record.partial === true,
     truncated: record.truncated === true,
     warnings: narrowWarnings(record.warnings),
-    scope: describeReadScope({ pageCount, pagesRead, blockCount, nextPage }),
+    scope: describeReadScope({ pageCount, pagesRead, blockCount, blocksRead, nextPage, nextBlock, resumePage }),
   };
 }
 
@@ -115,21 +118,34 @@ export function describeReadScope({
   pageCount,
   pagesRead,
   blockCount,
+  blocksRead,
   nextPage,
+  nextBlock,
+  resumePage,
 }: {
   pageCount?: number;
   pagesRead?: number;
   blockCount: number;
+  blocksRead?: number;
   nextPage?: number;
+  nextBlock?: number;
+  resumePage?: number;
 }): string {
+  const parts: string[] = [];
   if (pageCount !== undefined && pagesRead !== undefined) {
-    const base = `${pagesRead} of ${pageCount} page${pageCount === 1 ? "" : "s"}`;
-    return nextPage === undefined ? base : `${base}, continues at page ${nextPage}`;
+    parts.push(`${pagesRead} of ${pageCount} page${pageCount === 1 ? "" : "s"} loaded`);
+  } else if (pageCount !== undefined) {
+    parts.push(`${pageCount} page${pageCount === 1 ? "" : "s"}`);
   }
-  if (pageCount !== undefined) {
-    return `${blockCount} block${blockCount === 1 ? "" : "s"} across ${pageCount} page${pageCount === 1 ? "" : "s"}`;
+  parts.push(blocksRead === undefined
+    ? `${blockCount} block${blockCount === 1 ? "" : "s"}`
+    : `${blocksRead} of ${blockCount} blocks returned`);
+  if (nextBlock !== undefined) {
+    parts.push(`continues at block offset ${nextBlock}${resumePage === undefined ? "" : ` (page ${resumePage})`}`);
+  } else if (nextPage !== undefined) {
+    parts.push(`continues at page ${nextPage}`);
   }
-  return `${blockCount} block${blockCount === 1 ? "" : "s"}`;
+  return parts.join(" · ");
 }
 
 /**
@@ -181,6 +197,7 @@ function narrowStructure(value: unknown): Record<string, number> {
  * harder to see.
  */
 export function describeStructure(structure: Record<string, number>): string {
+  if (Object.keys(structure).length === 0) return "Structure not reported";
   const parts = Object.entries(structure)
     .filter(([, count]) => count > 0)
     .map(([key, count]) => `${count} ${key.replace(/_/g, " ")}`);

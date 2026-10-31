@@ -481,8 +481,8 @@ pub fn classify_foreground_host() -> HostView {
     }
 }
 
-pub fn capture_foreground_context() -> HostCaptureResult {
-    match snapshot_foreground_target() {
+pub fn capture_optional_target_context(target: Option<HostTargetSnapshot>) -> HostCaptureResult {
+    match target {
         Some(target) => capture_target_context(target),
         None => failed_result(
             next_capture_id(),
@@ -490,10 +490,6 @@ pub fn capture_foreground_context() -> HostCaptureResult {
             HostCaptureErrorCode::NoForegroundTarget,
         ),
     }
-}
-
-pub fn snapshot_foreground_target() -> Option<HostTargetSnapshot> {
-    platform::foreground_target().map(HostTargetSnapshot::from_target)
 }
 
 pub fn capture_target_context(target: HostTargetSnapshot) -> HostCaptureResult {

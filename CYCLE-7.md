@@ -1,5 +1,18 @@
 # Cycle 7 — 岛状界面交付记录
 
+> 当前快捷键呼出/真正隐藏的实现、接口展示复查和材质沿革见
+> [docs/FRONTEND-REVIEW.md](docs/FRONTEND-REVIEW.md)。以下胶囊、排列和材质试验保留为历史。
+
+> **2026-10-31 状态更新：** 本文件保留旧版交付与材质试验记录，不是当前执行计划。
+> 当前优先收束前端路线、处理历史遗留并补齐自研 runtime；Codex/Claude Code 接入延后为新 feature。
+> 当前任务见 [docs/RECOVERY-PLAN.md](docs/RECOVERY-PLAN.md)。下文“当前窗口材质决定”属于旧阶段，
+> 不覆盖现有分岛版配置，也不能用其中的旧测试结果证明当前工作区或后续收束版已通过。
+
+> 本文件的窗口材质与旧验证描述属于已存档的 Acrylic 版本
+> `cycle-7-acrylic-v1`（`ffd8780`）。当前分岛版的参数位置和未验收边界，
+> 请参阅 `docs/cycle-7/PLATE-V2-STYLE.md`；旧版参数见
+> `docs/cycle-7/ACRYLIC-V1-STYLE.md`。
+
 ## 当前窗口材质决定（取代下文早期实现与材质复核结论）
 
 按用户提供的修复路线执行，验收由用户负责：

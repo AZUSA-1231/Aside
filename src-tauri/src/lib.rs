@@ -19,11 +19,6 @@ use tauri_plugin_global_shortcut::ShortcutState;
 pub fn run() {
     let app = tauri::Builder::default()
         .manage(AppState::default())
-        .setup(|app| {
-            commands::initialize_capsule(app.handle())
-                .map_err(|error| std::io::Error::other(error.message))?;
-            Ok(())
-        })
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_shortcut("CommandOrControl+Alt+A")
@@ -43,6 +38,21 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            if let Err(error) = platform::start_foreground_tracking() {
+                eprintln!("Aside foreground tracking: {error}");
+                use tauri::Emitter;
+                let _ = app.emit(
+                    commands::NATIVE_ERROR_EVENT,
+                    commands::NativeError {
+                        operation: "foreground_tracking".into(),
+                        recoverable: true,
+                        message: error.to_string(),
+                    },
+                );
+            }
+            Ok(())
+        })
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
@@ -56,12 +66,9 @@ pub fn run() {
             commands::hide_agent,
             commands::toggle_agent,
             commands::set_pinned,
-            commands::enter_workspace_mode,
-            commands::exit_workspace_mode,
             commands::get_active_window_state,
             commands::get_active_host,
             commands::capture_active_host_context,
-            commands::get_workspace_state,
             commands::move_agent,
             commands::resize_agent,
             commands::runtime_prompt,
@@ -78,7 +85,17 @@ pub fn run() {
             event,
             tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
         ) {
+            if let Err(error) =
+                commands::hide_agent_internal(app_handle, app_handle.state::<AppState>().inner())
+            {
+                eprintln!("Aside exit cleanup: {}", error.message);
+            }
             app_handle.state::<AppState>().runtime.shutdown();
+        }
+        if matches!(event, tauri::RunEvent::Exit) {
+            if let Err(error) = platform::stop_foreground_tracking() {
+                eprintln!("Aside foreground tracking cleanup: {error}");
+            }
         }
     });
 }

@@ -284,6 +284,8 @@ export function createPdfAdapter({ load = defaultLoader, id = PDF_ADAPTER_ID } =
         const warnings = [];
         let pagesWithText = 0;
         let pagesWithoutText = 0;
+        let pagesRead = 0;
+        let extractionTruncated = false;
         let pagesSinceYield = 0;
         for (const pageNumber of pages) {
           if (signal?.aborted) {
@@ -312,14 +314,17 @@ export function createPdfAdapter({ load = defaultLoader, id = PDF_ADAPTER_ID } =
             }
           }
           if (blocks.length >= MAX_PDF_BLOCKS) {
+            extractionTruncated = true;
             warnings.push({
               code: "block_limit",
               message: `Extraction stopped at ${MAX_PDF_BLOCKS} blocks.`,
+              page: pageNumber,
             });
             break;
           }
           const page = await document.getPage(pageNumber);
           const content = await page.getTextContent();
+          pagesRead += 1;
           const lines = itemsToLines(content?.items ?? []);
           if (lines.length === 0) {
             pagesWithoutText += 1;
@@ -332,14 +337,19 @@ export function createPdfAdapter({ load = defaultLoader, id = PDF_ADAPTER_ID } =
           }
           pagesWithText += 1;
           blocks.push({ type: "page_break", locator: { page: pageNumber } });
-          lines.forEach((line, lineIndex) => {
-            if (blocks.length >= MAX_PDF_BLOCKS) return;
+          for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+            if (blocks.length >= MAX_PDF_BLOCKS) {
+              extractionTruncated = true;
+              warnings.push({ code: "block_limit", message: `Extraction stopped within page ${pageNumber} at ${MAX_PDF_BLOCKS} blocks.`, page: pageNumber });
+              break;
+            }
             blocks.push({
               type: "paragraph",
-              text: line,
+              text: lines[lineIndex],
               locator: { page: pageNumber, block: lineIndex + 1 },
             });
-          });
+          }
+          if (extractionTruncated) break;
         }
 
         if (pagesWithText === 0) {
@@ -365,10 +375,11 @@ export function createPdfAdapter({ load = defaultLoader, id = PDF_ADAPTER_ID } =
           media_type: "application/pdf",
           blocks,
           warnings,
-          partial: pagesWithoutText > 0,
+          partial: pagesWithoutText > 0 || extractionTruncated,
+          truncated: extractionTruncated,
           metadata: {
             pages: pageCount,
-            pages_read: pages.length,
+            pages_read: pagesRead,
             pages_without_text: pagesWithoutText,
             ...(boundedMetadata(info.Title) ? { title: boundedMetadata(info.Title) } : {}),
             ...(boundedMetadata(info.Author) ? { author: boundedMetadata(info.Author) } : {}),

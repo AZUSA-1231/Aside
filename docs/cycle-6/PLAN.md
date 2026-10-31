@@ -1,5 +1,19 @@
 # Cycle 6 Capability Runtime Execution Plan
 
+**2026-10-31 follow-up:** [R2 automated recheck](./R2-RECHECK.md) and [current evidence](./R2-EVIDENCE.json) record A01-A12 checks and the additional A07/A08/A10 fixes. Historical counts and findings below retain their dated scope. Manual acceptance and release remain deferred; no criterion is closed solely by this follow-up.
+
+**R3 follow-up (2026-10-31):** [integration evidence](./R3-INTEGRATION.md)
+and [Windows synthetic measurements](./R3-BENCHMARK.json) supplement P2/P3/P4
+and record C6-I037/038 fixes. Current gates are 388 runtime / 45 Rust / 23
+frontend plus build. Historical counts, manual columns and release deferrals
+remain distinct.
+
+**R4 follow-up (2026-10-31):** the [finite RT-01–11 development checklist](../RECOVERY-PLAN.md)
+is complete within its declared limits. [R4 evidence](./R4-RUNTIME.md) records
+MCP binding and diagnostic fixes, 394 runtime / 24 frontend checks and build.
+Manual acceptance, independent review of new fixes, and release are not closed
+by that development status; legacy feature candidates remain backlog.
+
 Status: implementation phase delivered; **independent audit complete, acceptance blocked** (2026-09-19). The current gate passes **365** runtime and 37 Rust tests (verified 2026-09-23; it was 328 at the audit). Manual acceptance is **indefinitely deferred** as of 2026-09-23 — see [Cycle 7 LEGACY](../cycle-7/LEGACY.md#manual-acceptance-indefinitely-deferred). P7 task 12 has recorded repeated-gate evidence; the independent audit found 6 P1 and 6 P2 defects plus evidence/traceability gaps. See [C6-I035](./ISSUES.md#c6-i035---passing-gates-do-not-establish-cycle-acceptance) and [AUDIT-REPORT.md](./AUDIT-REPORT.md). M2's recorded 2026-09-17 Windows trace remains limited evidence; Cycle 5 carryover and Cycle 6 manual acceptance are still pending.
 
 Scope was corrected on 2026-09-19 by [C6-I034](./ISSUES.md#c6-i034---p7-was-over-broad-packaging-and-surface-quality-move-to-cycle-7): packaging and installed-application support, and frontend interaction quality, moved to Cycle 7. **Cycle 6 produces no installable artifact**, and its closeout is not a release decision.

@@ -5,13 +5,13 @@ use std::{fs, io};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State, WebviewWindow};
 
-use crate::context::{self, HostCaptureResult, HostTargetSnapshot, HostView};
-use crate::platform::{self, Rect, TargetWindow};
+use crate::context::{self, HostCaptureResult, HostView};
+use crate::platform::{self, Rect, TargetWindow, WindowSnapshot};
 use crate::runtime::{
     AsideTurnContext, AsideWorkspaceHint, PermissionDecision, PermissionIdentity, RuntimeManager,
     RuntimeRequest,
 };
-use crate::workspace::{self, WorkspaceSnapshot};
+use crate::workspace;
 
 pub const AGENT_STATE_EVENT: &str = "agent://state-changed";
 pub const NATIVE_ERROR_EVENT: &str = "agent://error";
@@ -30,7 +30,6 @@ pub enum Visibility {
 pub enum Surface {
     #[default]
     Side,
-    Workspace,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -39,6 +38,15 @@ pub struct AgentState {
     pub visibility: Visibility,
     pub surface: Surface,
     pub pinned: bool,
+    pub material: PanelMaterial,
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PanelMaterial {
+    Acrylic,
+    #[default]
+    Solid,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -72,12 +80,6 @@ pub struct WindowContext {
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct WorkspaceState {
-    pub active: bool,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct HostCaptureResponse {
     #[serde(flatten)]
     pub result: HostCaptureResult,
@@ -99,7 +101,10 @@ pub struct NativeState {
     visibility: Visibility,
     surface: Surface,
     pinned: bool,
-    workspace: Option<WorkspaceSnapshot>,
+    material: PanelMaterial,
+    restoration: workspace::Restoration<WindowSnapshot>,
+    summon_target: Option<TargetWindow>,
+    summon: workspace::SummonRequests,
 }
 
 impl NativeState {
@@ -108,6 +113,7 @@ impl NativeState {
             visibility: self.visibility,
             surface: self.surface,
             pinned: self.pinned,
+            material: self.material,
         }
     }
 }
@@ -197,15 +203,15 @@ fn set_agent_native_bounds(window: &WebviewWindow, bounds: Rect) -> Result<(), N
     }
 }
 
-fn set_side_bounds(window: &WebviewWindow, work_area: Rect) -> Result<(), NativeError> {
-    let side_bounds = workspace::side_layout(work_area).agent;
-    match set_agent_native_bounds(window, side_bounds) {
+fn set_panel_bounds(window: &WebviewWindow, work_area: Rect) -> Result<(), NativeError> {
+    let bounds = workspace::side_layout(work_area).agent;
+    match set_agent_native_bounds(window, bounds) {
         Ok(()) => Ok(()),
-        Err(native_failure) => set_agent_bounds(window, side_bounds).map_err(|fallback_error| {
+        Err(native_failure) => set_agent_bounds(window, bounds).map_err(|fallback_error| {
             native_error(
                 "side",
                 format!(
-                    "Aside could not occupy the full-height Side rail: {} ({})",
+                    "Aside could not position its panel: {} ({})",
                     native_failure.message, fallback_error.message
                 ),
                 true,
@@ -214,34 +220,12 @@ fn set_side_bounds(window: &WebviewWindow, work_area: Rect) -> Result<(), Native
     }
 }
 
-// Hidden describes the panel, not the resident edge control. Keep the old IPC
-// contract while giving the collapsed surface its own small, non-activating window.
-pub(crate) fn initialize_capsule(app: &AppHandle) -> Result<(), NativeError> {
-    let window = agent_window(app)?;
-    let area = work_area_from_tauri(&window)?;
-    set_capsule_bounds(&window, area)?;
-    window
-        .show()
-        .map_err(|error| native_error("capsule", error.to_string(), true))?;
-    apply_window_corners(app, &window);
-    Ok(())
-}
-
 // Apply only after show(); unsupported DWM preferences are reported without
 // taking away the already-visible window.
 fn apply_window_corners(app: &AppHandle, window: &WebviewWindow) {
     if let Err(error) = crate::window_corner::apply(window) {
         emit_error(app, native_error("window_corner", error, true));
     }
-}
-
-fn set_capsule_bounds(window: &WebviewWindow, area: Rect) -> Result<(), NativeError> {
-    let scale = window.scale_factor().unwrap_or(1.0);
-    let bounds = workspace::capsule_layout(area, scale);
-    window
-        .set_always_on_top(true)
-        .map_err(|error| native_error("capsule", error.to_string(), true))?;
-    set_agent_native_bounds(window, bounds)
 }
 
 fn work_area_from_tauri(window: &WebviewWindow) -> Result<Rect, NativeError> {
@@ -291,48 +275,40 @@ fn public_context(target: &TargetWindow) -> WindowContext {
     }
 }
 
-fn show_agent_locked(app: &AppHandle, state: &AppState) -> Result<AgentState, NativeError> {
-    if matches!(lock_native(state)?.visibility, Visibility::Visible) {
-        return emit_state(app, state);
-    }
-
+fn show_prepared_locked(
+    app: &AppHandle,
+    state: &AppState,
+    target: Option<TargetWindow>,
+    snapshot: Option<WindowSnapshot>,
+    work_area: Rect,
+) -> Result<AgentState, NativeError> {
     let window = agent_window(app)?;
-    let foreground = platform::foreground_target();
-    let work_area = foreground
-        .as_ref()
-        .map(|target| target.work_area)
-        .unwrap_or(work_area_from_tauri(&window)?);
-    let mut surface = Surface::Side;
-    let mut snapshot = None;
+    set_panel_bounds(&window, work_area)?;
 
-    if let Some(target) = foreground.filter(TargetWindow::is_workspace_candidate) {
-        let layout = workspace::side_layout(target.work_area);
-        let candidate_snapshot = WorkspaceSnapshot::new(target.clone());
-        let workspace_result = agent_native_handle(&window).and_then(|agent_handle| {
-            platform::tile_target_with_agent(&target, layout.target, agent_handle, layout.agent)
-                .map_err(|error| native_error("workspace", error.to_string(), true))
-        });
-        let workspace_ready = workspace_result.is_ok();
-
-        if workspace_ready {
-            surface = Surface::Workspace;
-            snapshot = Some(candidate_snapshot);
-        } else {
-            if let Err(error) = workspace_result {
-                let _ = platform::restore_target(&target);
-                emit_error(
-                    app,
-                    native_error(
-                        "workspace",
-                        format!("Workspace Mode was unavailable: {}", error.message),
-                        true,
-                    ),
-                );
-            }
-            set_side_bounds(&window, work_area)?;
+    if let Some(snapshot) = snapshot {
+        let mut native = lock_native(state)?;
+        native
+            .restoration
+            .remember(snapshot.clone())
+            .map_err(|message| native_error("restore_host", message, true))?;
+        if let Err(error) =
+            platform::tile_target(&snapshot, workspace::side_layout(work_area).target)
+        {
+            native
+                .restoration
+                .restore(platform::restore_target)
+                .map_err(|restore| {
+                    native_error("restore_host", format!("{error} {restore}"), true)
+                })?;
+            emit_error(
+                app,
+                native_error(
+                    "tile_host",
+                    format!("{error} Aside opened without changing the original layout."),
+                    true,
+                ),
+            );
         }
-    } else {
-        set_side_bounds(&window, work_area)?;
     }
 
     let pinned = lock_native(state)?.pinned;
@@ -346,10 +322,28 @@ fn show_agent_locked(app: &AppHandle, state: &AppState) -> Result<AgentState, Na
             ),
         );
     }
-    window
-        .show()
-        .map_err(|_| native_error("show_agent", "Aside could not be shown.", true))?;
+    if let Err(error) = window.show() {
+        lock_native(state)?
+            .restoration
+            .restore(platform::restore_target)
+            .map_err(|restore| native_error("restore_host", format!("{error} {restore}"), true))?;
+        return Err(native_error(
+            "show_agent",
+            "Aside could not be shown; the original window was restored.",
+            true,
+        ));
+    }
     apply_window_corners(app, &window);
+    if let Err(error) = set_panel_bounds(&window, work_area) {
+        let _ = window.hide();
+        lock_native(state)?
+            .restoration
+            .restore(platform::restore_target)
+            .map_err(|restore| {
+                native_error("restore_host", format!("{} {restore}", error.message), true)
+            })?;
+        return Err(error);
+    }
     if window.set_focus().is_err() {
         emit_error(
             app,
@@ -364,9 +358,73 @@ fn show_agent_locked(app: &AppHandle, state: &AppState) -> Result<AgentState, Na
     {
         let mut native = lock_native(state)?;
         native.visibility = Visibility::Visible;
-        native.surface = surface;
-        native.workspace = snapshot;
+        native.surface = Surface::Side;
+        native.summon_target = target;
+        native.material = if crate::window_corner::acrylic_available(&window) {
+            PanelMaterial::Acrylic
+        } else {
+            PanelMaterial::Solid
+        };
     }
+    emit_state(app, state)
+}
+
+fn show_agent_locked(app: &AppHandle, state: &AppState) -> Result<AgentState, NativeError> {
+    {
+        let native = lock_native(state)?;
+        if matches!(native.visibility, Visibility::Visible) || native.summon.is_pending() {
+            drop(native);
+            return emit_state(app, state);
+        }
+    }
+    lock_native(state)?
+        .restoration
+        .restore(platform::restore_target)
+        .map_err(|error| native_error("restore_host", error.to_string(), true))?;
+    let window = agent_window(app)?;
+    let target = platform::foreground_target();
+    let work_area = target
+        .as_ref()
+        .map(|target| target.work_area)
+        .map(Ok)
+        .unwrap_or_else(|| work_area_from_tauri(&window))?;
+    let snapshot = target
+        .as_ref()
+        .filter(|target| target.is_workspace_candidate())
+        .map(|target| platform::snapshot_target(target.clone()))
+        .transpose()
+        .map_err(|error| native_error("save_host", error.to_string(), true))?;
+    let generation = lock_native(state)?.summon.begin();
+    let app_handle = app.clone();
+    std::thread::spawn(move || {
+        let capture_target = target.clone().map(context::HostTargetSnapshot::from_target);
+        let capture = context::capture_optional_target_context(capture_target);
+        let saved = capture_with_artifact(&app_handle, capture);
+        let callback_handle = app_handle.clone();
+        if let Err(error) = app_handle.run_on_main_thread(move || {
+            let state = callback_handle.state::<AppState>();
+            let operation = lock_operation(state.inner());
+            let result = operation.and_then(|_operation| {
+                if !lock_native(state.inner())?.summon.finish(generation) {
+                    return Ok(());
+                }
+                emit_host_capture(&callback_handle, saved);
+                show_prepared_locked(&callback_handle, state.inner(), target, snapshot, work_area)?;
+                Ok(())
+            });
+            if let Err(error) = result {
+                emit_error(&callback_handle, error);
+            }
+        }) {
+            if let Ok(mut native) = app_handle.state::<AppState>().native.lock() {
+                native.summon.finish(generation);
+            }
+            emit_error(
+                &app_handle,
+                native_error("show_agent", error.to_string(), true),
+            );
+        }
+    });
     emit_state(app, state)
 }
 
@@ -374,50 +432,40 @@ pub(crate) fn hide_agent_locked(
     app: &AppHandle,
     state: &AppState,
 ) -> Result<AgentState, NativeError> {
-    let snapshot = lock_native(state)?.workspace.clone();
-    if let Some(snapshot) = snapshot {
-        if let Err(error) = platform::restore_target(&snapshot.target) {
-            emit_error(
-                app,
-                native_error("workspace_restore", error.to_string(), true),
-            );
+    let hide_result = agent_window(app).and_then(|window| {
+        window
+            .hide()
+            .map_err(|error| native_error("hide_agent", error.to_string(), true))
+    });
+    let restore_result = {
+        let mut native = lock_native(state)?;
+        native.summon.cancel();
+        if hide_result.is_ok() {
+            native.visibility = Visibility::Hidden;
         }
-        let mut native = lock_native(state)?;
-        native.workspace = None;
         native.surface = Surface::Side;
+        let target = native.summon_target.clone();
+        let result = native
+            .restoration
+            .restore(platform::restore_target)
+            .map_err(|error| native_error("restore_host", error.to_string(), true));
+        if result.is_ok() {
+            native.summon_target = None;
+            if let Some(target) = target {
+                if let Err(error) = platform::focus_target(&target) {
+                    emit_error(app, native_error("focus_host", error.to_string(), true));
+                }
+            }
+        }
+        result
+    };
+    let snapshot = emit_state(app, state)?;
+    if let Err(error) = restore_result {
+        emit_error(app, error.clone());
+        return Err(error);
     }
-
-    let window = agent_window(app)?;
-    let area = window
-        .current_monitor()
-        .ok()
-        .flatten()
-        .map(|monitor| {
-            let area = monitor.work_area();
-            Rect::new(
-                area.position.x,
-                area.position.y,
-                area.size.width as i32,
-                area.size.height as i32,
-            )
-        })
-        .unwrap_or(work_area_from_tauri(&window)?);
-    // Release native foreground ownership before showing the non-activating
-    // capsule. Capture must still see the application behind the old panel.
-    window
-        .hide()
-        .map_err(|error| native_error("collapse", error.to_string(), true))?;
-    set_capsule_bounds(&window, area)?;
-    window
-        .show()
-        .map_err(|error| native_error("collapse", error.to_string(), true))?;
-    apply_window_corners(app, &window);
-    {
-        let mut native = lock_native(state)?;
-        native.visibility = Visibility::Hidden;
-        native.surface = Surface::Side;
-    }
-    emit_state(app, state)
+    hide_result?;
+    Ok(snapshot)
 }
 
 pub(crate) fn hide_agent_internal(
@@ -433,8 +481,13 @@ pub(crate) fn toggle_agent_internal(
     state: &AppState,
 ) -> Result<AgentState, NativeError> {
     let _operation = lock_operation(state)?;
-    let visible = matches!(lock_native(state)?.visibility, Visibility::Visible);
-    if visible {
+    let should_hide = {
+        let native = lock_native(state)?;
+        matches!(native.visibility, Visibility::Visible)
+            || native.summon.is_pending()
+            || native.restoration.original().is_some()
+    };
+    if should_hide {
         hide_agent_locked(app, state)
     } else {
         show_agent_locked(app, state)
@@ -443,30 +496,6 @@ pub(crate) fn toggle_agent_internal(
 
 pub(crate) fn toggle_agent_from_shortcut(app: &AppHandle) {
     let state = app.state::<AppState>();
-    let should_capture = match lock_native(state.inner()) {
-        Ok(native) => matches!(native.visibility, Visibility::Hidden),
-        Err(error) => {
-            emit_error(app, error);
-            return;
-        }
-    };
-    if should_capture {
-        match context::snapshot_foreground_target() {
-            Some(target) => {
-                let app_handle = app.clone();
-                std::thread::spawn(move || {
-                    emit_host_capture(
-                        &app_handle,
-                        capture_with_artifact(&app_handle, context::capture_target_context(target)),
-                    );
-                });
-            }
-            None => emit_host_capture(
-                app,
-                capture_with_artifact(app, context::capture_foreground_context()),
-            ),
-        }
-    }
     if let Err(error) = toggle_agent_internal(app, state.inner()) {
         emit_error(app, error);
     }
@@ -645,47 +674,6 @@ pub fn set_pinned(
 }
 
 #[tauri::command]
-pub fn enter_workspace_mode(
-    app: AppHandle,
-    state: State<'_, AppState>,
-) -> Result<AgentState, NativeError> {
-    let _operation = lock_operation(&state)?;
-    if matches!(lock_native(&state)?.visibility, Visibility::Hidden) {
-        return show_agent_locked(&app, &state);
-    }
-    emit_state(&app, &state)
-}
-
-#[tauri::command]
-pub fn exit_workspace_mode(
-    app: AppHandle,
-    state: State<'_, AppState>,
-) -> Result<AgentState, NativeError> {
-    let _operation = lock_operation(&state)?;
-    let snapshot = lock_native(&state)?.workspace.clone();
-    let side_work_area = snapshot.as_ref().map(|snapshot| snapshot.target.work_area);
-    if let Some(snapshot) = snapshot {
-        if let Err(error) = platform::restore_target(&snapshot.target) {
-            emit_error(
-                &app,
-                native_error("workspace_restore", error.to_string(), true),
-            );
-        }
-        lock_native(&state)?.workspace = None;
-    }
-    if matches!(lock_native(&state)?.visibility, Visibility::Visible) {
-        let window = agent_window(&app)?;
-        let work_area = match side_work_area {
-            Some(work_area) => work_area,
-            None => work_area_from_tauri(&window)?,
-        };
-        set_side_bounds(&window, work_area)?;
-    }
-    lock_native(&state)?.surface = Surface::Side;
-    emit_state(&app, &state)
-}
-
-#[tauri::command]
 pub fn get_active_window_state() -> Result<Option<WindowContext>, NativeError> {
     Ok(platform::foreground_target().as_ref().map(public_context))
 }
@@ -701,42 +689,12 @@ pub fn capture_active_host_context(
     state: State<'_, AppState>,
 ) -> Result<HostCaptureResponse, NativeError> {
     let _operation = lock_operation(&state)?;
-    let workspace_target = lock_native(&state)?
-        .workspace
-        .as_ref()
-        .map(|snapshot| snapshot.target.clone());
-
-    if let Some(target) = workspace_target {
-        return Ok(capture_with_artifact(
-            &app,
-            context::capture_target_context(HostTargetSnapshot::from_target(target)),
-        ));
-    }
-
-    let was_visible = matches!(lock_native(&state)?.visibility, Visibility::Visible);
-    if was_visible {
-        hide_agent_locked(&app, state.inner())?;
-    }
-
-    let result = context::capture_foreground_context();
-
-    if was_visible {
-        if let Err(error) = show_agent_locked(&app, &state) {
-            emit_error(
-                &app,
-                native_error("show_agent", error.message, error.recoverable),
-            );
-        }
-    }
+    let target = platform::latest_capture_target()
+        .map_err(|error| native_error("capture_target", error.to_string(), true))?
+        .map(context::HostTargetSnapshot::from_target);
+    let result = context::capture_optional_target_context(target);
 
     Ok(capture_with_artifact(&app, result))
-}
-
-#[tauri::command]
-pub fn get_workspace_state(state: State<'_, AppState>) -> Result<WorkspaceState, NativeError> {
-    Ok(WorkspaceState {
-        active: lock_native(&state)?.workspace.is_some(),
-    })
 }
 
 #[tauri::command]

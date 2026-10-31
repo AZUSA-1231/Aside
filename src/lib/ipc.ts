@@ -11,9 +11,10 @@ import type {
 } from "./contracts";
 
 const initialPreviewState: AgentState = {
-  visibility: "hidden",
+  visibility: "visible",
   surface: "side",
   pinned: false,
+  material: "solid",
 };
 
 let previewState = initialPreviewState;
@@ -112,13 +113,6 @@ export const nativeClient = {
     return command<AgentState>("set_pinned", { pinned });
   },
 
-  exitWorkspace: async (): Promise<AgentState> => {
-    if (!isDesktopRuntime()) {
-      return previewCommand((state) => ({ ...state, surface: "side" }));
-    }
-    return command<AgentState>("exit_workspace_mode");
-  },
-
   moveAgent: async (x: number, y: number): Promise<AgentState> => {
     if (!isDesktopRuntime()) return { ...previewState };
     return command<AgentState>("move_agent", { x, y });
@@ -150,7 +144,7 @@ export const nativeClient = {
 
   revealPath: async (path: string): Promise<void> => {
     if (!isDesktopRuntime()) {
-      throw new Error("Opening a capture folder is available in the desktop app.");
+      throw new Error("Showing a file in its folder is available in the desktop app.");
     }
     await revealItemInDir(path);
   },

@@ -3,8 +3,9 @@
 > **Status: REFERENCE / PAUSED FOR REPLAN (2026-09-25).** This ledger records
 > the pre-merge Cycle 6 carryover split. It remains useful for provenance, but
 > it is not an active schedule and must not be used to start units directly.
-> Use [`../PROJECT-BASELINE.md`](../PROJECT-BASELINE.md) for current status and
-> [`UI-PROPOSAL.md`](./UI-PROPOSAL.md) for the current UI proposal. Installer
+> Use [`../RECOVERY-PLAN.md`](../RECOVERY-PLAN.md) for current status and
+> [`SUMMONED-SIDEBAR.md`](../design/SUMMONED-SIDEBAR.md) for current UI requirements.
+> `PROJECT-BASELINE.md` and `UI-PROPOSAL.md` are historical references. Installer
 > delivery and manual acceptance are indefinitely deferred with no target
 > cycle or date. The inherited checklist is still unperformed.
 
@@ -280,6 +281,15 @@ the payload with a self-check. `src-tauri/resources/` is staged at ~102 MB with
 - the install itself.
 
 ## U7: Classification binding
+
+**R4 disposition (2026-10-31).** The finite file-based binding path is now
+implemented and automatically verified: schema and server launch pins must
+both match, otherwise the tool keeps conservative classification and emits a
+warning. Explicit approvals are stored in user-managed `mcp.json`; a settings
+surface is no longer a prerequisite for this contract. See
+[current evidence](../cycle-6/R4-RUNTIME.md). The starting point and ordering
+below describe the earlier plan; the editor and full manual acceptance remain
+deferred, and this ledger does not schedule them.
 
 **Deliverable.** A classification is bound to the schema it was approved
 against, and invalidated when that schema changes.

@@ -1,4 +1,5 @@
 import { DocumentAdapterError } from "./document-contract.mjs";
+import { truncateText } from "./agent-contracts.mjs";
 import {
   externalRelationshipCount,
   packageKind,
@@ -146,11 +147,16 @@ function linkTarget(relationship) {
 function tableBlock(table, locator) {
   const rows = childrenNamed(table, "tr");
   const bounded = rows.slice(0, MAX_DOCX_TABLE_ROWS);
+  const reasons = new Set(rows.length > bounded.length ? ["table_row_limit"] : []);
   const values = bounded.map((row) => {
-    const cells = childrenNamed(row, "tc").slice(0, MAX_DOCX_TABLE_COLUMNS);
+    const allCells = childrenNamed(row, "tc");
+    const cells = allCells.slice(0, MAX_DOCX_TABLE_COLUMNS);
+    if (cells.length < allCells.length) reasons.add("table_column_limit");
     return cells.map((cell) => {
       const text = childrenNamed(cell, "p").map(paragraphText).join("\n").trim();
-      return text.length > MAX_DOCX_CELL_BYTES ? text.slice(0, MAX_DOCX_CELL_BYTES) : text;
+      const boundedText = truncateText(text, MAX_DOCX_CELL_BYTES);
+      if (boundedText.truncated) reasons.add("table_cell_limit");
+      return boundedText.text;
     });
   });
   return {
@@ -158,9 +164,10 @@ function tableBlock(table, locator) {
       type: "table",
       rows: values,
       locator,
-      ...(rows.length > bounded.length ? { truncated: true } : {}),
+      ...(reasons.size > 0 ? { truncated: true } : {}),
     },
-    truncated: rows.length > bounded.length,
+    truncated: reasons.size > 0,
+    reasons: [...reasons],
   };
 }
 
@@ -238,11 +245,15 @@ function buildBlocks(document, relationships, warnings) {
 
   const visit = (node) => {
     for (const child of elementChildren(node)) {
+      const name = localName(child);
+      if (name === "sectPr") continue;
       if (blocks.length >= MAX_DOCX_BLOCKS) {
         truncated = true;
+        if (!warnings.some((warning) => warning.code === "block_limit")) {
+          warnings.push({ code: "block_limit", message: `Extraction stopped at ${MAX_DOCX_BLOCKS} blocks.` });
+        }
         return;
       }
-      const name = localName(child);
       if (name === "p") {
         if (hasPageBreak(child)) {
           blocks.push({ type: "page_break", locator: { paragraph: paragraphIndex } });
@@ -250,6 +261,11 @@ function buildBlocks(document, relationships, warnings) {
         const text = paragraphText(child);
         const styleId = paragraphStyleId(child);
         const heading = styleId && HEADING_STYLE.exec(styleId);
+        if (blocks.length >= MAX_DOCX_BLOCKS && (heading || isListItem(child) || text.trim().length > 0)) {
+          truncated = true;
+          warnings.push({ code: "block_limit", message: `Extraction stopped at ${MAX_DOCX_BLOCKS} blocks.` });
+          return;
+        }
         if (heading) {
           headingIndex += 1;
           blocks.push({
@@ -273,9 +289,14 @@ function buildBlocks(document, relationships, warnings) {
       }
       if (name === "tbl") {
         tableIndex += 1;
-        const { block, truncated: tableTruncated } = tableBlock(child, { table: tableIndex });
+        const { block, truncated: tableTruncated, reasons } = tableBlock(child, { table: tableIndex });
         blocks.push(block);
         if (tableTruncated) truncated = true;
+        for (const code of reasons) {
+          if (!warnings.some((warning) => warning.code === code)) {
+            warnings.push({ code, message: `Table content was omitted by the ${code.replaceAll("_", " ")}.` });
+          }
+        }
         continue;
       }
       if (name === "sectPr") continue;
@@ -369,6 +390,9 @@ export function createDocxAdapter({ id = DOCX_ADAPTER_ID } = {}) {
         relationships,
         warnings,
       );
+      if (links.length > 64) {
+        warnings.push({ code: "link_limit", message: "Only the first 64 links are returned." });
+      }
       if (signal?.aborted) {
         throw new DocumentAdapterError("aborted", "The document read was cancelled.", path);
       }
@@ -397,6 +421,7 @@ export function createDocxAdapter({ id = DOCX_ADAPTER_ID } = {}) {
         links: links.slice(0, 64),
         warnings,
         partial: truncated || warnings.length > 0,
+        truncated: truncated || links.length > 64,
         metadata: {
           ...(title ? { title: title.slice(0, 512) } : {}),
           ...(author ? { author: author.slice(0, 512) } : {}),

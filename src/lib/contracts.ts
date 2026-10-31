@@ -1,10 +1,11 @@
 export type Visibility = "hidden" | "visible";
-export type Surface = "side" | "workspace";
+export type Surface = "side";
 
 export interface AgentState {
   visibility: Visibility;
   surface: Surface;
   pinned: boolean;
+  material: "acrylic" | "solid";
 }
 
 export interface NativeError {
@@ -313,9 +314,12 @@ export interface RuntimeDocumentWarning {
 export interface RuntimeDocumentReadStatus {
   format: string;
   blockCount: number;
+  blocksRead?: number;
   pageCount?: number;
   pagesRead?: number;
   nextPage?: number;
+  nextBlock?: number;
+  resumePage?: number;
   partial: boolean;
   truncated: boolean;
   warnings: RuntimeDocumentWarning[];
@@ -451,20 +455,7 @@ export type RuntimeEvent =
       delta: string;
       truncated?: boolean;
     }
-  | {
-      type: "permission_requested";
-      permission_id: string;
-      request_id: string;
-      task_id: string;
-      tool_call_id: string;
-      operation: string;
-      effect: string;
-      egress: string;
-      source: string;
-      risk: RuntimeCapabilityRisk;
-      expires_at: number;
-      status: string;
-    }
+  | ({ type: "permission_requested" } & RuntimePermissionRequest)
   | {
       type: "run_waiting";
       request_id: string;

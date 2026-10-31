@@ -505,6 +505,12 @@ export const WORKSPACE_READ_TOOL_SCHEMAS = Object.freeze({
         "Zero-based byte offset into the decoded text. Use next_byte_offset to continue a truncated read.",
       ),
     ),
+    block_offset: Type.Optional(nonNegativeNumber(
+      "PDF/Word: pass next_block to resume in the same page selection.",
+    )),
+    block_byte_offset: Type.Optional(nonNegativeNumber(
+      "PDF/Word: pass next_block_byte_offset with next_block to resume inside a long rendered block.",
+    )),
     content_version: Type.Optional(
       Type.String({
         description:
@@ -599,7 +605,8 @@ export async function validateDocumentText({ documentRegistry, limits, path, for
     throw new WorkspaceError("invalid_argument", "Document content must be text.", path);
   }
   const adapter = documentRegistry.select(path, format);
-  if (!adapter || adapter.write !== true) {
+  const inferredAdapter = documentRegistry.select(path, "auto");
+  if (inferredAdapter?.write === false || !adapter || adapter.write !== true) {
     throw new WorkspaceError(
       "unsupported_format",
       "The document format cannot be written by the active adapter.",
@@ -785,24 +792,48 @@ async function handleStat({ workspace, limits }, params, signal) {
  * budget cut the extraction short. Continuation is by page, because that is
  * the locator a paginated document actually has.
  */
-function structuredReadResult(loaded, limits) {
+function structuredReadResult(loaded, limits, params) {
   const document = loaded.document;
   const blocks = Array.isArray(document.blocks) ? document.blocks : [];
-  const {
-    text,
-    truncated,
-    lastPage,
-    resume,
-    nextPage,
-    resumePage,
-  } = renderDocumentBlocks(blocks, { ...limits, pageCount: document.metadata?.pages });
-  // How many blocks the renderer actually emitted, which is not `block_count`:
-  // that reports what the document contains, and conflating the two hides a
-  // budget cut behind a number that looks complete.
-  const blocksRead = resume === undefined ? blocks.length : resume;
+  const blockOffset = params?.block_offset ?? 0;
+  const blockByteOffset = params?.block_byte_offset ?? 0;
   const metadata = document.metadata ?? {};
   const pageCount = metadata.pages;
+  const version = contentVersion(loaded.resolved);
   const warnings = Array.isArray(document.warnings) ? document.warnings : [];
+  const headerFields = {
+    path: loaded.resolved.relative_path,
+    format: document.format,
+    ...(pageCount === undefined ? {} : { page_count: pageCount }),
+    ...(version === undefined ? {} : { content_version: version }),
+    partial: false,
+    truncated: false,
+    ...(warnings.length === 0 ? {} : {
+      warning_codes: [...new Set(warnings.map((warning) => warning.code))],
+      warning_count: warnings.length,
+    }),
+  };
+  const reservedHeader = JSON.stringify({
+    ...headerFields,
+    next_page: Number.MAX_SAFE_INTEGER,
+    next_block: Number.MAX_SAFE_INTEGER,
+    next_block_byte_offset: Number.MAX_SAFE_INTEGER,
+  }, null, 2);
+  const contentBudget = limits.maxOutputBytes - byteLength(reservedHeader)
+    - byteLength("workspace.read succeeded\n\n\n");
+  if (contentBudget < 4) {
+    throw new WorkspaceError("output_budget_too_small", "The output budget cannot hold the document cursor and content.");
+  }
+  const {
+    text,
+    truncated: outputTruncated,
+    resume,
+    resumeByteOffset,
+    blocksRead,
+    nextPage,
+    resumePage,
+  } = renderDocumentBlocks(blocks, { ...limits, contentBudget, blockOffset, blockByteOffset });
+  const truncated = outputTruncated || document.truncated === true;
   // `partial` reports that the result is not the whole document, from any
   // cause: the adapter stopped early, or this renderer ran out of budget. The
   // second case was missing — the adapter's own flag was passed through
@@ -821,25 +852,32 @@ function structuredReadResult(loaded, limits) {
     ...(metadata.author ? { author: metadata.author } : {}),
     block_count: blocks.length,
     blocks_read: blocksRead,
+    block_offset: blockOffset,
+    block_byte_offset: blockByteOffset,
+    content_bytes: byteLength(text),
+    ...(version === undefined ? {} : { content_version: version }),
     partial,
-    warnings,
+    warnings: outputTruncated
+      ? [...warnings.slice(0, 31), { code: "output_limit", message: "Continue using the returned block and byte offsets." }]
+      : warnings.slice(0, 32),
+    warning_count: warnings.length + (outputTruncated ? 1 : 0),
+    warnings_truncated: warnings.length > (outputTruncated ? 31 : 32),
     truncated,
     ...(nextPage === undefined ? {} : { next_page: nextPage }),
     // The precise resume point, present whenever anything was cut. A page
     // number cannot express a cut part-way through a page, and reporting one
     // anyway is how content got skipped. See A07.
     ...(resume === undefined ? {} : { next_block: resume }),
+    ...(resumeByteOffset ? { next_block_byte_offset: resumeByteOffset } : {}),
     ...(resumePage === undefined ? {} : { resume_page: resumePage }),
   };
   const header = JSON.stringify({
-    path: loaded.resolved.relative_path,
-    format: document.format,
-    ...(pageCount === undefined ? {} : { page_count: pageCount }),
+    ...headerFields,
     ...(nextPage === undefined ? {} : { next_page: nextPage }),
     ...(resume === undefined ? {} : { next_block: resume }),
+    ...(resumeByteOffset ? { next_block_byte_offset: resumeByteOffset } : {}),
     partial,
     truncated,
-    ...(warnings.length === 0 ? {} : { warnings }),
   }, null, 2);
   return successfulResult(
     "workspace.read",
@@ -918,36 +956,59 @@ function renderDocumentBlock(block) {
  * the cut fell exactly on a page boundary, where it is actually correct.
  */
 export function renderDocumentBlocks(blocks, limits) {
-  const budget = Math.max(128, limits.maxOutputBytes - 512);
+  const budget = limits.contentBudget ?? Math.max(128, limits.maxOutputBytes - 512);
+  const blockOffset = limits.blockOffset ?? 0;
+  const blockByteOffset = limits.blockByteOffset ?? 0;
+  if (!Number.isSafeInteger(blockOffset) || blockOffset < 0 || blockOffset > blocks.length
+    || !Number.isSafeInteger(blockByteOffset) || blockByteOffset < 0
+    || (blockOffset === blocks.length && blockByteOffset !== 0)) {
+    throw new WorkspaceError("invalid_offset", "The structured document cursor is invalid.");
+  }
   const lines = [];
   let bytes = 0;
+  let blocksRead = 0;
   let truncated = false;
   let lastPage;
   let resume;
-  for (let index = 0; index < blocks.length; index += 1) {
+  let resumeByteOffset;
+  for (let index = blockOffset; index < blocks.length; index += 1) {
     const block = blocks[index];
     const line = renderDocumentBlock(block);
-    const cost = byteLength(line) + 1;
+    const start = locateByteOffset(line, index === blockOffset ? blockByteOffset : 0);
+    const remaining = line.slice(start.index);
+    const separatorBytes = lines.length > 0 ? 1 : 0;
+    const cost = byteLength(remaining) + separatorBytes;
     if (bytes + cost > budget) {
       truncated = true;
-      // The block that did not fit is where the next read starts. Everything
-      // before it was rendered; nothing after it was.
       resume = index;
+      resumeByteOffset = start.bytes;
+      if (lines.length === 0 || byteLength(remaining) > budget) {
+        const encoded = textEncoder.encode(line);
+        let end = Math.min(encoded.length, start.bytes + Math.max(0, budget - bytes - separatorBytes));
+        while (end > start.bytes && end < encoded.length && (encoded[end] & 0xc0) === 0x80) end -= 1;
+        if (end > start.bytes) {
+          lines.push(utf8Decoder.decode(encoded.subarray(start.bytes, end)));
+          resumeByteOffset = end;
+        }
+      }
       break;
     }
     bytes += cost;
-    lines.push(line);
+    lines.push(remaining);
+    blocksRead += 1;
     if (block.locator?.page !== undefined) lastPage = block.locator.page;
   }
   // A cut is on a page boundary when the next block begins a new page, which is
   // the only case where "continue at page N+1" loses nothing.
   const nextBlock = resume === undefined ? undefined : blocks[resume];
-  const startsNewPage = nextBlock?.type === "page_break";
+  const startsNewPage = nextBlock?.type === "page_break" && !resumeByteOffset;
   return {
     text: lines.join("\n"),
     truncated,
     lastPage,
     resume,
+    resumeByteOffset,
+    blocksRead,
     // Only meaningful when the resume point is the start of a page, and taken
     // from that block rather than from `lastPage + 1`. A `page_break` block
     // carries the page it opens, not the one it closes, so the two are not
@@ -968,14 +1029,6 @@ async function handleRead({ workspace, documentRegistry, limits }, params, signa
     limits.maxReadBytes,
     { pages: params?.pages },
   );
-  if (typeof loaded.document.text !== "string") {
-    return structuredReadResult(loaded, limits);
-  }
-  const text = loaded.document.text;
-  const totalBytes = byteLength(text);
-  const totalLines = lineCountAt(text, text.length);
-  const contentBudget = Math.max(128, limits.maxOutputBytes - 512);
-
   // A cursor from a previous read is only valid against the content it was
   // computed from. Without this check the caller resumes a byte offset in a
   // file that has since changed, and the two halves come from different
@@ -993,6 +1046,14 @@ async function handleRead({ workspace, documentRegistry, limits }, params, signa
       { expected: params.content_version, actual: currentVersion },
     );
   }
+
+  if (typeof loaded.document.text !== "string") {
+    return structuredReadResult(loaded, limits, params);
+  }
+  const text = loaded.document.text;
+  const totalBytes = byteLength(text);
+  const totalLines = lineCountAt(text, text.length);
+  const contentBudget = Math.max(128, limits.maxOutputBytes - 512);
 
   // A byte offset resumes a truncated read; a line offset selects whole lines.
   let remainder;
@@ -1078,19 +1139,22 @@ async function handleSearch({ workspace, documentRegistry, limits }, params, sig
   // (most files do not match), so "start at result N" has no meaning in the
   // file order, and the previous version offered no cursor at all, leaving the
   // model to re-run the same search and get the same truncation. See A10.
-  const scannedOffset = params?.scanned_offset === undefined
-    ? 0
-    : positiveInteger(params.scanned_offset, "scanned_offset", Number.MAX_SAFE_INTEGER, 0);
+  const scannedOffset = params?.scanned_offset ?? 0;
+  if (!Number.isSafeInteger(scannedOffset) || scannedOffset < 0) {
+    invalidArgument("scanned_offset", "must be a non-negative safe integer");
+  }
   const results = [];
   const diagnostics = [];
   const visitedDirectories = new Set();
   let scannedFiles = 0;
   let truncated = false;
+  let stopped = false;
 
   async function inspectFile(path) {
     throwIfAborted(signal, path);
-    if (scannedFiles >= limits.maxSearchFiles) {
+    if (scannedFiles >= scannedOffset && scannedFiles - scannedOffset >= limits.maxSearchFiles) {
       truncated = true;
+      stopped = true;
       return;
     }
     scannedFiles += 1;
@@ -1107,39 +1171,34 @@ async function handleSearch({ workspace, documentRegistry, limits }, params, sig
       const selected = documentRegistry.select(path, "auto");
       if (selected && selected.textual !== true) {
         diagnostics.push({ path: displayPath, code: "unsupported_format" });
-        return;
-      }
-      try {
-        const loaded = await readDocument(
-          { workspace, documentRegistry, limits },
-          path,
-          "auto",
-          signal,
-          limits.maxSearchFileBytes,
-        );
-        if (typeof loaded.document.text !== "string") {
-          diagnostics.push({ path: displayPath, code: "unsupported_format" });
-          return;
+      } else {
+        try {
+          const loaded = await readDocument(
+            { workspace, documentRegistry, limits },
+            path,
+            "auto",
+            signal,
+            limits.maxSearchFileBytes,
+          );
+          if (typeof loaded.document.text !== "string") {
+            throw new WorkspaceError("unsupported_format", "The adapter has no searchable text.", path);
+          }
+          const contentLower = loaded.document.text.toLocaleLowerCase();
+          const index = contentLower.indexOf(queryLower);
+          if (index >= 0) {
+            matches.push({
+              type: "content",
+              format: loaded.document.format,
+              ...lineSnippet(loaded.document.text, index),
+            });
+          }
+        } catch (error) {
+          if (["unsupported_format", "result_too_large", "invalid_document", "unsupported_encoding"].includes(error?.code)) {
+            diagnostics.push({ path: displayPath, code: error.code });
+          } else {
+            throw error;
+          }
         }
-        const contentLower = loaded.document.text.toLocaleLowerCase();
-        const index = contentLower.indexOf(queryLower);
-        if (index >= 0) {
-          matches.push({
-            type: "content",
-            format: loaded.document.format,
-            ...lineSnippet(loaded.document.text, index),
-          });
-        }
-      } catch (error) {
-        if (error?.code === "unsupported_format" || error?.code === "result_too_large") {
-          diagnostics.push({ path: displayPath, code: error.code });
-          return;
-        }
-        if (error?.code === "invalid_document" || error?.code === "unsupported_encoding") {
-          diagnostics.push({ path: displayPath, code: error.code });
-          return;
-        }
-        throw error;
       }
     }
     if (matches.length > 0) {
@@ -1160,24 +1219,31 @@ async function handleSearch({ workspace, documentRegistry, limits }, params, sig
     }
     if (depth > limits.maxSearchDepth) {
       truncated = true;
+      diagnostics.push({ path: productPath(path), code: "depth_limit" });
       return;
     }
     if (visitedDirectories.has(resource.canonical_path)) return;
     visitedDirectories.add(resource.canonical_path);
-    const listed = await workspace.listDirectory(path, {
-      maxEntries: limits.maxListEntries,
-      signal,
-    });
-    truncated ||= listed.truncated;
-    for (const entry of listed.entries) {
-      throwIfAborted(signal, entry.addressed_path);
-      if (results.length >= maxResults) {
-        truncated = true;
-        return;
+    let directoryOffset = 0;
+    do {
+      const listed = await workspace.listDirectory(path, {
+        maxEntries: limits.maxListEntries,
+        offset: directoryOffset,
+        signal,
+      });
+      for (const entry of listed.entries) {
+        throwIfAborted(signal, entry.addressed_path);
+        if (results.length >= maxResults) {
+          truncated = true;
+          stopped = true;
+          return;
+        }
+        if (entry.kind === "directory") await visit(entry.addressed_path, depth + 1);
+        else if (entry.kind === "file") await inspectFile(entry.addressed_path);
+        if (stopped) return;
       }
-      if (entry.kind === "directory") await visit(entry.addressed_path, depth + 1);
-      else if (entry.kind === "file") await inspectFile(entry.addressed_path);
-    }
+      directoryOffset = listed.next_offset;
+    } while (directoryOffset !== undefined);
   }
 
   await visit(searchPath, 0);
@@ -1192,7 +1258,7 @@ async function handleSearch({ workspace, documentRegistry, limits }, params, sig
     truncated,
     // Where to resume. Present only when the search stopped early, so an
     // exhausted search does not invite a pointless continuation.
-    ...(truncated ? { next_scanned_offset: scannedFiles } : {}),
+    ...(stopped && scannedFiles > scannedOffset ? { next_scanned_offset: scannedFiles } : {}),
   };
   return successfulResult(
     "workspace.search",

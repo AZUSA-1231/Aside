@@ -8,13 +8,71 @@ This log records decisions and implementation discoveries that affect Cycle 6
 scope, ownership, security, or acceptance. Child-plan progress and ordinary
 task notes remain in the relevant `plans/P*.md` file.
 
+## R3 Integration Follow-Up (2026-10-31)
+
+### C6-I037 - Read-Only Document Edit Reached Text Replacement
+
+Status: **fixed in development; automated runtime flow passed (2026-10-31)**
+Affected: P2, P3, P4; C6-13, C6-18
+
+The new captured-PDF workflow called `workspace.edit` on a valid PDF. It
+reached replacement with no `raw_text`, returning `write_failed` / an internal
+undefined-length exception rather than the promised format refusal. The first
+fix exposed another mismatch: the error code was right but the surface status
+remained `failed`.
+
+The edit path now checks the selected adapter's write capability before
+parsing, rejects a representation with no editable raw text, and projects
+`unsupported_format` as `unsupported`. The runtime regression inspects the
+provider-visible refusal, no permission request, and unchanged source bytes.
+An expanded check then reproduced an explicit `format: text` bypass on PDF
+editing. Both write validation and edit preparation now also preserve the
+read-only constraint inferred from the path. Eight combinations of PDF/Word,
+write/edit, and auto/text verify refusal before approval; dedicated Word
+generation/transformation remains supported.
+See [R3-INTEGRATION.md](./R3-INTEGRATION.md); 388 runtime tests pass. Real
+desktop/provider acceptance remains deferred.
+
+### C6-I038 - Both-Mode Search Dropped Document Name Matches
+
+Status: **fixed in development; automated boundary review passed (2026-10-31)**
+Affected: P2, P3, P4; C6-09, C6-13
+
+`workspace.search` defaulted to `both`, found a PDF/Word filename match, then
+returned early when skipping binary content. The model received no match,
+contradicting the tool description even though name-only search worked.
+
+The content branch now retains collected name matches while reporting
+unsearchable / invalid / oversized content diagnostics. A regression requires
+both `needle.pdf` and `needle.docx` from a case-insensitive `both` query and
+requires name-only matches plus skipped-content diagnostics. UTF-8, literal
+queries, hidden/ignored files and Windows synthetic measurements are separately
+recorded in [R3-INTEGRATION.md](./R3-INTEGRATION.md). No glob or ignore feature
+was introduced.
+
 ## Independent Audit (2026-09-19)
 
 ### C6-I036 - Cancelling a PDF Read Was Dropped, Not Delayed
 
-Status: **partially fixed; the remainder is a documented bound**
+Status: **page-loop cancellation rechecked; synchronous parsing limits retained (2026-10-31)**
 Discovered: 2026-09-22, producing the G01 responsiveness evidence
 Affected: P3, P7; C6-05, C6-19, C6-44
+
+#### R2 follow-up (2026-10-31)
+
+The Fact/Decision below records the original 2026-09-22 observation. Current
+[recheck evidence](./R2-RECHECK.md) and [machine results](./R2-EVIDENCE.json)
+supersede any universal timing claim: a 300-page read allowed 18 heartbeats but
+still had a 473.3 ms maximum heartbeat gap in the full suite. Scheduling abort
+after the first real page request refused the read with `aborted` after 15 page
+requests. The original ~174 ms loading observation is not a fixed cost or a
+deadline for other PDFs. A yield every 16 pages cannot preempt a synchronous
+loading or per-page parsing segment.
+
+The former concatenate-two-PDFs / elapsed-under-200ms test did not establish
+the page ceiling. Its replacement supplies 2,001 pages through the loader and
+asserts refusal before any `getPage` call, after metadata loading. No instant
+cancellation or universal parse-time bound is established.
 
 #### Fact
 
@@ -85,6 +143,7 @@ Affected: P0-P4, P6, P7; Cycle 5 manual carryover; Cycle 7 handoff
 Report: [AUDIT-REPORT.md](./AUDIT-REPORT.md)
 Reproduction: [AUDIT-REPRO.mjs](./AUDIT-REPRO.mjs)
 Captured results: [AUDIT-EVIDENCE.json](./AUDIT-EVIDENCE.json)
+Current automated follow-up: [R2-RECHECK.md](./R2-RECHECK.md), [R2-EVIDENCE.json](./R2-EVIDENCE.json) (2026-10-31).
 
 The independent review reran the gate (328 runtime tests and 37 Rust tests
 passed; the suite stands at **365** as of 2026-09-23, the increase being the
@@ -95,21 +154,47 @@ No production implementation was changed during this audit.
 
 | Finding | Priority | Status | Required outcome |
 | --- | --- | --- | --- |
-| A01 PDF page-range nontermination | P1 | fix applied, unverified | Reject unsafe numeric pages before iteration; runtime remains cancellable. |
-| A02 Word output creation race | P1 | fix applied, unverified | Commit a new file without ever replacing a concurrently created destination. |
-| A03 Word table content lost | P1 | fix applied, unverified | Preserve supported table contents through the provider-visible tool result. |
-| A04 MCP result absent from model input | P1 | fix applied, unverified | Send bounded, sanitized result data through provider-visible content. |
-| A05 MCP adaptation breaks aggregate registry | P1 | fix applied, unverified | Reject duplicates and invalid final descriptors locally; built-ins remain usable. |
-| A06 Cancel during discovery still prompts provider | P1 | fix applied, unverified | Cancellation covers setup/discovery and prevents subsequent prompt submission. |
-| A07 Structured document continuation loses content | P2 | fix applied, unverified | Resume within pages/blocks without gaps, duplication, or non-progress. |
-| A08 Silent extraction truncation | P2 | fix applied, unverified | Report every truncation and actual extraction progress truthfully. |
-| A09 Word source version not revalidated | P2 | fix applied, unverified | Bind approval to the source version and reject changed sources before output. |
-| A10 Workspace continuation contract incomplete | P2 | fix applied, unverified | Detect changed versions across segments and provide bounded search continuation. |
-| A11 UI state contradicts runtime state | P2 | fix applied, unverified | Preserve workspace override notice and clear waiting state when permission resolves. |
-| A12 Config loader bypasses server cap | P2 | fix applied, unverified | Enforce the aggregate cap on the actual file-loading path. |
-| G01 Parsing responsiveness evidence missing | acceptance gap | evidence produced; defect found | `parse-responsiveness.test.mjs` measures event-loop turns during a parse. It found cancellation being dropped rather than delayed — see C6-I036. |
+| A01 PDF page-range nontermination | P1 | automated R2 recheck passed | Reject unsafe numeric pages before iteration; runtime remains cancellable. |
+| A02 Word output creation race | P1 | automated R2 recheck passed | Commit a new file without ever replacing a concurrently created destination. |
+| A03 Word table content lost | P1 | automated R2 recheck passed | Preserve supported table contents through the provider-visible tool result. |
+| A04 MCP result absent from model input | P1 | automated R2 recheck passed | Send bounded, sanitized result data through provider-visible content. |
+| A05 MCP adaptation breaks aggregate registry | P1 | automated R2 recheck passed | Reject duplicates and invalid final descriptors locally; built-ins remain usable. |
+| A06 Cancel during discovery still prompts provider | P1 | automated R2 recheck passed | Cancellation covers setup/discovery and prevents subsequent prompt submission. |
+| A07 Structured document continuation loses content | P2 | fix revised; automated R2 recheck passed | Resume within pages/blocks without gaps, duplication, or non-progress. |
+| A08 Silent extraction truncation | P2 | fix revised; automated R2 recheck passed | Report every truncation and actual extraction progress truthfully. |
+| A09 Word source version not revalidated | P2 | automated R2 recheck passed | Bind approval to the source version and reject changed sources before output. |
+| A10 Workspace continuation contract incomplete | P2 | fix revised; automated R2 recheck passed | Detect changed versions across segments and provide bounded search continuation. |
+| A11 UI state contradicts runtime state | P2 | automated R2 recheck passed | Preserve workspace override notice and clear waiting state when permission resolves. |
+| A12 Config loader bypasses server cap | P2 | automated R2 recheck passed | Enforce the aggregate cap on the actual file-loading path. |
+| G01 Parsing responsiveness evidence missing | acceptance gap | automated R2 recheck passed; synchronous-parse limit remains | `parse-responsiveness.test.mjs` measures event-loop turns during a parse. It found cancellation being dropped rather than delayed — see C6-I036. |
 | G02 Manual acceptance unperformed | acceptance gap | **open — indefinitely deferred 2026-09-23** | Execute retained Cycle 6 checks and 26 carried Cycle 5 criteria with recorded evidence. **No longer scheduled.** See the G03 note below. |
 | G03 Status/traceability and receiving plan gaps | documentation gap | **closed** | Claims reconciled (matrix, PLAN, README, C6-I013/I026, P2, staging script). Receiving plan written as [Cycle 7 LEGACY](../cycle-7/LEGACY.md) — every unit traceable to the deferral that created it. **Superseded 2026-09-23:** that plan was later split into [LEGACY.md](../cycle-7/LEGACY.md) (inherited work) and [PLAN.md](../cycle-7/PLAN.md) (new development), and the manual acceptance it left open is now **indefinitely deferred**. See the note below. |
+
+#### R2 automated recheck (2026-10-31)
+
+All A01-A12 rows now have focused automated evidence against the uncommitted
+working tree. A07, A08 and A10 required further production fixes: the public
+read path did not accept its own block cursor, large blocks could not advance,
+structured reads bypassed version validation, adapter ceilings were not fully
+reported, and search continuation stalled at scan/list limits. The new 14
+rechecks are part of the regular gate; 379 runtime, 41 Rust and 23 frontend
+tests pass. The complete reproduction sequence, including failed checks and
+fixture corrections, is in the follow-up record.
+
+This is an automated implementation/recheck result by the coding agent, not a
+second-person review of the newly revised fixes. C6-I035 remains open for the
+retained manual acceptance gap; G02 and installer deferrals are unchanged.
+
+#### R3 automated integration (2026-10-31)
+
+[R3-INTEGRATION.md](./R3-INTEGRATION.md) supplements the P2/P3/P4 automated
+workflow evidence and records FE-08 dynamic Capture implementation, C6-I037/038,
+and Windows synthetic measurements. Current gates pass 388 runtime, 45 Rust
+and 23 frontend tests plus production build. R2 counts and source digests remain
+historical, not rewritten. The new native listener has state regressions and
+compile evidence, but no real desktop focus/capture/restore observation. G02,
+C6-40 manual quality, installer deferrals and the need for independent review
+are unchanged.
 
 Most recorded scope reductions are traceable and reasonable, but they do not
 waive retained C6-10, C6-19, C6-24, C6-32, C6-40, or C6-44/C6-45 obligations.
@@ -443,6 +528,12 @@ which will not all set that flag.
 Status: open; owned by P7
 Affected: PLAN, P4-P7
 
+**R4 disposition (2026-10-31):** the finite retained development scope is now
+RT-01–11 in [the recovery ledger](../RECOVERY-PLAN.md). Its completion does not
+close the original cycle's acceptance or deferred release work. The historical
+scope warning below remains provenance, not an instruction to resume every
+old plan.
+
 Fact: observed while delivering P4. P4 alone — a `.docx` read adapter with
 package hardening, a strict generation schema, a permission-bound create and
 transform path, atomic output, post-write reopen validation, and generated
@@ -512,6 +603,11 @@ capability is a functional defect, not a documentation nit.
 Status: open; owned by P7 (surface) and C6-I010 (configuration)
 Affected: P7, C6-I010
 
+**R4 disposition (2026-10-31):** both remain feature backlog, outside RT-01–11.
+The current product supports one restored active session and configuration read
+at runtime startup. No new-conversation action or hot reload was delivered;
+the old minimum-surface proposal below is not a current prerequisite.
+
 Fact: two usability gaps observed while manually testing.
 
 1. **No conversation management.** The runtime persists a durable JSONL session
@@ -538,6 +634,10 @@ assumptions. Neither blocks P4.
 
 Status: open; deferred to Cycle 7
 Affected: Cycle 7 (new plan, not owned by P0-P7)
+
+**R4 disposition (2026-10-31):** a settings/model editor remains feature backlog.
+Existing file-based provider/model configuration is the retained RT-02 path;
+this does not claim arbitrary model catalogs, a credentials UI, or hot reload.
 
 Fact: Aside's provider support is four hardcoded factories — `anthropic`,
 `deepseek`, `google`, `openai` — in `runtime.mjs`. Each bundles a base URL, an
@@ -702,8 +802,15 @@ clearing) and `capability-runtime.test.mjs` (an adapter declaring
 
 ### C6-I019 - Scope Alone Does Not Require a Decision (P6 constraint)
 
-Status: open; owned by P6 (P5 retired under C6-I026)
+Status: accepted for the retained scope (R4, 2026-10-31); future built-in constraint retained
 Affected: P6, P7; PRD section 12
+
+**R4 disposition:** no built-in host/service capability with `egress: none`
+exists in the current default registry. External tools retain `source: user_mcp`
+and per-call permission regardless of classification; `capability-runtime`
+and `p7-audit` tests exercise the actual registry. This explicitly discharges
+the current P6 obligation below. A future built-in adapter must revisit the
+rule before registration.
 
 Fact: `POLICY_RULES` keys on `source`, `egress`, `effect`, and availability —
 not on `scope`. PRD section 12's "host, service, or egress call: exact per-call
@@ -982,8 +1089,25 @@ the runtime's `process.env` — a claim with a test behind it.
 
 ### C6-I030 - Tool Classification Is Name-Keyed Without a Settings Store
 
-Status: open; owned by Cycle 7 (settings surface), recorded by P6
+Status: development fix verified in R4 (2026-10-31); settings UI remains deferred
 Affected: P6, P7; P6 task 6; C6-I024
+
+**R4 follow-up:** missing pins now retain conservative defaults. An override
+applies only when both `schema_digest` and `server_fingerprint` match the
+accepted schema and current launch configuration. Schema or launch changes
+emit `mcp_classification_changed`; missing binding emits
+`mcp_classification_unbound`. Discovery diagnostics now reach the existing
+`runtime_warning` surface and are refreshed rather than accumulated.
+
+The user-owned `mcp.json` stores explicit classification pins across restart.
+Reviewing and editing that file is the current approval path; discovery and
+Allow once never write it. A settings store/UI is therefore not required to
+enforce this finite contract. Launch identity pins do not prove unchanged
+binary contents or server behavior, and every MCP call still needs permission.
+Tests cover file reload, manual rebinding, schema/config change, missing pins,
+and denial before send; see [R4 evidence](./R4-RUNTIME.md). Third-party/manual
+acceptance remains unperformed. The original partial implementation described
+below is historical and was superseded by this follow-up.
 
 Fact: P6 task 6 requires that a tool's classification be invalidated when
 material server or tool identity or schema changes, and requires UX and storage
@@ -1082,8 +1206,15 @@ remaining work is presentation, not behaviour.
 
 ### C6-I031 - The React Surface Has No Automated Verification
 
-Status: open; owned by P7 (recording) and Cycle 7 (remediation)
+Status: automated harness added in R1–R4; full manual surface acceptance remains open
 Affected: P7; C6-40, C6-44; every Cycle 2-5 surface criterion
+
+**R4 disposition (2026-10-31):** Vitest and component tests now exist; the
+current suite passes 24 tests, including classification warnings before run
+start and across hidden completion. R1/R3/R4 evidence is recorded in
+[FRONTEND-REVIEW.md](../FRONTEND-REVIEW.md). This resolves the absence of an
+automated harness, not C6-40's human readability or the complete manual pass.
+The no-runner facts and decision below describe the original P7 state.
 
 Fact: found while implementing P7 task 2. The repository has no frontend test
 infrastructure of any kind: no test runner in `devDependencies`, no test script

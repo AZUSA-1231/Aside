@@ -1,5 +1,18 @@
 # Cycle 6 Acceptance Matrix
 
+**2026-10-31 follow-up:** [R2 automated recheck](./R2-RECHECK.md) and [current evidence](./R2-EVIDENCE.json) record A01-A12 checks and the additional A07/A08/A10 fixes. Historical counts and findings below retain their dated scope. Manual acceptance and release remain deferred; no criterion is closed solely by this follow-up.
+
+**R3 automated integration (2026-10-31):** [R3-INTEGRATION.md](./R3-INTEGRATION.md)
+adds 9 runtime flows/reviews and 4 native focus-state regressions; gates are
+388 runtime / 45 Rust / 23 frontend plus build. P2/P3/P4 evidence below is
+supplemented without changing the manual column or declaring acceptance.
+
+**R4 follow-up (2026-10-31):** [runtime evidence](./R4-RUNTIME.md) supplements
+C6-33/34 with persisted double bindings, conservative fallback, launch/schema
+change invalidation, and warning projection. Final automated gates are 394
+runtime and 24 frontend tests plus build. The original manual column remains
+unperformed; RT-01–11 development completion does not close cycle acceptance.
+
 Owner: P7 ([task 11](./plans/P7-surface-and-release.md))
 Status: **matrix assembled; acceptance blocked by independent audit and unperformed manual evidence** (2026-09-19)
 Runner for the manual column: [`MANUAL-ACCEPTANCE.md`](./MANUAL-ACCEPTANCE.md)
@@ -93,11 +106,11 @@ has been performed — nothing in the manual column has been performed.
 
 | ID | Scenario | Evidence | Manual | Status |
 | --- | --- | --- | --- | --- |
-| C6-09 | List/read/search/stat an in-workspace resource | `workspace-tools.test.mjs`: *C6-09: lists entries in a stable order with an explicit cursor*, *C6-09: paging a directory yields every entry exactly once*, *C6-09: line ranges and byte ranges agree about where content resumes* | C5-14 | automated + manual |
+| C6-09 | List/read/search/stat an in-workspace resource | `workspace-tools.test.mjs`: *C6-09: lists entries in a stable order with an explicit cursor*, *C6-09: paging a directory yields every entry exactly once*, *C6-09: line ranges and byte ranges agree about where content resumes*; `recovery-integration.test.mjs`: INT-01 literal/case/encoding review and binary-name matches; [Windows synthetic benchmark](./R3-BENCHMARK.json) | C5-14 | automated + manual |
 | C6-10 | Read or search requires continuation | `workspace-tools.test.mjs`: *C6-10: a truncated long line can be continued without losing bytes*, *C6-10: byte continuation never splits a multibyte character* | — | automated |
 | C6-11 | Path escapes through syntax, symlink, or reparse point | `workspace.test.mjs`: *rejects lexical escapes and symlink targets outside the workspace* | — | automated |
 | C6-12 | Write or edit a supported text resource | `workspace-write-tools.test.mjs`: *write and edit prepare exact previews and execute only after allow*, *JSON writes require parse validation and report verified content* | C5-19, C5-21, C5-32 | automated + manual |
-| C6-13 | Unsupported file or encoding is encountered | `workspace-tools.test.mjs`: *returns typed unsupported, scope, missing, limit, and cancellation results* | C5-16 | automated + manual |
+| C6-13 | Unsupported file or encoding is encountered | `workspace-tools.test.mjs`: *returns typed unsupported, scope, missing, limit, and cancellation results*; `recovery-integration.test.mjs`: INT-01 UTF-8 refusal and INT-02 PDF edit refusal before approval | C5-16 | automated + manual |
 | C6-14 | Foundation tool hits input, output, time, or traversal limit | `capability-runtime.test.mjs` limit coverage (*tool limits fail closed with one terminal event*), `workspace-write-tools.test.mjs`: *an approved write reports an underlying atomic failure without claiming success* | — | automated |
 
 ## P3 — Document representation and PDF
@@ -105,21 +118,21 @@ has been performed — nothing in the manual column has been performed.
 | ID | Scenario | Evidence | Manual | Status |
 | --- | --- | --- | --- | --- |
 | C6-15 | Read a supported document | `workspace-tools.test.mjs`: *C6-15: a declared adapter takes precedence over the unsupported guard*, *C6-15: a structured adapter returns blocks without a text field*; `pdf-adapter.test.mjs`: *C6-15: extracts ordered, located blocks from a real PDF* | — | automated |
-| C6-16 | Read selected PDF pages | `pdf-adapter.test.mjs`: *C6-16: a page range reads only the requested pages*; `workspace-tools.test.mjs`: *C6-16: the read tool renders PDF pages with a page continuation* | C6-16 | automated + manual |
-| C6-17 | Read a scanned, encrypted, malformed, or text-poor PDF | `pdf-adapter.test.mjs`: *C6-17: a scanned, text-poor PDF is refused rather than reported as empty success*, *C6-17: partial extraction reports the missing pages instead of hiding them*, *C6-17: encrypted, malformed, and non-PDF inputs fail with typed codes* | C6-17 | automated + manual |
-| C6-18 | Ask to edit a PDF | `workspace-tools.test.mjs`: *C6-18: PDF is read-only and no write path can claim it* | C6-18 | automated + manual |
+| C6-16 | Read selected PDF pages | `pdf-adapter.test.mjs`: *C6-16: a page range reads only the requested pages*; `workspace-tools.test.mjs`: *C6-16: the read tool renders PDF pages with a page continuation*; `recovery-integration.test.mjs`: INT-02 provider-visible summary/page references and public-cursor continuation | C6-16 | automated + manual |
+| C6-17 | Read a scanned, encrypted, malformed, or text-poor PDF | `pdf-adapter.test.mjs`: *C6-17: a scanned, text-poor PDF is refused rather than reported as empty success*, *C6-17: partial extraction reports the missing pages instead of hiding them*, *C6-17: encrypted, malformed, and non-PDF inputs fail with typed codes*; `recovery-integration.test.mjs`: INT-02 missing-text warnings precede final output | C6-17 | automated + manual |
+| C6-18 | Ask to edit a PDF | `workspace-tools.test.mjs`: *C6-18: PDF is read-only and no write path can claim it*; `recovery-integration.test.mjs`: INT-02 runtime refusal, no approval, source unchanged (C6-I037) | C6-18 | automated + manual |
 | C6-19 | Oversized/complex PDF exceeds policy | `pdf-adapter.test.mjs`: *C6-19: excessive page counts and page ranges are bounded*, *C6-19: cancellation stops parsing rather than only the await*, *C6-19: a block ceiling bounds extraction and warns* | — | automated |
 
 ## P4 — Word
 
 | ID | Scenario | Evidence | Manual | Status |
 | --- | --- | --- | --- | --- |
-| C6-20 | Read an ordinary `.docx` | `docx-adapter.test.mjs`: *C6-20: reads common .docx structure in document order* | C6-20 | automated + manual |
+| C6-20 | Read an ordinary `.docx` | `docx-adapter.test.mjs`: *C6-20: reads common .docx structure in document order*; `recovery-integration.test.mjs`: INT-03 existing-Word summary receives headings and table cells | C6-20 | automated + manual |
 | C6-21 | Read encrypted, malformed, legacy, or macro-enabled Word input | `docx-adapter.test.mjs`: *C6-21: legacy, encrypted, macro, and non-Word inputs are refused* | C6-21 | automated + manual |
 | C6-22 | Create a new Word document | `docx-tools.test.mjs`: *C6-22: creates a valid .docx and verifies it by reopening*; `capability-runtime.test.mjs`: *C6-22: a document capability runs through the policy and permission path*, *C6-22: a denied document decision writes nothing* | C6-22 | automated + manual |
-| C6-23 | Transform an existing Word document | `docx-tools.test.mjs`: *C6-23: transforms to a new path and leaves the source untouched* | C6-23 | automated + manual |
+| C6-23 | Transform an existing Word document | `docx-tools.test.mjs`: *C6-23: transforms to a new path and leaves the source untouched*; `recovery-integration.test.mjs`: INT-03 fidelity-warning workflows, allow/deny preview, source bytes, output reopen and verification | C6-23 | automated + manual |
 | C6-24 | Request same-path replacement or existing Word output overwrite | `docx-tools.test.mjs`: *C6-24: refuses same-path replacement without touching the file*, *C6-24: refuses existing-output overwrite and preserves both files*, *C6-24: an output that appears after approval is refused, not overwritten* | C6-24 | automated + manual |
-| C6-25 | Unsupported Word features are present | `docx-adapter.test.mjs`: *C6-25: unsupported features are surfaced as bounded warnings*; `docx-tools.test.mjs`: *C6-25: an invalid specification is refused before any permission* | C6-25 | automated + manual |
+| C6-25 | Unsupported Word features are present | `docx-adapter.test.mjs`: *C6-25: unsupported features are surfaced as bounded warnings*; `docx-tools.test.mjs`: *C6-25: an invalid specification is refused before any permission*; `recovery-integration.test.mjs`: INT-03 warnings in actual provider content and permission preview | C6-25 | automated + manual |
 
 ## P5 — Web Search: retired
 

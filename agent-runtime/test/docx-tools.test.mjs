@@ -34,10 +34,10 @@ async function fixture() {
 async function bindDocumentTool(root, environment, name, { decision = "allow", onPermission } = {}) {
   const events = [];
   const broker = new PermissionBroker({
-    emit: (event) => {
+    emit: async (event) => {
       events.push(event);
       if (event.type === "permission_requested") {
-        onPermission?.(event);
+        await onPermission?.(event);
         broker.resolve(event.permission_id, decision, {
           request_id: event.request_id,
           task_id: event.task_id,
@@ -339,14 +339,7 @@ test("A09: a source changed while the decision was pending is refused", async ()
       // The window: the user is looking at the permission card, and the source
       // changes underneath them before they answer.
       //
-      // The write is deliberately not awaited. `onPermission` is called
-      // synchronously from the broker's emit, so an async handler's promise is
-      // never observed and an `await` inside it would simply not have happened
-      // by the time the decision is resolved — the test would pass without ever
-      // changing the source.
-      onPermission: () => {
-        void writeFile(join(root, "source.docx"), Buffer.alloc(4_096, 65));
-      },
+      onPermission: () => writeFile(join(root, "source.docx"), Buffer.alloc(4_096, 65)),
     });
 
     const result = await implementation.execute("transform-changed", {

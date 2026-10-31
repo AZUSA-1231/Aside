@@ -238,18 +238,17 @@ function assertToolClassifications(value) {
       accepted[field] = classification[field];
     }
     for (const key of Object.keys(classification)) {
-      if (key === "schema_digest") {
-        // Optional binding of the override to the schema the user approved.
-        // Without it the override is name-keyed and cannot be invalidated
-        // automatically; see C6-I030.
-        if (!/^[a-f0-9]{8,64}$/i.test(String(classification.schema_digest))) {
+      if (key === "schema_digest" || key === "server_fingerprint") {
+        const digest = classification[key];
+        const pattern = key === "schema_digest" ? /^[a-f0-9]{16}$/i : /^[a-f0-9]{32}$/i;
+        if (typeof digest !== "string" || !pattern.test(digest)) {
           refuse(
             "mcp_config_invalid",
-            `The classification for tool "${toolName}" has a malformed schema_digest.`,
-            { tool: toolName },
+            `The classification for tool "${toolName}" has a malformed ${key}.`,
+            { tool: toolName, field: key },
           );
         }
-        accepted.schema_digest = classification.schema_digest;
+        accepted[key] = digest.toLowerCase();
         continue;
       }
       if (!(key in CLASSIFICATION_ENUMS)) {

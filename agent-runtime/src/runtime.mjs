@@ -640,6 +640,9 @@ export async function createConversationRuntime({
         workspaceState: resolution.state,
         builtinTools: baseRegistry.tools,
       }) ?? []));
+      for (const diagnostic of mcp?.controller?.diagnostics ?? []) {
+        send({ ...diagnostic, type: "runtime_warning" });
+      }
     }
     return filterAvailableTools(
       normalizeToolSet(sources),

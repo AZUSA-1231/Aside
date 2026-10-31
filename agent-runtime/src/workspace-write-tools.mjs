@@ -118,7 +118,9 @@ function failedResult(tool, error, limits, extra = {}) {
         ? "invalidated"
         : ["aborted", "permission_cancelled"].includes(code)
           ? "cancelled"
-          : "failed";
+          : code === "unsupported_format"
+            ? "unsupported"
+            : "failed";
   const payload = {
     status,
     tool,
@@ -385,6 +387,11 @@ async function prepareWrite({ workspace, documentRegistry, limits }, params, sig
 async function prepareEdit({ workspace, documentRegistry, limits }, params, signal) {
   const path = boundedPath(params?.path, limits);
   const format = params?.format ?? "auto";
+  const adapter = documentRegistry.select(path, format);
+  const inferredAdapter = documentRegistry.select(path, "auto");
+  if (inferredAdapter?.write === false || !adapter || adapter.write !== true) {
+    throw new WorkspaceError("unsupported_format", "The document format cannot be edited by the active adapter.", path);
+  }
   const current = await readDocument(
     { workspace, documentRegistry, limits },
     path,
@@ -392,6 +399,9 @@ async function prepareEdit({ workspace, documentRegistry, limits }, params, sign
     signal,
     limits.maxWriteBytes,
   );
+  if (typeof current.raw_text !== "string") {
+    throw new WorkspaceError("unsupported_format", "The document adapter does not expose editable text.", path);
+  }
   const edits = replacementInputs(params, limits);
   const applied = applyReplacements(current.raw_text, edits, params?.replace_all === true);
   const content = boundedText(applied.content, "result", limits.maxWriteBytes);
