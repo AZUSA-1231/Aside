@@ -160,7 +160,7 @@ function failureEnvelope(tool, error, extra = {}) {
 
 /** Resolves the destination and refuses anything but a new, distinct file. */
 async function prepareDestination(workspace, outputPath, sourcePath) {
-  const target = await workspace.resolvePath(outputPath, { expectedKind: "file", allowMissing: true });
+  const target = await workspace.resolvePath(outputPath, { expectedKind: "file", allowMissing: true, forWrite: true });
   // Checked before existence: when the destination is the source, "you are
   // replacing the document in place" is the useful diagnosis, and the source
   // necessarily exists so the existence test would always win otherwise.
@@ -447,6 +447,7 @@ async function runDocumentOperation({
     status: "succeeded",
     details: {
       output_path: target.relative_path.split(/[\\/]+/).join("/"),
+      output_absolute_path: target.canonical_path,
       operation: transform ? "transform" : "create",
       bytes: bytes.byteLength,
       structure: summary,

@@ -36,6 +36,7 @@ export interface SettingsSnapshot {
     storage_error?: boolean;
   }>;
   legacy_source: string | null;
+  default_workspace_root?: string | null;
   diagnostics: Array<{ code: string; field: string; message: string }>;
   runtime_fields: string[];
   application: {

@@ -419,12 +419,13 @@ export async function createAsideConversationRuntime({
     buildSystemPromptFor: configuredBuildSystemPromptFor,
     continuation: previousRuntime?.continuation,
     sensitiveValues,
+    defaultWorkspaceRoot: configuration?.publicValues.workspace_root,
+    protectedWorkspacePaths: configuration ? [...configuration.protectedWorkspacePaths, root ?? resolveSessionRoot(configuration.values)] : [],
   });
-  return {
-    ...runtime,
+  return Object.assign(runtime, {
     history: restored.history,
     session: opened.session,
     sessionRepository: opened.repository,
     persistRun,
-  };
+  });
 }

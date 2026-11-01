@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { parseEnv } from "node:util";
 import {
+  absoluteSettingsPath,
   getAsideConfigRoot,
   normalizeAsideApiUrl,
   PROVIDER_CREDENTIAL_NAMES,
@@ -148,6 +149,8 @@ export async function loadAsideConfig({
     publicValues[field] = getAsideConfigValue(values, variable) ?? null;
   }
   publicValues.provider ??= "openai";
+  const defaultWorkspaceRoot = getAsideConfigValue(environmentValues, "ASIDE_DEFAULT_WORKSPACE_ROOT") ?? null;
+  publicValues.workspace_root ??= defaultWorkspaceRoot;
   publicValues.thinking_level ??= "off";
   publicValues.mcp_config_path = mcpConfigPath;
   const credentials = {};
@@ -180,6 +183,9 @@ export async function loadAsideConfig({
     credentials: Object.freeze(credentials),
     mcpConfigPath,
     defaultMcpConfigPath,
+    defaultWorkspaceRoot,
+    protectedWorkspacePaths: [getAsideConfigRoot(values), settings.path, source, mcpConfigPath,
+      getAsideConfigValue(values, "ASIDE_SESSION_ROOT")].filter(Boolean).map((path) => resolve(path)),
     effectiveRevision,
   });
 }
@@ -194,6 +200,11 @@ export function getAsideConfigValue(values, key) {
 export function describeAsideSettings(configuration) {
   const values = { ...configuration.publicValues };
   const diagnostics = [];
+  try {
+    if (values.workspace_root) values.workspace_root = absoluteSettingsPath(values.workspace_root, "Default directory");
+  } catch {
+    diagnostics.push({ code: "settings_invalid_workspace", field: "workspace_root", message: "The effective default directory must be an absolute local path. Correct its configuration source." });
+  }
   try {
     values.api_url = normalizeAsideApiUrl(values.api_url) ?? null;
   } catch {
@@ -210,7 +221,8 @@ export function describeAsideSettings(configuration) {
     sources: configuration.fieldSources,
     credentials: configuration.credentials,
     legacy_source: configuration.source ?? null,
+    default_workspace_root: configuration.defaultWorkspaceRoot,
     diagnostics,
-    runtime_fields: ["provider", "model", "api_url", "mcp_config_path"],
+    runtime_fields: ["provider", "model", "api_url", "workspace_root", "mcp_config_path"],
   };
 }

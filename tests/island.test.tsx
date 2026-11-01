@@ -266,6 +266,22 @@ it('shows the generated filename and path, reveals the file, and retains final v
   expect(nativeClient.revealPath).toHaveBeenCalledWith('D:\\reports\\report.docx');
 });
 
+it('shows separate read-only source and output scopes and reveals the absolute text output path', async () => {
+  await expand();
+  const requestId = await send();
+  await act(async () => {
+    emit({ type: 'workspace_resolved', request_id: requestId, task_id: 'task', workspace: { status: 'resolved', source: 'default_workspace', addressed_path: 'D:/Documents/Aside', canonical_path: 'D:/Documents/Aside', kind: 'directory', output_path: 'D:/Documents/Aside', pending_creation: true, source_scope: { canonical_path: 'E:/work/input.md', addressed_path: 'E:/work/input.md', kind: 'file', access: 'read_only' } } });
+    emit({ type: 'tool_result', request_id: requestId, task_id: 'task', tool_call_id: 'write', tool: 'workspace.write', status: 'succeeded', text: 'Saved', truncated: false, details: { status: 'succeeded', operation: 'write', output_path: 'report.md', output_absolute_path: 'D:/Documents/Aside/report.md', verification: { status: 'verified' } } });
+    emit({ type: 'completed', request_id: requestId });
+  });
+  expect(container.textContent).toContain('Read-only source · E:/work/input.md');
+  expect(container.textContent).toContain('Output · Default directory');
+  expect(container.querySelector('.document-path')!.textContent).toBe('D:/Documents/Aside/report.md');
+  expect(container.querySelector('.document-chip strong')!.textContent).toContain('Written');
+  await click(button('Show report.md in folder'));
+  expect(nativeClient.revealPath).toHaveBeenCalledWith('D:/Documents/Aside/report.md');
+});
+
 it('displays live tool output and the full bounded final result with limit notices', async () => {
   await expand();
   const requestId = await send();

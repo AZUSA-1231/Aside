@@ -21,6 +21,8 @@ export default function SettingsPanel({ onClose, taskRunning }: { onClose: () =>
   const [model, setModel] = useState("");
   const [apiUrl, setApiUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [workspaceRoot, setWorkspaceRoot] = useState("");
+  const [workspaceDirty, setWorkspaceDirty] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [catalogs, setCatalogs] = useState<Partial<Record<SettingsProvider, ProviderCatalog>>>({});
   const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -42,6 +44,8 @@ export default function SettingsPanel({ onClose, taskRunning }: { onClose: () =>
       setProvider(isProvider(selected) ? selected : "openai");
       setModel(Object.prototype.hasOwnProperty.call(next.document, "model") ? next.document.model ?? "" : next.effective.model ?? "");
       setApiUrl(Object.prototype.hasOwnProperty.call(next.document, "api_url") ? next.document.api_url ?? "" : next.effective.api_url ?? "");
+      setWorkspaceRoot(Object.prototype.hasOwnProperty.call(next.document, "workspace_root") ? next.document.workspace_root ?? "" : next.sources.workspace_root.kind === "default" ? "" : next.effective.workspace_root ?? "");
+      setWorkspaceDirty(false);
       setDirty(false);
       if (clearKey) setApiKey("");
       setTestResult(null);
@@ -94,13 +98,13 @@ export default function SettingsPanel({ onClose, taskRunning }: { onClose: () =>
   const endpoint = snapshot?.effective.api_url || effectiveModel?.base_url;
   const credential = snapshot?.credentials[provider];
   const busy = operation !== null;
-  const unsaved = dirty || apiKey.length > 0;
+  const unsaved = dirty || workspaceDirty || apiKey.length > 0;
   const changed = () => { setDirty(true); setNotice(null); setTestResult(null); };
 
   return <section className="settings-panel" aria-label="Model and API settings" aria-busy={busy}>
     <div className="settings-title">
       <button type="button" className="icon-button" aria-label="Back to conversation" onClick={onClose}><ArrowLeft size={16} /></button>
-      <h1 ref={heading} tabIndex={-1}>Model &amp; API</h1>
+      <h1 ref={heading} tabIndex={-1}>Settings</h1>
     </div>
     {error && <p className="settings-error" role="alert">{error} Reload saved settings if another editor changed the file.</p>}
     {notice && <p className="settings-note" role="status">{notice}</p>}
@@ -108,7 +112,9 @@ export default function SettingsPanel({ onClose, taskRunning }: { onClose: () =>
       event.preventDefault();
       if (!snapshot || busy || !selectedModel) return;
       void perform("Saving settings", async () => {
-        accept(await nativeClient.saveSettings({ ...baseDocument, provider, model: model || null, api_url: apiUrl.trim() || null }, revision), true, false);
+        const next = await nativeClient.saveSettings({ ...baseDocument, provider, model: model || null, api_url: apiUrl.trim() || null }, revision);
+        accept(next);
+        setBaseDocument(next.document); setRevision(next.revision); setDirty(false); setTestResult(null);
         setNotice(apiKey ? "Settings saved. Save the API key separately before applying." : "Settings saved. Apply when idle to update the runtime.");
       });
     }}>
@@ -139,6 +145,34 @@ export default function SettingsPanel({ onClose, taskRunning }: { onClose: () =>
       <div className="settings-actions">
         <button type="submit" disabled={busy || !snapshot || !selectedModel || !dirty}>Save settings</button>
         <button type="button" disabled={busy} onClick={() => void perform("Reloading settings", async () => accept(await nativeClient.getSettings(), true))}>Reload saved settings</button>
+      </div>
+    </form>
+
+    <form className="settings-card" aria-label="Default directory settings" onSubmit={(event) => {
+      event.preventDefault();
+      if (busy || !snapshot) return;
+      void perform("Saving default directory", async () => {
+        const next = await nativeClient.saveSettings({ ...baseDocument, workspace_root: workspaceRoot.trim() || null }, revision);
+        accept(next); setBaseDocument(next.document); setRevision(next.revision); setWorkspaceDirty(false); setTestResult(null);
+        setNotice("Default directory saved. Apply when idle to use it for the next task. Existing files stay in their current locations.");
+      });
+    }}>
+      <h2>Default directory</h2>
+      <label htmlFor="settings-workspace">Directory path <span>(optional)</span></label>
+      <input id="settings-workspace" type="text" value={workspaceRoot} maxLength={4096} disabled={busy} placeholder={snapshot?.default_workspace_root || "Absolute directory path"}
+        onChange={(event) => { setWorkspaceRoot(event.currentTarget.value); setWorkspaceDirty(true); setNotice(null); }} />
+      <p className="settings-note">Blank uses the system Documents/Aside directory. Without a selected task workspace, new outputs go here. Captured files stay in place and are read-only sources.</p>
+      {snapshot && <div className="settings-effective">
+        <strong>Effective default directory</strong>
+        <span className="settings-path">{snapshot.effective.workspace_root || "System document directory unavailable. Set an absolute path."}</span>
+        <span>{sourceName(snapshot.sources.workspace_root.kind)}{snapshot.sources.workspace_root.kind === "environment" ? " · overrides saved settings" : ""}</span>
+      </div>}
+      <p className="settings-note">The directory is created on the first approved write. Outputs are kept until you remove them. Session history and API keys are stored separately.</p>
+      <div className="settings-actions">
+        <button type="submit" disabled={busy || !snapshot || !workspaceDirty}>Save directory</button>
+        <button type="button" disabled={busy || !snapshot?.effective.workspace_root || workspaceDirty} onClick={() => void perform("Locating default directory", async () => {
+          await nativeClient.revealPath(snapshot!.effective.workspace_root!);
+        })}>Show saved directory</button>
       </div>
     </form>
 

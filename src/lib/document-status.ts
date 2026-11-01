@@ -160,7 +160,7 @@ export function writeDocumentStatus(
 ): RuntimeDocumentWriteStatus | null {
   const record = asRecord(details);
   if (!record) return null;
-  const outputPath = asString(record.output_path);
+  const outputPath = asString(record.output_absolute_path) ?? asString(record.output_path);
   if (!outputPath) return null;
   const operation = asString(record.operation);
 
@@ -168,7 +168,7 @@ export function writeDocumentStatus(
   const verificationStatus = verificationRecord ? asString(verificationRecord.status) : undefined;
 
   return {
-    operation: operation === "transform" ? "transform" : "create",
+    operation: operation === "transform" || operation === "write" || operation === "edit" ? operation : "create",
     outputPath,
     bytes: asNumber(record.bytes),
     structure: narrowStructure(record.structure),

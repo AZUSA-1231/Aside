@@ -345,7 +345,7 @@ async function prepareWrite({ workspace, documentRegistry, limits }, params, sig
   const path = boundedPath(params?.path, limits);
   const content = boundedText(params?.content, "content", limits.maxWriteBytes);
   const format = params?.format ?? "auto";
-  const target = await workspace.resolvePath(path, { expectedKind: "file", allowMissing: true });
+  const target = await workspace.resolvePath(path, { expectedKind: "file", allowMissing: true, forWrite: true });
   const validated = await validateDocumentText({
     documentRegistry,
     limits,
@@ -386,6 +386,7 @@ async function prepareWrite({ workspace, documentRegistry, limits }, params, sig
 
 async function prepareEdit({ workspace, documentRegistry, limits }, params, signal) {
   const path = boundedPath(params?.path, limits);
+  await workspace.resolvePath(path, { expectedKind: "file", forWrite: true });
   const format = params?.format ?? "auto";
   const adapter = documentRegistry.select(path, format);
   const inferredAdapter = documentRegistry.select(path, "auto");
@@ -585,6 +586,8 @@ function createRunWriteTool(definition, prepare, configuredLimits, documentRegis
             }, operation, signal);
             return successfulResult(definition.name, {
               operation: operation.kind,
+              output_path: productPath(operation.target.relative_path),
+              output_absolute_path: operation.target.canonical_path,
               target: publicTarget(operation.target),
               format: operation.format,
               bytes: byteLength(operation.content),

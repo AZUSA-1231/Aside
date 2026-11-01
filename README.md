@@ -30,8 +30,9 @@ native desktop observation remains unperformed. See the
 
 **Context is a reference, not permission.** Capturing a file tells Aside where
 you are. It does not grant read access, write access, or anything else — the
-runtime canonicalizes the path, resolves the containing directory as the task
-workspace, and every tool call after that is still subject to its own policy.
+runtime canonicalizes the path and fixes the task's source and output scopes.
+A captured file is a read-only source, and every tool call after that is still
+subject to its own policy.
 Reading a file and writing one are different capabilities with different rules.
 
 **Every write is approved for that operation.** Aside does not ask you to trust
@@ -61,6 +62,11 @@ enforced in the runtime rather than described in a prompt.
 - **Documents** — read PDFs (text and page identity, with honest reporting of
   scanned or partial documents) and read, create, and transform `.docx` files.
   Generated documents are reopened and checked before the result is reported.
+- **Default output directory** — use the system Documents/Aside location or
+  save your own absolute path in Settings. The first approved write creates
+  it; captured source files stay in place. Results show their actual location
+  and can be revealed in Explorer. An explicitly selected task workspace takes
+  priority, and session history stays in its separate application directory.
 - **Permission-gated writes** — text, JSON, and document writes are prepared,
   previewed, and executed once after an exact-operation decision, then
   revalidated against the current target.

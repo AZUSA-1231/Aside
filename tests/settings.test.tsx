@@ -56,6 +56,35 @@ it("reads settings and local models without applying or testing a connection", a
   expect(nativeClient.applySettings).not.toHaveBeenCalled();
 });
 
+it("saves the default directory independently while preserving API and key drafts", async () => {
+  await render();
+  await input("settings-url", "https://unsaved.example/v1");
+  await input("settings-key", "draft-private-key");
+  await input("settings-workspace", "D:/new-output");
+  await act(async () => container.querySelector<HTMLFormElement>('[aria-label="Default directory settings"]')!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  expect(nativeClient.saveSettings).toHaveBeenCalledWith({ ...snapshot.document, workspace_root: "D:/new-output" }, "saved-revision");
+  expect(container.querySelector<HTMLInputElement>("#settings-url")!.value).toBe("https://unsaved.example/v1");
+  expect(container.querySelector<HTMLInputElement>("#settings-key")!.value).toBe("draft-private-key");
+  expect(button("Apply when idle").disabled).toBe(true);
+  expect(nativeClient.setApiKey).not.toHaveBeenCalled();
+});
+
+it("blank default directory restores the OS suggestion and shows saved directory errors without applying", async () => {
+  snapshot = { ...snapshot, document: { ...snapshot.document, workspace_root: null }, effective: { ...snapshot.effective, workspace_root: "D:/Documents/Aside" }, default_workspace_root: "D:/Documents/Aside" };
+  vi.spyOn(nativeClient, "revealPath").mockRejectedValue(new Error("The directory has not been created yet."));
+  await render();
+  expect(container.querySelector<HTMLInputElement>("#settings-workspace")!.value).toBe("");
+  expect(container.textContent).toContain("D:/Documents/Aside");
+  await click("Show saved directory");
+  expect(nativeClient.revealPath).toHaveBeenCalledWith("D:/Documents/Aside");
+  expect(container.querySelector('[role="alert"]')!.textContent).toContain("not been created");
+  await input("settings-workspace", "D:/other-output");
+  await input("settings-workspace", "");
+  await act(async () => container.querySelector<HTMLFormElement>('[aria-label="Default directory settings"]')!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  expect(nativeClient.saveSettings).toHaveBeenCalledWith({ ...snapshot.document, workspace_root: null }, "saved-revision");
+  expect(nativeClient.applySettings).not.toHaveBeenCalled();
+});
+
 it("saves ordinary settings with their original revision and preserves other P0 fields", async () => {
   await render();
   await input("settings-url", "https://changed.example/v1");

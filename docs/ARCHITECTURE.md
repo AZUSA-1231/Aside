@@ -184,7 +184,7 @@ validated document, item, or directory path. Explorer uses target-bound Windows
 Shell automation with bounded UIA fallback; document strategies use their
 host-specific metadata locators. They do not capture UIA layout merely because
 the application happens to expose UIA. They return a path descriptor that the
-runtime resolves into one task-local workspace before the first file tool call.
+runtime resolves into task-local source/output scopes before the first file tool call.
 The descriptor is a reference and a workspace hint, not permission: the runtime
 canonicalizes and revalidates it, and workspace-scoped tools stay unpublished
 until activation. Neither the process-wide working directory nor the durable
@@ -230,8 +230,8 @@ settings IPC without requiring provider initialization. Environment overrides
 user settings, which override ordinary legacy env values. The conversation,
 session store and MCP initialization share one loaded configuration snapshot.
 Tauri tracks its revision from `ready`; saving does not change an active run.
-The current `runtime_fields` list excludes reserved workspace/thinking settings
-until their feature plans are implemented. See
+P2 activates the default output directory in `runtime_fields`; thinking settings
+remain reserved until P3. See
 [`cycle-8/plans/P0-settings-foundation.md`](./cycle-8/plans/P0-settings-foundation.md).
 
 P1 adds a Model & API panel that remains available without a ready conversation
@@ -250,6 +250,20 @@ actual ready revisions and `configuration_status`; React retains conversation
 and draft on `runtime_reconfigured`, clearing old permission/tool projections.
 The connection test is explicit and sends a minimal model text request without
 opening history or tools. See [P1](./cycle-8/plans/P1-api-settings.md).
+
+P2 uses Tauri's system Documents directory resolver for the default `Aside`
+output root and passes the same native fallback to both Node processes. The
+ordinary configuration precedence still applies. Explicit task workspaces
+select output; captures supply a separate read scope, limited to the captured
+file or directory. Relative paths belong to output, absolute source paths stay
+read-only outside it, and a single captured file cannot be overwritten through
+the output scope. No common-ancestor workspace or implicit source copy is used.
+The environment routes existing tools without adding an agent tool. It checks
+private storage boundaries and plans missing default roots without mkdir until
+the first approved write. Results include absolute output paths for native
+reveal. The session facade keeps runtime getters live, so same-session rebuilds
+preserve validated source/selection state while loading a new default root.
+See [P2](./cycle-8/plans/P2-default-workspace.md).
 
 `agent-runtime` is the only Aside-owned boundary around Pi. It owns:
 

@@ -80,6 +80,7 @@ pub fn run() {
             commands::runtime_set_workspace,
             commands::runtime_clear_workspace,
             settings::get_settings,
+            settings::reveal_existing_path,
             settings::save_settings,
             settings::import_legacy_settings,
             settings::set_api_key,

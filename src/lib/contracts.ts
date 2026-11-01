@@ -173,6 +173,9 @@ export interface RuntimeWorkspaceState {
   addressed_path: string;
   canonical_path: string;
   kind: string;
+  output_path?: string;
+  pending_creation?: boolean;
+  source_scope?: { canonical_path: string; addressed_path: string; kind: string; access: "read_only" };
   expires_at?: number;
   target?: {
     role: string;
@@ -334,7 +337,7 @@ export interface RuntimeDocumentReadStatus {
  * not reopened, which is not the same as a check that passed.
  */
 export interface RuntimeDocumentWriteStatus {
-  operation: "create" | "transform";
+  operation: "create" | "transform" | "write" | "edit";
   outputPath: string;
   bytes?: number;
   structure: Record<string, number>;

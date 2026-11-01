@@ -1,7 +1,6 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { listen as tauriListen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import type {
   AgentState,
   AsideTurnContext,
@@ -173,7 +172,7 @@ export const nativeClient = {
     if (!isDesktopRuntime()) {
       throw new Error("Showing a file in its folder is available in the desktop app.");
     }
-    await revealItemInDir(path);
+    await command<void>("reveal_existing_path", { path });
   },
 
   startDragging: async (): Promise<void> => {

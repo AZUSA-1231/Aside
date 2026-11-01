@@ -29,6 +29,28 @@ async function writeSettings(options, document) {
   await writeFile(options.environment.ASIDE_SETTINGS_PATH, JSON.stringify(document));
 }
 
+test("native default directory is projected without creating files and obeys settings and environment priority", async (context) => {
+  const options = await fixture(context);
+  const suggested = join(options.root, "documents", "Aside");
+  const environment = { ...options.environment, ASIDE_DEFAULT_WORKSPACE_ROOT: suggested };
+  const first = await handleSettingsRequest({ operation: "get" }, { ...options, environment });
+  assert.equal(first.effective.workspace_root, suggested);
+  assert.equal(first.default_workspace_root, suggested);
+  assert.equal(first.sources.workspace_root.kind, "default");
+  assert.ok(first.runtime_fields.includes("workspace_root"));
+  await assert.rejects(readFile(suggested), { code: "ENOENT" });
+  const custom = join(options.root, "custom-output");
+  const saved = await handleSettingsRequest({ operation: "save", document: { schema_version: 1, workspace_root: custom }, expected_revision: first.revision }, { ...options, environment });
+  assert.equal(saved.effective.workspace_root, custom);
+  assert.equal(saved.sources.workspace_root.kind, "settings");
+  const overridden = await handleSettingsRequest({ operation: "get" }, { ...options, environment: { ...environment, ASIDE_WORKSPACE_ROOT: join(options.root, "env-output") } });
+  assert.equal(overridden.sources.workspace_root.kind, "environment");
+  const restored = await handleSettingsRequest({ operation: "save", document: { schema_version: 1, workspace_root: null }, expected_revision: saved.revision }, { ...options, environment });
+  assert.equal(restored.effective.workspace_root, suggested);
+  assert.notEqual(restored.effective_revision, saved.effective_revision);
+  await assert.rejects(readFile(custom), { code: "ENOENT" });
+});
+
 test("stored credentials override legacy, remain below process env, and never enter snapshots", async (context) => {
   const options = await fixture(context);
   await writeFile(join(options.root, ".env.local"), "OPENAI_API_KEY=legacy-private\n");

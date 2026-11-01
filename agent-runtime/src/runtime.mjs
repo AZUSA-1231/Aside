@@ -43,13 +43,13 @@ import {
 import {
   WorkspaceError,
   normalizeWorkspaceHint,
-  resolveTaskWorkspace,
 } from "./workspace.mjs";
 import {
   createWorkspaceReadTools,
   describeDocumentFormats,
 } from "./workspace-tools.mjs";
 import { createWorkspaceWriteTools } from "./workspace-write-tools.mjs";
+import { resolveTaskFileScopes } from "./task-workspace.mjs";
 import { createDocumentTools } from "./docx-tools.mjs";
 import { PermissionBroker } from "./permission-broker.mjs";
 
@@ -88,6 +88,8 @@ function workspaceEventState(state) {
     addressed_path: state.addressed_path,
     canonical_path: state.canonical_path,
     kind: state.kind,
+    ...(state.output_path ? { output_path: state.output_path, pending_creation: state.pending_creation === true } : {}),
+    ...(state.source_scope ? { source_scope: state.source_scope } : {}),
     ...(state.expires_at === undefined ? {} : { expires_at: state.expires_at }),
     ...(state.target
       ? {
@@ -341,6 +343,8 @@ export async function createConfiguredAgent({
     model: model.id,
     configurationRevision: configuration.effectiveRevision,
     settingsRevision: configuration.settings.revision,
+    defaultWorkspaceRoot: configuration.publicValues.workspace_root,
+    protectedWorkspacePaths: configuration.protectedWorkspacePaths,
     sensitiveValues: Object.values(PROVIDER_CREDENTIAL_NAMES).flat().map((name) => values[name]).filter(Boolean),
     registry,
     limits: normalizedLimits,
@@ -387,6 +391,8 @@ export async function createConversationRuntime({
   now = Date.now,
   workspaceHint: configuredWorkspaceHint,
   workspaceFileSystem,
+  defaultWorkspaceRoot,
+  protectedWorkspacePaths = [],
   permissionBroker,
   environment = process.env,
   configCwd = process.cwd(),
@@ -430,6 +436,9 @@ export async function createConversationRuntime({
         skills,
       });
   const conversationAgent = configured.agent;
+  defaultWorkspaceRoot ??= configured.defaultWorkspaceRoot;
+  const fileScopeProtection = [...protectedWorkspacePaths, ...(configured.protectedWorkspacePaths ?? [])];
+  const originalSystemPrompt = conversationAgent.state.systemPrompt;
   const sanitizeError = (error) => sanitizePublicError(error, configured.sensitiveValues ?? sensitiveValues);
   const runtimeSkills = configured.skills ?? [];
   let activeSkillName = runtimeSkills.some((skill) => skill.name === continuation?.activeSkillName)
@@ -583,9 +592,10 @@ export async function createConversationRuntime({
     // the capability summary is recomputed here rather than fixed at startup —
     // otherwise the model would be told about tools it does not have, and not
     // told about tools it does.
-    if (buildSystemPromptFor) {
-      conversationAgent.state.systemPrompt = buildSystemPromptFor(registry);
-    }
+    const scope = active?.workspace;
+    const locations = scope?.output_path ? `Task file scopes: relative paths resolve inside the output directory ${JSON.stringify(scope.output_path)}. Save new results there. A missing default directory is created only after write approval.`
+      + (scope.source_scope ? ` The captured ${scope.source_scope.kind} ${JSON.stringify(scope.source_scope.canonical_path)} is a read-only source; address it by its absolute path. Do not read siblings of a captured file or overwrite the source.` : " No external source is available for this task.") : "";
+    conversationAgent.state.systemPrompt = [buildSystemPromptFor ? buildSystemPromptFor(registry) : originalSystemPrompt, locations].filter(Boolean).join("\n\n");
   }
 
   async function registryForRun(run, resolution) {
@@ -954,12 +964,14 @@ export async function createConversationRuntime({
       const continuationId = currentContinuationId();
       let resolution;
       try {
-        resolution = await resolveTaskWorkspace({
+        resolution = await resolveTaskFileScopes({
           context: normalizedContext,
           workspaceHint: workspaceHint ?? configuredWorkspaceHint ?? selectedWorkspace,
           previousWorkspace,
           continuationId,
           fileSystem: workspaceFileSystem,
+          defaultWorkspaceRoot,
+          protectedPaths: fileScopeProtection,
           now: now(),
         });
       } catch (error) {
@@ -1068,8 +1080,11 @@ export async function createConversationRuntime({
     if (!normalized) {
       throw new WorkspaceError("invalid_workspace", "A workspace selection is required.");
     }
-    const resolution = await resolveTaskWorkspace({
+    const resolution = await resolveTaskFileScopes({
       workspaceHint: normalized,
+      previousWorkspace,
+      defaultWorkspaceRoot,
+      protectedPaths: fileScopeProtection,
       continuationId: currentContinuationId(),
       fileSystem: workspaceFileSystem,
       now: now(),

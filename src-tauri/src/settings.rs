@@ -1,5 +1,5 @@
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
 use std::thread;
@@ -8,12 +8,35 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 use serde_json::{json, Value};
 use tauri::{AppHandle, Manager};
+use tauri_plugin_opener::OpenerExt;
 
 use crate::commands::AppState;
 use crate::runtime::RuntimeManager;
 
 const MAX_REQUEST_BYTES: usize = 64 * 1024;
 const MAX_RESPONSE_BYTES: u64 = 256 * 1024;
+
+fn existing_reveal_path(path: &str) -> Result<PathBuf, SettingsCommandError> {
+    crate::path::canonicalize_path(path).map_err(|_| failure("path_unavailable", "The file or directory is unavailable. A new default directory is created on the first approved write."))
+}
+
+#[tauri::command]
+pub async fn reveal_existing_path(
+    app: AppHandle,
+    path: String,
+) -> Result<(), SettingsCommandError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let existing = existing_reveal_path(&path)?;
+        app.opener().reveal_item_in_dir(existing).map_err(|_| {
+            failure(
+                "reveal_failed",
+                "Aside could not show this location. Check that it is still available.",
+            )
+        })
+    })
+    .await
+    .map_err(|_| failure("reveal_failed", "The location could not be shown."))?
+}
 
 #[derive(Default)]
 pub struct SettingsManager {
@@ -69,7 +92,26 @@ fn decode_response(bytes: &[u8]) -> Result<Value, SettingsCommandError> {
     Err(failure(code, message))
 }
 
-fn run_control(node: &Path, helper: &Path, request: &Value) -> Result<Value, SettingsCommandError> {
+pub fn default_workspace(app: &AppHandle) -> Option<PathBuf> {
+    app.path()
+        .document_dir()
+        .ok()
+        .map(|directory| directory.join("Aside"))
+}
+
+pub fn configure_workspace(command: &mut Command, directory: Option<&Path>) {
+    command.env_remove("ASIDE_DEFAULT_WORKSPACE_ROOT");
+    if let Some(directory) = directory {
+        command.env("ASIDE_DEFAULT_WORKSPACE_ROOT", directory);
+    }
+}
+
+fn run_control(
+    node: &Path,
+    helper: &Path,
+    request: &Value,
+    workspace: Option<&Path>,
+) -> Result<Value, SettingsCommandError> {
     if !helper.is_file() {
         return Err(failure(
             "settings_helper_missing",
@@ -89,6 +131,7 @@ fn run_control(node: &Path, helper: &Path, request: &Value) -> Result<Value, Set
         ));
     }
     let mut command = Command::new(node);
+    configure_workspace(&mut command, workspace);
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -215,6 +258,7 @@ async fn execute(app: AppHandle, mut request: Value) -> Result<Value, SettingsCo
             &RuntimeManager::node_command(&app),
             &RuntimeManager::settings_control_path(&app),
             &request,
+            default_workspace(&app).as_deref(),
         )?;
         if request["operation"] == "catalog" || request["operation"] == "test_connection" {
             return Ok(settings);
@@ -328,6 +372,34 @@ mod tests {
     use super::*;
 
     #[test]
+    fn directory_environment_uses_native_value_and_removes_inherited_guess() {
+        let mut command = Command::new("node");
+        configure_workspace(
+            &mut command,
+            Some(Path::new("D:/Redirected Documents/Aside")),
+        );
+        assert!(command
+            .get_envs()
+            .any(|(key, value)| key == "ASIDE_DEFAULT_WORKSPACE_ROOT"
+                && value == Some(std::ffi::OsStr::new("D:/Redirected Documents/Aside"))));
+        configure_workspace(&mut command, None);
+        assert!(command
+            .get_envs()
+            .any(|(key, value)| key == "ASIDE_DEFAULT_WORKSPACE_ROOT" && value.is_none()));
+    }
+
+    #[test]
+    fn revealing_a_missing_default_directory_does_not_create_it() {
+        let missing = std::env::temp_dir()
+            .join(format!("aside-missing-output-{}", std::process::id()))
+            .join("not-created");
+        assert!(!missing.exists());
+        assert!(existing_reveal_path(&missing.to_string_lossy()).is_err());
+        assert!(!missing.exists());
+        assert!(existing_reveal_path("relative-output").is_err());
+    }
+
+    #[test]
     fn response_errors_do_not_echo_invalid_helper_output() {
         let error = decode_response(b"invalid private-value").unwrap_err();
         assert_eq!(error.code, "settings_invalid_response");
@@ -352,7 +424,7 @@ mod tests {
         let helper = root.join("control.mjs");
         std::fs::write(&helper, "let text = ''; for await (const chunk of process.stdin) text += chunk; process.stdout.write(JSON.stringify({ ok: true, settings: { received: JSON.parse(text) } }));").unwrap();
         let request = json!({ "operation": "save", "payload": "transport-test".repeat(1500) });
-        let response = run_control(Path::new("node"), &helper, &request);
+        let response = run_control(Path::new("node"), &helper, &request, None);
         std::fs::remove_file(&helper).unwrap();
         std::fs::remove_dir(&root).unwrap();
         assert_eq!(response.unwrap()["received"], request);

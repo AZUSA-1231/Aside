@@ -174,6 +174,8 @@ function toChatMessage(message: RuntimeHistoryMessage): ChatMessage {
 
 function workspaceSourceLabel(source: string): string {
   switch (source) {
+    case "default_workspace":
+      return "Default directory";
     case "explicit":
       return "Selected";
     case "descriptor":
@@ -1078,8 +1080,8 @@ function App() {
               <strong title={runtimeWorkspace.canonical_path}>
                 {runtimeWorkspace.canonical_path}
               </strong>
-              <span>Workspace · {workspaceSourceLabel(runtimeWorkspace.source)}</span>
-              {runtimeWorkspace.target && <span>Target · {runtimeWorkspace.target.canonical_path}</span>}
+              <span>{runtimeWorkspace.output_path ? "Output" : "Workspace"} · {workspaceSourceLabel(runtimeWorkspace.source)}{runtimeWorkspace.pending_creation ? " · created on approved write" : ""}</span>
+              {runtimeWorkspace.source_scope ? <span className="settings-path">Read-only source · {runtimeWorkspace.source_scope.canonical_path}</span> : runtimeWorkspace.target && <span>Target · {runtimeWorkspace.target.canonical_path}</span>}
             </div>
             <button
               className="runtime-chip-action"
@@ -1204,7 +1206,7 @@ function App() {
           <CheckCheck size={12} />
           <div className="runtime-chip-copy">
             <strong title={documentWrite.outputPath}>
-              {documentWrite.operation === "transform" ? "Transformed" : "Created"} ·{" "}
+              {({ transform: "Transformed", create: "Created", write: "Written", edit: "Edited" } as const)[documentWrite.operation]} ·{" "}
               {fileName(documentWrite.outputPath)}
             </strong>
             <code className="document-path">{documentWrite.outputPath}</code>

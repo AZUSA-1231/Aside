@@ -116,8 +116,8 @@ untouched. Writes validate, lock, check for conflicts, sync a temporary file,
 and replace the destination; failed writes retain the previous file.
 
 The `runtime_fields` projection lists the settings currently consumed by the
-runtime. `thinking_level` and `workspace_root` are reserved for P3/P2 and do not
-yet change execution. `loaded` means the runtime has read that configuration
+runtime. P2 activates `workspace_root`; `thinking_level` remains reserved for
+P3. `loaded` means the runtime has read that configuration
 snapshot; it does not mean a provider connection has been tested. Modified
 settings remain pending for an existing runtime until **Apply when idle**.
 
@@ -142,6 +142,46 @@ required. Tests against a local HTTP fixture are not vendor acceptance.
 
 Plan and development evidence: [P0](../docs/cycle-8/plans/P0-settings-foundation.md)
 and [P1](../docs/cycle-8/plans/P1-api-settings.md).
+
+### Default directory and captured sources
+
+P2 consumes `workspace_root` / `ASIDE_WORKSPACE_ROOT`. Tauri supplies the
+system document directory through its native path resolver, with `Aside`
+appended as the fallback output location. Blank settings restore this fallback;
+the runtime never guesses a Documents path from the home directory. Standalone
+Node callers without a configured or native default retain the earlier
+explicit/captured workspace behavior.
+
+With a default configured, an explicit task workspace wins for output, otherwise
+the default is used. Captures form a separate read scope: one file opens only
+that file; a directory capture opens that directory. Relative tool paths resolve
+under output; external sources use their absolute paths. No common ancestor is
+opened, no source is copied, and neither process cwd nor the history root changes.
+Directory scopes can overlap output; their read authority does not grant write
+authority outside output. An individually captured file remains read-only even
+inside output. Every output write still needs the existing exact approval.
+
+Resolution is fixed per task. A valid source can continue only within the same
+conversation; configuration application re-resolves output, and selecting a new
+task output retains that conversation's valid source. Restoring history after a
+process restart grants no old source scope. The session wrapper preserves runtime
+getters so application sees current continuation state.
+
+Missing default roots are planned without filesystem mutation. First approved
+write creates the root beneath the validated existing parent, then uses the
+existing version checks, atomic commit and reopen verification. Refusing the
+preview creates nothing. Existing output removal, replacement or redirection
+during the task fails instead of selecting another location. An approved write
+that later fails may leave an empty created directory; no automatic cleanup is
+performed. Existing nested output directories are supported; no general directory
+creation tool was added.
+
+Defaults cannot overlap Aside's configuration/session locations. Canonical
+paths and directory links are checked, including pending private paths. Results
+retain the relative path and add `output_absolute_path`; the interface uses the
+absolute path for display/reveal. `reveal_existing_path` validates an existing
+local path before asking Explorer to reveal it, and never creates a missing root.
+See [P2](../docs/cycle-8/plans/P2-default-workspace.md) for evidence and limits.
 Development problems: [Cycle 8 issues](../docs/cycle-8/ISSUES.md).
 
 The finite retained checklist and feature dispositions are RT-01–11 in
@@ -150,8 +190,9 @@ The finite retained checklist and feature dispositions are RT-01–11 in
 manual/provider/native and release acceptance remain incomplete.
 
 The current product restores one active local session and loads configuration
-at runtime startup or explicit idle application. Default workspace, reasoning
-controls, session management and MCP editing remain planned as Cycle 8 P2–P5;
+at runtime startup or explicit idle application. P2 adds separate source/output
+scopes and a default output directory. Reasoning controls, session management
+and MCP editing remain planned as Cycle 8 P3–P5;
 arbitrary hot reload and a manual skill picker remain deferred.
 PDF reading has no OCR or universal
 hard parsing deadline. Word extraction preserves list text/items but not

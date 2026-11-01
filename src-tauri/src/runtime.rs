@@ -314,6 +314,10 @@ impl RuntimeManager {
 
         let node = Self::node_command(app);
         let mut command = Command::new(&node);
+        crate::settings::configure_workspace(
+            &mut command,
+            crate::settings::default_workspace(app).as_deref(),
+        );
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
