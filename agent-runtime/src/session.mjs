@@ -362,6 +362,7 @@ export async function createAsideConversationRuntime({
   let configuredBuildSystemPromptFor;
   let configurationRevision;
   let settingsRevision;
+  let thinking;
   let sensitiveValues;
   if (conversationAgent) {
     conversationAgent.state.messages = restored.messages;
@@ -378,6 +379,7 @@ export async function createAsideConversationRuntime({
     conversationAgent = configured.agent;
     configurationRevision = configured.configurationRevision;
     settingsRevision = configured.settingsRevision;
+    thinking = configured.thinking;
     sensitiveValues = configured.sensitiveValues;
     configuredSkills = configured.skills ?? [];
     configuredSkillDiagnostics = configured.skillDiagnostics ?? [];
@@ -413,6 +415,7 @@ export async function createAsideConversationRuntime({
     configCwd,
     configurationRevision,
     settingsRevision,
+    thinking,
     skills: configuredSkills,
     skillDiagnostics: configuredSkillDiagnostics,
     mcp: configuredMcp,

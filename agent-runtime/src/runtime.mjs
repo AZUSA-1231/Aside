@@ -50,6 +50,7 @@ import {
 } from "./workspace-tools.mjs";
 import { createWorkspaceWriteTools } from "./workspace-write-tools.mjs";
 import { resolveTaskFileScopes } from "./task-workspace.mjs";
+import { resolveThinkingLevel } from "./thinking-level.mjs";
 import { createDocumentTools } from "./docx-tools.mjs";
 import { PermissionBroker } from "./permission-broker.mjs";
 
@@ -132,10 +133,14 @@ function removeUnsuccessfulAssistantMessages(agent) {
 
 function describeAgent(agent) {
   const model = agent?.state?.model;
+  const applied = agent?.state?.thinkingLevel ?? "off";
   return {
     agent,
     provider: typeof model?.provider === "string" ? model.provider : "unknown",
     model: typeof model?.id === "string" ? model.id : "unknown",
+    // A caller-supplied agent arrives with its level already set. Report what
+    // it will actually send rather than a configuration it never read.
+    thinking: resolveThinkingLevel(model, applied),
   };
 }
 
@@ -292,6 +297,7 @@ export async function createConfiguredAgent({
   });
   const values = configuration.values;
   const { models, providerId, model } = await selectConfiguredProvider(configuration);
+  const thinking = resolveThinkingLevel(model, configuration.publicValues.thinking_level);
   const normalizedLimits = normalizeAgentLimits(limits);
   const registry = normalizeToolSet(tools ?? createDefaultWorkspaceTools());
   const normalizedSystemPolicy = normalizeSystemPolicy(systemPolicy);
@@ -322,7 +328,7 @@ export async function createConfiguredAgent({
     initialState: {
       systemPrompt,
       model,
-      thinkingLevel: "off",
+      thinkingLevel: thinking.applied,
       tools: registry.tools,
       messages: initialMessages,
     },
@@ -341,6 +347,7 @@ export async function createConfiguredAgent({
     agent,
     provider: providerId,
     model: model.id,
+    thinking,
     configurationRevision: configuration.effectiveRevision,
     settingsRevision: configuration.settings.revision,
     defaultWorkspaceRoot: configuration.publicValues.workspace_root,
@@ -398,6 +405,7 @@ export async function createConversationRuntime({
   configCwd = process.cwd(),
   configurationRevision,
   settingsRevision,
+  thinking,
   skills,
   skillDiagnostics,
   mcp,
@@ -426,6 +434,7 @@ export async function createConversationRuntime({
         limits: normalizedLimits,
         skills: skills ?? [],
         skillDiagnostics: skillDiagnostics ?? [],
+        thinking: thinking ?? describeAgent(agent).thinking,
       }
     : await createConfiguredAgent({
         environment,
@@ -884,6 +893,10 @@ export async function createConversationRuntime({
     type: "ready",
     provider: configured.provider,
     model: configured.model,
+    thinking_level: configured.thinking?.applied ?? "off",
+    ...(configured.thinking
+      ? { thinking_levels: configured.thinking.supported, thinking_level_requested: configured.thinking.requested }
+      : {}),
     ...(configurationRevision ?? configured.configurationRevision
       ? { configuration_revision: configurationRevision ?? configured.configurationRevision }
       : {}),

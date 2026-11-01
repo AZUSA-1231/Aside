@@ -2,6 +2,27 @@ import { describeAsideSettings, loadAsideConfig } from "./config.mjs";
 import { SETTINGS_FIELDS, SettingsError, validateSettingsDocument } from "./settings-schema.mjs";
 import { saveUserSettings } from "./settings-store.mjs";
 
+/**
+ * Resolve the saved thinking level against the model the configuration selects.
+ *
+ * The settings surface must show what a task would actually use, not the raw
+ * saved string. Resolution reuses the provider selection the runtime performs,
+ * so an unsupported level is reported as adjusted here exactly as it will be at
+ * runtime. A model that cannot be selected is reported without an applied
+ * level rather than guessing one.
+ */
+async function describeThinking(configuration) {
+  try {
+    const { selectConfiguredProvider } = await import("./provider-settings.mjs");
+    const { resolveThinkingLevel } = await import("./thinking-level.mjs");
+    const { model } = await selectConfiguredProvider(configuration);
+    return resolveThinkingLevel(model, configuration.publicValues.thinking_level);
+  } catch {
+    // An unselectable model already surfaces through the existing diagnostics.
+    return null;
+  }
+}
+
 export async function handleSettingsRequest(request, { environment = process.env, cwd = process.cwd(), credentialValues } = {}) {
   if (!request || typeof request !== "object" || Array.isArray(request) || !["get", "save", "import_legacy", "catalog", "test_connection"].includes(request.operation)) {
     throw new SettingsError("settings_invalid_request", "The settings request is invalid.");
@@ -24,7 +45,9 @@ export async function handleSettingsRequest(request, { environment = process.env
     const result = await testProviderConnection(configuration);
     return { ...result, effective_revision: configuration.effectiveRevision };
   }
-  if (request.operation === "get") return describeAsideSettings(configuration);
+  if (request.operation === "get") {
+    return { ...describeAsideSettings(configuration), thinking: await describeThinking(configuration) };
+  }
   const document = request.operation === "save"
     ? { ...validateSettingsDocument(request.document) }
     : { ...configuration.settings.document };
@@ -42,5 +65,6 @@ export async function handleSettingsRequest(request, { environment = process.env
         || configuration.defaultMcpConfigPath;
   }
   await saveUserSettings({ document, expectedRevision: request.expected_revision, environment });
-  return describeAsideSettings(await loadAsideConfig({ environment, cwd, credentialValues }));
+  const saved = await loadAsideConfig({ environment, cwd, credentialValues });
+  return { ...describeAsideSettings(saved), thinking: await describeThinking(saved) };
 }

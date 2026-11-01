@@ -223,6 +223,6 @@ export function describeAsideSettings(configuration) {
     legacy_source: configuration.source ?? null,
     default_workspace_root: configuration.defaultWorkspaceRoot,
     diagnostics,
-    runtime_fields: ["provider", "model", "api_url", "workspace_root", "mcp_config_path"],
+    runtime_fields: ["provider", "model", "api_url", "thinking_level", "workspace_root", "mcp_config_path"],
   };
 }

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, LoaderCircle } from "lucide-react";
 import { nativeClient, toNativeError } from "./lib/ipc";
-import type { ConnectionTestResult, ProviderCatalog, SettingsDocument, SettingsProvider, SettingsSnapshot } from "./lib/settings";
+import type { ConnectionTestResult, ProviderCatalog, ResolvedThinkingLevel, SettingsDocument, SettingsProvider, SettingsSnapshot, ThinkingLevel } from "./lib/settings";
 import "./settings.css";
 
 const providers: SettingsProvider[] = ["openai", "anthropic", "deepseek", "google"];
@@ -23,6 +23,8 @@ export default function SettingsPanel({ onClose, taskRunning }: { onClose: () =>
   const [apiKey, setApiKey] = useState("");
   const [workspaceRoot, setWorkspaceRoot] = useState("");
   const [workspaceDirty, setWorkspaceDirty] = useState(false);
+  const [thinkingLevel, setThinkingLevel] = useState("");
+  const [thinkingDirty, setThinkingDirty] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [catalogs, setCatalogs] = useState<Partial<Record<SettingsProvider, ProviderCatalog>>>({});
   const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -46,6 +48,8 @@ export default function SettingsPanel({ onClose, taskRunning }: { onClose: () =>
       setApiUrl(Object.prototype.hasOwnProperty.call(next.document, "api_url") ? next.document.api_url ?? "" : next.effective.api_url ?? "");
       setWorkspaceRoot(Object.prototype.hasOwnProperty.call(next.document, "workspace_root") ? next.document.workspace_root ?? "" : next.sources.workspace_root.kind === "default" ? "" : next.effective.workspace_root ?? "");
       setWorkspaceDirty(false);
+      setThinkingLevel(Object.prototype.hasOwnProperty.call(next.document, "thinking_level") ? next.document.thinking_level ?? "" : "");
+      setThinkingDirty(false);
       setDirty(false);
       if (clearKey) setApiKey("");
       setTestResult(null);
@@ -97,8 +101,16 @@ export default function SettingsPanel({ onClose, taskRunning }: { onClose: () =>
   const effectiveModel = effectiveCatalog?.models.find((entry) => entry.id === (snapshot?.effective.model || effectiveCatalog.default_model));
   const endpoint = snapshot?.effective.api_url || effectiveModel?.base_url;
   const credential = snapshot?.credentials[provider];
+  // The offered levels belong to the selected model, so switching to a model
+  // with fewer levels removes the others rather than showing a choice that
+  // cannot be sent. `snapshot.thinking` is the backend's own resolution against
+  // the effective model and is shown as "will use", never as if it were saved.
+  const offeredLevels = selectedModel?.thinking_levels ?? effectiveModel?.thinking_levels ?? ["off"];
+  const resolvedThinking: ResolvedThinkingLevel | undefined = snapshot?.thinking ?? undefined;
+  const previewLevel = thinkingLevel && offeredLevels.includes(thinkingLevel as ThinkingLevel) ? thinkingLevel : "";
+  const adjustedPreview = thinkingLevel && !previewLevel ? offeredLevels[0] : "";
   const busy = operation !== null;
-  const unsaved = dirty || workspaceDirty || apiKey.length > 0;
+  const unsaved = dirty || workspaceDirty || thinkingDirty || apiKey.length > 0;
   const changed = () => { setDirty(true); setNotice(null); setTestResult(null); };
 
   return <section className="settings-panel" aria-label="Model and API settings" aria-busy={busy}>
@@ -145,6 +157,38 @@ export default function SettingsPanel({ onClose, taskRunning }: { onClose: () =>
       <div className="settings-actions">
         <button type="submit" disabled={busy || !snapshot || !selectedModel || !dirty}>Save settings</button>
         <button type="button" disabled={busy} onClick={() => void perform("Reloading settings", async () => accept(await nativeClient.getSettings(), true))}>Reload saved settings</button>
+      </div>
+    </form>
+
+    <form className="settings-card" aria-label="Thinking level settings" onSubmit={(event) => {
+      event.preventDefault();
+      if (busy || !snapshot) return;
+      void perform("Saving thinking level", async () => {
+        const next = await nativeClient.saveSettings({ ...baseDocument, thinking_level: (thinkingLevel || null) as ThinkingLevel | null }, revision);        accept(next); setBaseDocument(next.document); setRevision(next.revision); setThinkingDirty(false); setTestResult(null);
+        setNotice("Thinking level saved. It applies to the next task, or when you apply settings while idle.");
+      });
+    }}>
+      <h2>Thinking level</h2>
+      {!selectedModel?.reasoning && offeredLevels.length <= 1
+        ? <p className="settings-note">{providerName(provider)} · {model || catalog?.default_model || "Provider default"} does not support reasoning, so only “off” is available.</p>
+        : <>
+          <label htmlFor="settings-thinking">Level for {selectedModel?.name ?? (model || "this model")}</label>
+          <select id="settings-thinking" value={previewLevel || (adjustedPreview ? offeredLevels[0] : "")} disabled={busy} onChange={(event) => {
+            setThinkingLevel(event.currentTarget.value); setThinkingDirty(true); setNotice(null); setTestResult(null);
+          }}>
+            {!thinkingLevel && <option value="">Provider default · {offeredLevels[0]}</option>}
+            {offeredLevels.map((level) => <option key={level} value={level}>{level}</option>)}
+          </select>
+          {adjustedPreview && <p className="settings-note">Saved level “{thinkingLevel}” is not available on this model. The nearest supported level from this list is used instead.</p>}
+        </>}
+      {resolvedThinking && <div className="settings-effective">
+        <strong>Effective thinking level</strong>
+        <span>{resolvedThinking.applied}{resolvedThinking.adjusted ? ` · saved “${resolvedThinking.requested}” is not supported by this model` : ""}</span>
+        <span>Supported by this model: {resolvedThinking.supported.join(", ")}</span>
+      </div>}
+      <p className="settings-note">Higher levels ask the model to reason for longer where the provider supports it. A change never alters the task that is already running.</p>
+      <div className="settings-actions">
+        <button type="submit" disabled={busy || !snapshot || !thinkingDirty}>Save thinking level</button>
       </div>
     </form>
 

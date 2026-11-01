@@ -209,3 +209,81 @@ it("cleans late subscriptions from both StrictMode effect lifetimes", async () =
   await act(async () => root.render(null));
   expect(stops[1]).toHaveBeenCalledOnce();
 });
+
+const selectOption = async (id: string, value: string) => {
+  await act(async () => {
+    const element = container.querySelector<HTMLSelectElement>(`#${id}`)!;
+    element.value = value;
+    element.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+};
+
+/** A catalog whose single model advertises the given reasoning levels. */
+const reasoningCatalog = (levels: string[], reasoning = true, provider: ProviderCatalog["provider"] = "openai"): ProviderCatalog => ({
+  provider, default_model: "reasoner",
+  models: [{ id: "reasoner", name: "Reasoner", api: "fixture-api", base_url: "https://fixture.example/v1", reasoning, input: ["text"], context_window: 10000, max_tokens: 1024, thinking_levels: levels as ProviderCatalog["models"][number]["thinking_levels"] }],
+});
+
+it("offers only the levels the selected model supports", async () => {
+  vi.mocked(nativeClient.getProviderCatalog).mockImplementation(async () => reasoningCatalog(["off", "low", "high"]));
+  await render();
+  await selectOption("settings-model", "reasoner");
+  const options = [...container.querySelectorAll<HTMLOptionElement>("#settings-thinking option")].map((option) => option.value);
+  // "medium" and "max" are absent because this model cannot express them.
+  expect(options).toEqual(["off", "low", "high"]);
+});
+
+it("shows no level selector at all for a model without reasoning", async () => {
+  vi.mocked(nativeClient.getProviderCatalog).mockImplementation(async () => reasoningCatalog(["off"], false));
+  await render();
+  await selectOption("settings-model", "reasoner");
+  expect(container.querySelector("#settings-thinking")).toBeNull();
+  expect(container.textContent).toContain("does not support reasoning");
+});
+
+it("saves a chosen thinking level independently and marks it unsaved until applied", async () => {
+  vi.mocked(nativeClient.getProviderCatalog).mockImplementation(async () => reasoningCatalog(["off", "low", "high"]));
+  await render();
+  await selectOption("settings-model", "reasoner");
+  await selectOption("settings-thinking", "high");
+  // An unsaved level blocks "Apply when idle" exactly like other unsaved edits.
+  expect(button("Apply when idle").disabled).toBe(true);
+  await act(async () => container.querySelector<HTMLFormElement>('[aria-label="Thinking level settings"]')!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  expect(nativeClient.saveSettings).toHaveBeenCalledWith({ ...snapshot.document, thinking_level: "high" }, "saved-revision");
+  expect(nativeClient.applySettings).not.toHaveBeenCalled();
+});
+
+it("reports a saved level the current model cannot use instead of showing it as applied", async () => {
+  snapshot = {
+    ...snapshot,
+    document: { ...snapshot.document, thinking_level: "medium" },
+    effective: { ...snapshot.effective, thinking_level: "medium" },
+    thinking: { requested: "medium", applied: "high", supported: ["off", "high", "max"], adjusted: true },
+  };
+  vi.mocked(nativeClient.getProviderCatalog).mockImplementation(async () => reasoningCatalog(["off", "high", "max"]));
+  await render();
+  expect(container.textContent).toContain("Effective thinking level");
+  // The saved value is named as unsupported; the applied one is what runs.
+  expect(container.textContent).toContain("saved \u201Cmedium\u201D is not supported by this model");
+  expect(container.textContent).toContain("Supported by this model: off, high, max");
+});
+
+it("narrows the offered levels when switching to a model with fewer of them", async () => {
+  let dropped = false;
+  vi.mocked(nativeClient.getProviderCatalog).mockImplementation(async (requested) => dropped
+    ? reasoningCatalog(["off", "high"], true, "deepseek")
+    : reasoningCatalog(["off", "low", "medium", "high"], true, requested));
+  await render();
+  await selectOption("settings-model", "reasoner");
+  await selectOption("settings-thinking", "medium");
+  dropped = true;
+  await act(async () => {
+    const element = container.querySelector<HTMLSelectElement>("#settings-provider")!;
+    element.value = "deepseek";
+    element.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  const options = [...container.querySelectorAll<HTMLOptionElement>("#settings-thinking option")].map((option) => option.value);
+  expect(options).not.toContain("medium");
+  // The unavailable saved value is called out rather than silently dropped.
+  expect(container.textContent).toContain("nearest supported level");
+});

@@ -116,10 +116,18 @@ untouched. Writes validate, lock, check for conflicts, sync a temporary file,
 and replace the destination; failed writes retain the previous file.
 
 The `runtime_fields` projection lists the settings currently consumed by the
-runtime. P2 activates `workspace_root`; `thinking_level` remains reserved for
-P3. `loaded` means the runtime has read that configuration
+runtime. P2 activates `workspace_root` and P3 activates `thinking_level`.
+`loaded` means the runtime has read that configuration
 snapshot; it does not mean a provider connection has been tested. Modified
 settings remain pending for an existing runtime until **Apply when idle**.
+
+`thinking_level` is resolved against the selected model rather than trusted as
+saved. `thinking-level.mjs` offers only the levels the model's own metadata
+supports, and walks a saved-but-unavailable level to the nearest supported
+neighbour instead of silently dropping to `off`. The resolved
+`requested`/`applied`/`supported`/`adjusted` values are reported by `ready` and
+by the settings snapshot, so the surface shows what a task will actually send.
+`off` is sent as no `reasoning` field at all.
 
 P1 adds `set_api_key`, `get_provider_catalog`, `test_api_connection` and
 `apply_settings` commands. Credentials are stored separately per provider in

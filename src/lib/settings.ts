@@ -6,7 +6,7 @@ export interface SettingsDocument {
   provider?: SettingsProvider;
   model?: string | null;
   api_url?: string | null;
-  thinking_level?: ThinkingLevel;
+  thinking_level?: ThinkingLevel | null;
   workspace_root?: string | null;
   mcp_config_path?: string | null;
 }
@@ -37,6 +37,7 @@ export interface SettingsSnapshot {
   }>;
   legacy_source: string | null;
   default_workspace_root?: string | null;
+  thinking?: ResolvedThinkingLevel | null;
   diagnostics: Array<{ code: string; field: string; message: string }>;
   runtime_fields: string[];
   application: {
@@ -70,4 +71,11 @@ export interface ConnectionTestResult {
   effective_revision: string;
   provider?: string;
   model?: string;
+}
+
+export interface ResolvedThinkingLevel {
+  requested: ThinkingLevel;
+  applied: ThinkingLevel;
+  supported: ThinkingLevel[];
+  adjusted: boolean;
 }

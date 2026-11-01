@@ -25,7 +25,11 @@
 
 | C8-I016 | 现有文档结果只返回相对 output_path，却直接传给原生定位；普通文本写入也没有对应产物卡。 | P2 追加 output_absolute_path，前端优先采用；文本 / JSON / Word 都有实际路径卡，原生只定位存在路径。后端绝对路径、前端揭示参数和原生缺失路径无副作用验证通过；真实 Explorer 点击保留人工验收。 | 已解决，回归通过 |
 
-| C8-I017 | 真实会话集成发现 `createAsideConversationRuntime` 用对象展开包装 runtime，提前求值了 continuation / activeTaskRun 等 getter；任务后再应用设置会丢失已捕获来源和选择。 | P2 保留原对象 getter、追加会话字段。实际会话 / 持久化 / 配置重建验证来源延续、新输出根、显式输出优先与旧产物保留；删除临时历史后产物仍在。 | 已解决，回归通过 |
+| C8-I017 | 真实会话集成发现 `createAsideConversationRuntime` 用对象展开包装 runtime，提前求值了 continuation / activeTaskRun 等 getter；任务后再应用设置会丢失已捕获来源和选择。 | P2 保留原对象 getter、追加会话字段。实际会话 / 持久化 / 配置重建验证来源延续、新输出根、显式输出优先与旧产物保留；删除临时历史后产物仍在。 | 已解决，回归通过 || C8-I017 | 真实会话集成发现 `createAsideConversationRuntime` 用对象展开包装 runtime，提前求值了 continuation / activeTaskRun 等 getter；任务后再应用设置会丢失已捕获来源和选择。 | P2 保留原对象 getter、追加会话字段。实际会话 / 持久化 / 配置重建验证来源延续、新输出根、显式输出优先与旧产物保留；删除临时历史后产物仍在。 | 已解决，回归通过 |
+
+| C8-I018 | `thinking_level` 只进入 settings schema：`createConfiguredAgent` 把 Agent 的 `thinkingLevel` 写死为 `off`，`runtime_fields` 也不含该字段，用户保存的档位从未影响出站请求。 | P3 新增 `thinking-level.mjs` 从模型元数据取可用档位并解析，Agent 初始化改用解析值，`ready` / 设置快照投影实际应用值与调整原因。faux provider 断言实际出站 `reasoning`，`off` 不发该字段。 | 已解决，回归通过 |
+| C8-I019 | 切换模型可能让已保存档位不可用。直接回落 `off` 会静默丢弃用户偏好，直接拒绝又会让可选模型无法使用。 | 采用 Pi 现成 `clampThinkingLevel` 向最近可用档回落，`adjusted` 标记且界面同时显示保存值与实际值；不新增第二套映射逻辑。相邻档、上下越界、无推理模型与失效保存值均有回归。 | 已解决，回归通过 |
+| C8-I020 | 设置快照若由前端自行推断可用档位，就会与 runtime 的实际选择分叉；模型不可解析时也可能显示假档位。 | P3 由设置服务复用同一 provider 选择与解析路径计算 `thinking`，无法解析时返回 null，由既有诊断说明模型问题，不猜测档位。快照与保存两条路径均有回归。 | 已解决，回归通过 |
 
 ## 证据记录
 
@@ -35,3 +39,7 @@
 - P1 最终：runtime 433/433、Rust 55/55、前端 38/38、类型 / 生产构建通过。包含真实 Node 私有初始化 / 离线重建、独立 Windows 临时凭据和实际 DeepSeek provider 的本地 HTTP/SSE fixture；没有调用真实厂商或用户正式凭据。四尺寸浏览器检查与截图复核通过，详情和失败记录见 [P1 执行记录](./plans/P1-api-settings.md#执行记录)。C8-I003 仍待 P2，P2–P5 未执行。
 - P0/P1 已按用户要求提交为 `b5a0bd1`。P2 最终 runtime **445/445**、Rust **57/57**、前端 **41/41**、类型 / 生产构建通过；四尺寸浏览器布局和新增目录卡截图复核通过。实际 DOCX 跨根生成、版本与审批边界、同一持久化会话重建 / 显式目录切换均有回归，C8-I003、I014–I017 已解决。首轮空状态错误、测试 fixture / 生命周期断言失败与 getter 缺陷详见 [P2 验证记录](./plans/P2-default-workspace.md#验证记录)。P2 留在工作区，下一步 P3；原生桌面 / Explorer / 真实 Word / 厂商与安装包仍未联合验收。
 - P2 文档核对：92 份 Markdown、578 本地链接、110 锚点无错误；差异和新增文件尾空格检查通过。单独的前端测试类型检查已补齐新事件 fixture 的请求 / 任务标识；没有放宽产品契约。
+- P2 已按用户要求提交为 `4a88a9b`。随后开始 P3 思考强度。
+- P3 最终：runtime **457/457**（较 P2 新增 12 项 thinking-level 回归）、前端 **46/46**（新增 5 项）、Rust **57/57**、类型检查与生产构建通过。实际出站请求断言使用 faux provider 的 `streamOptions.reasoning`，覆盖有效档、`off` 不发该字段、相邻回落、上下越界、无推理模型、失效保存值与模型不可解析。
+- P3 失败记录：首轮新增测试 4/10 失败，原因是夹具把 `thinkingLevelMap` 的 `off` 写成 `null`，而 Pi 以 `null` 表示“明确不支持”、`undefined` 表示隐式支持，等于反而放宽了可用集合；另有两项把 `createConversationRuntime` 当同步函数调用。均为测试夹具错误，按 Pi 实际语义修正，没有为迁就夹具放宽产品校验。前端首次构建失败是 `??` 与 `||` 混用的真实语法错误，已修正；随后一次类型检查发现 `thinking_level` 不接受 `null` 清空值，已补类型。
+- P3 未执行真实厂商连通性验证；档位映射的实际请求只覆盖 faux provider，不证明四家厂商的 reasoning 参数已被真实接受。P3 没有创建提交。

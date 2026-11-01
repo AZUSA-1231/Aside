@@ -368,6 +368,9 @@ export type RuntimeEvent =
       type: "ready";
       provider: string;
       model: string;
+      thinking_level?: string;
+      thinking_levels?: string[];
+      thinking_level_requested?: string;
       configuration_revision?: string;
       settings_revision?: string;
       tools?: RuntimeToolDescriptor[];
