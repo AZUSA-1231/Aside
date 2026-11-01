@@ -12,6 +12,7 @@ import {
   isUnsuccessfulAssistantMessage,
 } from "./runtime.mjs";
 import { createNodeSessionFileSystem } from "./session-fs.mjs";
+import { loadAsideConfig } from "./config.mjs";
 
 export const ASIDE_SESSION_APPLICATION = "aside";
 export const ASIDE_SESSION_SCHEMA_VERSION = 1;
@@ -333,16 +334,25 @@ export async function createAsideConversationRuntime({
   configCwd,
   skills,
   skillDiagnostics,
+  credentialValues,
+  previousRuntime,
 } = {}) {
   const send = emit ?? (() => undefined);
-  const opened = await openAsideSession({
+  const configuration = agent ? undefined : await loadAsideConfig({ environment, cwd: configCwd, credentialValues });
+  const opened = previousRuntime ? {
+    session: previousRuntime.session,
+    repository: previousRuntime.sessionRepository,
+    metadata: { id: previousRuntime.agent.sessionId },
+    warnings: [],
+  } : await openAsideSession({
     repository,
     root,
-    environment,
+    environment: configuration?.values ?? environment,
     cwd,
     fileSystem,
   });
-  const restored = await restoreAsideSession(opened.session);
+  const restored = previousRuntime ? { messages: previousRuntime.agent.state.messages.slice(), history: [] }
+    : await restoreAsideSession(opened.session);
   for (const warning of opened.warnings) send({ type: "session_warning", message: warning });
 
   let conversationAgent = agent;
@@ -350,6 +360,9 @@ export async function createAsideConversationRuntime({
   let configuredSkillDiagnostics = skillDiagnostics ?? [];
   let configuredMcp;
   let configuredBuildSystemPromptFor;
+  let configurationRevision;
+  let settingsRevision;
+  let sensitiveValues;
   if (conversationAgent) {
     conversationAgent.state.messages = restored.messages;
     conversationAgent.sessionId = opened.metadata.id;
@@ -357,9 +370,15 @@ export async function createAsideConversationRuntime({
     const configured = await createConfiguredAgent({
       initialMessages: restored.messages,
       sessionId: opened.metadata.id,
+      configuration,
+      environment,
+      configCwd,
       skills: configuredSkills.length > 0 ? configuredSkills : undefined,
     });
     conversationAgent = configured.agent;
+    configurationRevision = configured.configurationRevision;
+    settingsRevision = configured.settingsRevision;
+    sensitiveValues = configured.sensitiveValues;
     configuredSkills = configured.skills ?? [];
     configuredSkillDiagnostics = configured.skillDiagnostics ?? [];
     configuredMcp = configured.mcp;
@@ -385,22 +404,27 @@ export async function createAsideConversationRuntime({
     }
   }
 
-  const persistRun = createSessionPersistence(opened.session, restored.messages);
+  const persistRun = previousRuntime?.persistRun ?? createSessionPersistence(opened.session, restored.messages);
   const runtime = await createConversationRuntime({
     emit: send,
     agent: conversationAgent,
     onRunSettled: persistRun,
     environment,
     configCwd,
+    configurationRevision,
+    settingsRevision,
     skills: configuredSkills,
     skillDiagnostics: configuredSkillDiagnostics,
     mcp: configuredMcp,
     buildSystemPromptFor: configuredBuildSystemPromptFor,
+    continuation: previousRuntime?.continuation,
+    sensitiveValues,
   });
   return {
     ...runtime,
     history: restored.history,
     session: opened.session,
     sessionRepository: opened.repository,
+    persistRun,
   };
 }

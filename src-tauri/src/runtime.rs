@@ -1,7 +1,7 @@
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 use serde::{Deserialize, Serialize};
@@ -51,6 +51,9 @@ pub enum AsideWorkspaceHint {
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum RuntimeRequest {
+    ApplySettings {
+        credential_values: serde_json::Value,
+    },
     Prompt {
         request_id: String,
         text: String,
@@ -178,8 +181,88 @@ struct RuntimeProcess {
     stdin: Option<ChildStdin>,
 }
 
+#[derive(Default)]
+struct RuntimeConfiguration {
+    generation: u64,
+    running: bool,
+    unavailable: bool,
+    revision: Option<String>,
+    apply_state: Option<String>,
+    apply_error: Option<String>,
+}
+
+impl RuntimeConfiguration {
+    fn start(&mut self) -> u64 {
+        self.generation += 1;
+        self.running = true;
+        self.unavailable = false;
+        self.revision = None;
+        self.apply_state = None;
+        self.apply_error = None;
+        self.generation
+    }
+
+    fn observe(&mut self, generation: u64, event: &RuntimeEvent) -> bool {
+        if generation != self.generation || !self.running {
+            return false;
+        }
+        if event.get("type").and_then(serde_json::Value::as_str) == Some("ready") {
+            self.unavailable = false;
+            self.revision = event
+                .get("configuration_revision")
+                .and_then(serde_json::Value::as_str)
+                .filter(|revision| {
+                    revision.len() == 64
+                        && revision
+                            .bytes()
+                            .all(|character| character.is_ascii_hexdigit())
+                })
+                .map(str::to_owned);
+        }
+        if event.get("type").and_then(serde_json::Value::as_str) == Some("runtime_unavailable") {
+            self.unavailable = true;
+        }
+        if event["type"] == "configuration_status" {
+            self.apply_state = event["state"].as_str().map(str::to_owned);
+            self.apply_error = if event["state"] == "failed" {
+                Some("The saved configuration could not be applied. Check provider, model and endpoint settings.".into())
+            } else {
+                None
+            };
+        }
+        true
+    }
+
+    fn snapshot(&self, effective_revision: &str) -> serde_json::Value {
+        let status = if self.generation == 0 {
+            "not_started"
+        } else if !self.running || self.unavailable {
+            "unavailable"
+        } else if self.apply_state.as_deref() == Some("applying") {
+            "applying"
+        } else if self.apply_state.as_deref() == Some("pending") {
+            "pending"
+        } else if let Some(revision) = &self.revision {
+            if revision == effective_revision {
+                "loaded"
+            } else {
+                "pending"
+            }
+        } else {
+            "starting"
+        };
+        serde_json::json!({
+            "state": status,
+            "loaded_revision": self.revision,
+            "mode": "idle_rebuild",
+            "last_apply_error": self.apply_error,
+        })
+    }
+}
+
 pub struct RuntimeManager {
     process: Mutex<RuntimeProcess>,
+    configuration: Arc<Mutex<RuntimeConfiguration>>,
 }
 
 impl Default for RuntimeManager {
@@ -189,6 +272,7 @@ impl Default for RuntimeManager {
                 child: None,
                 stdin: None,
             }),
+            configuration: Arc::new(Mutex::new(RuntimeConfiguration::default())),
         }
     }
 }
@@ -202,11 +286,21 @@ impl RuntimeManager {
         )
     }
 
-    fn node_command(app: &AppHandle) -> PathBuf {
+    pub(crate) fn node_command(app: &AppHandle) -> PathBuf {
         resolve_node_path(
             std::env::var_os("ASIDE_NODE_PATH").map(PathBuf::from),
             resource_root(app).as_deref(),
         )
+    }
+
+    pub(crate) fn settings_control_path(app: &AppHandle) -> PathBuf {
+        Self::runtime_path(app).with_file_name("settings-control.mjs")
+    }
+
+    pub fn configuration_state(&self, effective_revision: &str) -> serde_json::Value {
+        self.configuration.lock()
+            .map(|configuration| configuration.snapshot(effective_revision))
+            .unwrap_or_else(|_| serde_json::json!({ "state": "unavailable", "loaded_revision": null, "mode": "idle_rebuild" }))
     }
 
     fn start_locked(&self, app: &AppHandle, process: &mut RuntimeProcess) -> Result<(), String> {
@@ -219,7 +313,13 @@ impl RuntimeManager {
         }
 
         let node = Self::node_command(app);
-        let mut child = Command::new(&node)
+        let mut command = Command::new(&node);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x08000000);
+        }
+        let mut child = command
             .arg(&runtime_path)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -236,7 +336,7 @@ impl RuntimeManager {
                     error
                 )
             })?;
-        let stdin = match child.stdin.take() {
+        let mut stdin = match child.stdin.take() {
             Some(stdin) => stdin,
             None => {
                 let _ = child.kill();
@@ -253,13 +353,59 @@ impl RuntimeManager {
             }
         };
 
+        let initialization = crate::credentials::read_api_keys()
+            .map(|keys| {
+                serde_json::json!({ "type": "initialize", "credential_values": keys }).to_string()
+            })
+            .map_err(str::to_owned)
+            .and_then(|message| {
+                stdin
+                    .write_all(format!("{message}\n").as_bytes())
+                    .map_err(|_| {
+                        "Aside could not initialize its private configuration channel.".to_string()
+                    })
+            });
+        if let Err(error) = initialization {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(error);
+        }
+
+        let generation = match self.configuration.lock() {
+            Ok(mut configuration) => configuration.start(),
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err("The Aside runtime configuration state is unavailable.".to_string());
+            }
+        };
+        let configuration = Arc::clone(&self.configuration);
         let app_handle = app.clone();
         thread::spawn(move || {
             let reader = BufReader::new(stdout);
             for line in reader.lines().map_while(Result::ok) {
                 if let Ok(event) = serde_json::from_str::<RuntimeEvent>(&line) {
-                    let _ = app_handle.emit(RUNTIME_EVENT, event);
+                    let current = configuration
+                        .lock()
+                        .map(|mut state| state.observe(generation, &event))
+                        .unwrap_or(false);
+                    if current {
+                        let _ = app_handle.emit(RUNTIME_EVENT, event);
+                    }
                 }
+            }
+            let current = configuration
+                .lock()
+                .map(|mut state| {
+                    if state.generation != generation || !state.running {
+                        return false;
+                    }
+                    state.running = false;
+                    true
+                })
+                .unwrap_or(false);
+            if !current {
+                return;
             }
             let _ = app_handle.emit(
                 RUNTIME_EVENT,
@@ -280,8 +426,21 @@ impl RuntimeManager {
             .process
             .lock()
             .map_err(|_| "The Aside runtime state is unavailable.".to_string())?;
+        if process
+            .child
+            .as_mut()
+            .and_then(|child| child.try_wait().ok())
+            .flatten()
+            .is_some()
+        {
+            process.stdin = None;
+            process.child = None;
+        }
         if process.stdin.is_none() {
             self.start_locked(app, &mut process)?;
+            if matches!(request, RuntimeRequest::ApplySettings { .. }) {
+                return Ok(());
+            }
         }
 
         let line = serde_json::to_string(&request)
@@ -298,6 +457,9 @@ impl RuntimeManager {
             });
 
         if result.is_err() {
+            if let Ok(mut configuration) = self.configuration.lock() {
+                configuration.running = false;
+            }
             process.stdin = None;
             if let Some(mut child) = process.child.take() {
                 let _ = child.kill();
@@ -309,6 +471,9 @@ impl RuntimeManager {
 
     pub fn shutdown(&self) {
         if let Ok(mut process) = self.process.lock() {
+            if let Ok(mut configuration) = self.configuration.lock() {
+                configuration.running = false;
+            }
             process.stdin = None;
             if let Some(mut child) = process.child.take() {
                 let _ = child.kill();
@@ -321,6 +486,83 @@ impl RuntimeManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn application_state_tracks_queue_completion_and_retained_revision_after_failure() {
+        let mut state = RuntimeConfiguration::default();
+        let generation = state.start();
+        let old = "a".repeat(64);
+        let new = "b".repeat(64);
+        state.observe(
+            generation,
+            &serde_json::json!({ "type": "ready", "configuration_revision": old }),
+        );
+        state.observe(
+            generation,
+            &serde_json::json!({ "type": "configuration_status", "state": "pending" }),
+        );
+        assert_eq!(state.snapshot(&new)["state"], "pending");
+        state.observe(
+            generation,
+            &serde_json::json!({ "type": "configuration_status", "state": "applying" }),
+        );
+        assert_eq!(state.snapshot(&new)["state"], "applying");
+        state.observe(generation, &serde_json::json!({ "type": "configuration_status", "state": "failed", "message": "private-error" }));
+        assert_eq!(state.snapshot(&new)["loaded_revision"], old);
+        assert!(!state.snapshot(&new).to_string().contains("private-error"));
+        state.observe(
+            generation,
+            &serde_json::json!({ "type": "ready", "configuration_revision": new }),
+        );
+        state.observe(
+            generation,
+            &serde_json::json!({ "type": "configuration_status", "state": "applied" }),
+        );
+        assert_eq!(state.snapshot(&new)["state"], "loaded");
+        assert!(state.snapshot(&new)["last_apply_error"].is_null());
+    }
+
+    #[test]
+    fn configuration_reports_actual_loaded_and_pending_revisions() {
+        let mut state = RuntimeConfiguration::default();
+        let revision = "a".repeat(64);
+        assert_eq!(state.snapshot(&revision)["state"], "not_started");
+        let generation = state.start();
+        assert_eq!(state.snapshot(&revision)["state"], "starting");
+        assert!(state.observe(
+            generation,
+            &serde_json::json!({ "type": "ready", "configuration_revision": revision })
+        ));
+        assert_eq!(state.snapshot(&revision)["state"], "loaded");
+        assert_eq!(state.snapshot(&"b".repeat(64))["state"], "pending");
+        state.running = false;
+        assert_eq!(state.snapshot(&revision)["state"], "unavailable");
+    }
+
+    #[test]
+    fn obsolete_runtime_events_cannot_mark_a_new_configuration_loaded() {
+        let mut state = RuntimeConfiguration::default();
+        let old = state.start();
+        let current = state.start();
+        let event =
+            serde_json::json!({ "type": "ready", "configuration_revision": "a".repeat(64) });
+        assert!(!state.observe(old, &event));
+        assert_eq!(state.snapshot(&"a".repeat(64))["state"], "starting");
+        assert!(state.observe(current, &event));
+        assert_eq!(state.snapshot(&"a".repeat(64))["state"], "loaded");
+    }
+
+    #[test]
+    fn startup_failure_is_unavailable_and_does_not_hide_recoverable_errors() {
+        let mut state = RuntimeConfiguration::default();
+        let generation = state.start();
+        assert!(state.observe(generation, &serde_json::json!({ "type": "runtime_unavailable", "message": "Invalid configuration." })));
+        assert_eq!(state.snapshot(&"a".repeat(64))["state"], "unavailable");
+        assert!(state.observe(
+            generation,
+            &serde_json::json!({ "type": "failed", "request_id": "retry", "retryable": true })
+        ));
+    }
 
     /// A unique scratch directory. Created lazily so a test that never writes
     /// does not leave one behind.

@@ -99,8 +99,14 @@ section.
 
 ## Provider configuration
 
-Copy [.env.example](.env.example) to `.env.local` and fill in your provider
-credential. Aside loads it automatically at startup:
+Open the settings button in Aside's header to select OpenAI, Anthropic,
+DeepSeek or Google, a supported model and an optional Base URL. Save ordinary
+settings and the write-only API key separately, then choose **Apply when idle**.
+Windows keys are stored in Credential Manager. **Test saved connection** is an
+explicit model request that may incur a small API charge; saving does not test.
+
+The legacy workflow remains supported: copy [.env.example](.env.example) to
+`.env.local` and fill in your provider credential:
 
 ```text
 ASIDE_PROVIDER=openai
@@ -112,6 +118,13 @@ OPENAI_API_KEY=your-key
 `ASIDE_API_URL` is optional and useful for an OpenAI-compatible gateway or a
 local server. `.env.local` is git-ignored, and the credential never enters a
 prompt, an event, or the session log.
+
+Ordinary settings use one versioned user `settings.json`; process environment
+overrides it, and it overrides ordinary values in the legacy env file. For API
+keys, process environment overrides Credential Manager, then the legacy env
+file. The interface reports the effective source and pending application state.
+See the [configuration service](agent-runtime/README.md#current-development-boundary)
+and [Cycle 8 plans](docs/cycle-8/README.md#9-功能计划与问题入口).
 
 ## Connecting an MCP server
 

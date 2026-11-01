@@ -35,14 +35,15 @@ function boundedMessage(value) {
  */
 export async function loadMcpServerConfigs({
   configDir,
+  configPath,
   readTextFile = readFile,
   limits = MCP_CONFIG_LIMITS,
 } = {}) {
   const diagnostics = [];
-  if (!configDir) {
+  if (!configDir && !configPath) {
     return Object.freeze({ servers: Object.freeze([]), diagnostics: Object.freeze([]), source: undefined });
   }
-  const source = join(configDir, MCP_CONFIG_FILENAME);
+  const source = configPath ?? join(configDir, MCP_CONFIG_FILENAME);
   let text;
   try {
     text = await readTextFile(source, "utf8");

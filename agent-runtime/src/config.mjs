@@ -1,7 +1,17 @@
-import { readFile } from "node:fs/promises";
-import { homedir } from "node:os";
+import { readFile, stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { parseEnv } from "node:util";
+import {
+  getAsideConfigRoot,
+  normalizeAsideApiUrl,
+  PROVIDER_CREDENTIAL_NAMES,
+  SETTINGS_FIELDS,
+  validateCredentialValues,
+} from "./settings-schema.mjs";
+import { readUserSettings } from "./settings-store.mjs";
+
+export { normalizeAsideApiUrl } from "./settings-schema.mjs";
 
 export const ASIDE_PROJECT_CONFIG_NAME = ".env.local";
 export const ASIDE_PACKAGED_CONFIG_NAME = "config.env";
@@ -38,13 +48,7 @@ function projectConfigCandidates(startDirectory) {
 }
 
 function packagedConfigPath(environment) {
-  const localAppData = String(environment?.LOCALAPPDATA ?? "").trim();
-  const configRoot =
-    localAppData ||
-    (process.platform === "win32"
-      ? join(homedir(), "AppData", "Local")
-      : String(environment?.XDG_CONFIG_HOME ?? "").trim() || join(homedir(), ".config"));
-  return join(configRoot, "Aside", ASIDE_PACKAGED_CONFIG_NAME);
+  return join(getAsideConfigRoot(environment), ASIDE_PACKAGED_CONFIG_NAME);
 }
 
 export function getAsideConfigCandidates({ cwd = process.cwd(), environment = process.env } = {}) {
@@ -87,12 +91,8 @@ async function readConfigFile(path, readTextFile) {
   return parseAsideEnv(content, path);
 }
 
-/**
- * Loads configuration without mutating process.env. Existing environment
- * values win over file values so tests and packaged launchers can override a
- * local default deliberately.
- */
 export async function loadAsideConfig({
+  credentialValues = {},
   cwd = process.cwd(),
   environment = process.env,
   readTextFile = readFile,
@@ -107,11 +107,81 @@ export async function loadAsideConfig({
     break;
   }
 
+  const settings = await readUserSettings({ environment, ...(readTextFile === readFile ? {} : { readTextFile }) });
+  const settingsValues = {};
+  const fieldSources = {};
+  const environmentValues = copyEnvironment(environment);
+  for (const [field, variable] of Object.entries(SETTINGS_FIELDS)) {
+    if (Object.hasOwn(settings.document, field)) settingsValues[variable] = settings.document[field] ?? "";
+    fieldSources[field] = Object.freeze(Object.hasOwn(environmentValues, variable)
+      ? { kind: "environment" }
+      : Object.hasOwn(settingsValues, variable)
+        ? { kind: "settings", path: settings.path }
+        : Object.hasOwn(fileValues ?? {}, variable)
+          ? { kind: "legacy", path: source }
+          : { kind: "default" });
+  }
+  const storedCredentials = validateCredentialValues(credentialValues);
+  const credentialEnvironment = Object.fromEntries(Object.entries(storedCredentials)
+    .map(([provider, key]) => [PROVIDER_CREDENTIAL_NAMES[provider][0], key]));
   const values = Object.freeze({
     ...(fileValues ?? {}),
-    ...copyEnvironment(environment),
+    ...settingsValues,
+    ...credentialEnvironment,
+    ...environmentValues,
   });
-  return Object.freeze({ values, source });
+  let defaultMcpConfigPath = join(source ? dirname(source) : dirname(settings.path), "mcp.json");
+  if (!source) {
+    const oldPath = join(cwd, "mcp.json");
+    try {
+      if ((await stat(oldPath)).isFile()) defaultMcpConfigPath = oldPath;
+    } catch (error) {
+      if (error?.code !== "ENOENT") defaultMcpConfigPath = oldPath;
+    }
+  }
+  const mcpConfigPath = getAsideConfigValue(values, "ASIDE_MCP_CONFIG_PATH")
+    ?? (fieldSources.mcp_config_path.kind === "settings"
+      ? join(dirname(settings.path), "mcp.json")
+      : defaultMcpConfigPath);
+  const publicValues = {};
+  for (const [field, variable] of Object.entries(SETTINGS_FIELDS)) {
+    publicValues[field] = getAsideConfigValue(values, variable) ?? null;
+  }
+  publicValues.provider ??= "openai";
+  publicValues.thinking_level ??= "off";
+  publicValues.mcp_config_path = mcpConfigPath;
+  const credentials = {};
+  for (const [provider, names] of Object.entries(PROVIDER_CREDENTIAL_NAMES)) {
+    const name = names.find((candidate) => getAsideConfigValue(values, candidate));
+    credentials[provider] = Object.freeze({
+      configured: name !== undefined,
+      source: names.some((candidate) => Object.hasOwn(environmentValues, candidate)) ? "environment" : !name ? "none"
+        : Object.hasOwn(storedCredentials, provider) ? "credential_store" : "legacy",
+      stored: Object.hasOwn(storedCredentials, provider),
+    });
+  }
+  const effectiveRevision = createHash("sha256")
+    .update(JSON.stringify({
+      values: publicValues,
+      credentials,
+      credential_revision: createHash("sha256")
+        .update(JSON.stringify(Object.values(PROVIDER_CREDENTIAL_NAMES).flat().map((name) => values[name] ?? null)))
+        .digest("hex"),
+      session_root: getAsideConfigValue(values, "ASIDE_SESSION_ROOT") ?? null,
+    }))
+    .digest("hex");
+  return Object.freeze({
+    values,
+    source,
+    legacyValues: Object.freeze({ ...fileValues }),
+    settings,
+    fieldSources: Object.freeze(fieldSources),
+    publicValues: Object.freeze(publicValues),
+    credentials: Object.freeze(credentials),
+    mcpConfigPath,
+    defaultMcpConfigPath,
+    effectiveRevision,
+  });
 }
 
 export function getAsideConfigValue(values, key) {
@@ -121,28 +191,26 @@ export function getAsideConfigValue(values, key) {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-export function normalizeAsideApiUrl(value) {
-  const trimmed = typeof value === "string" ? value.trim() : "";
-  if (!trimmed) return undefined;
-
-  let url;
+export function describeAsideSettings(configuration) {
+  const values = { ...configuration.publicValues };
+  const diagnostics = [];
   try {
-    url = new URL(trimmed);
+    values.api_url = normalizeAsideApiUrl(values.api_url) ?? null;
   } catch {
-    throw new AsideConfigurationError(
-      "ASIDE_API_URL must be a valid HTTP or HTTPS provider URL.",
-    );
+    values.api_url = null;
+    diagnostics.push({ code: "settings_invalid_url", field: "api_url", message: "The effective API URL is invalid. Correct its configuration source." });
   }
-  if (
-    (url.protocol !== "http:" && url.protocol !== "https:") ||
-    url.username ||
-    url.password ||
-    url.search ||
-    url.hash
-  ) {
-    throw new AsideConfigurationError(
-      "ASIDE_API_URL must be an HTTP or HTTPS provider URL without credentials, query, or fragment.",
-    );
-  }
-  return url.toString().replace(/\/+$/, "");
+  return {
+    schema_version: 1,
+    path: configuration.settings.path,
+    revision: configuration.settings.revision,
+    effective_revision: configuration.effectiveRevision,
+    document: configuration.settings.document,
+    effective: values,
+    sources: configuration.fieldSources,
+    credentials: configuration.credentials,
+    legacy_source: configuration.source ?? null,
+    diagnostics,
+    runtime_fields: ["provider", "model", "api_url", "mcp_config_path"],
+  };
 }

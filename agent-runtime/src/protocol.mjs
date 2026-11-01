@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import readline from "node:readline";
 import { createAsideConversationRuntime } from "./session.mjs";
 import { sanitizeError } from "./runtime.mjs";
+import { validateCredentialValues } from "./settings-schema.mjs";
 
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -86,6 +87,15 @@ function invalidRequest(value) {
 export function parseRuntimeRequest(value) {
   if (!isRecord(value) || typeof value.type !== "string") {
     return { type: "invalid", request_id: undefined };
+  }
+
+  if (value.type === "apply_settings") {
+    try {
+      if (!hasOnlyKeys(value, new Set(["type", "credential_values"]))) return invalidRequest(value);
+      return { type: "apply_settings", credential_values: validateCredentialValues(value.credential_values) };
+    } catch {
+      return invalidRequest(value);
+    }
   }
 
   if (value.type === "prompt") {
@@ -172,13 +182,22 @@ export async function runProtocol({
   input = process.stdin,
   emit = (event) => process.stdout.write(`${JSON.stringify(event)}\n`),
   runtimeFactory = createAsideConversationRuntime,
+  credentialValues = {},
+  requireInitialization = false,
 } = {}) {
   let runtime;
   let setupError;
   const startupEvents = [];
   const terminalRequestIds = new Set();
   let startupComplete = false;
+  let currentSink = { live: true };
+  const operations = new Set();
+  let pendingApplication;
+  let applying = false;
+  let applicationPromise = Promise.resolve();
+  const runtimeError = (error) => runtime?.redactError?.(error) ?? sanitizeError(error, Object.values(credentialValues));
   const emitRuntimeEvent = (event) => {
+    if (!currentSink.live) return;
     if (isTerminalEvent(event) && typeof event.request_id === "string") {
       if (terminalRequestIds.has(event.request_id)) return;
       terminalRequestIds.add(event.request_id);
@@ -186,8 +205,22 @@ export async function runProtocol({
     if (startupComplete) emit(event);
     else startupEvents.push(event);
   };
+  const lines = readline.createInterface({ input, crlfDelay: Infinity });
+  const iterator = lines[Symbol.asyncIterator]();
+  if (requireInitialization) {
+    try {
+      const initial = JSON.parse((await iterator.next()).value);
+      if (initial.type !== "initialize" || !hasOnlyKeys(initial, new Set(["type", "credential_values"]))) throw new Error();
+      credentialValues = validateCredentialValues(initial.credential_values);
+    } catch {
+      emit({ type: "runtime_unavailable", message: "Aside could not initialize its private configuration channel." });
+      lines.close();
+      return;
+    }
+  }
   try {
-    runtime = await runtimeFactory({ emit: emitRuntimeEvent });
+    const startupSink = currentSink;
+    runtime = await runtimeFactory({ emit: (event) => { if (startupSink.live) emitRuntimeEvent(event); }, credentialValues });
     emit({
       type: "history_restored",
       messages: Array.isArray(runtime.history) ? runtime.history : [],
@@ -195,12 +228,77 @@ export async function runProtocol({
     for (const event of startupEvents) emit(event);
     startupComplete = true;
   } catch (error) {
-    setupError = sanitizeError(error);
+    setupError = runtimeError(error);
     emit({ type: "runtime_unavailable", message: setupError });
   }
 
-  const lines = readline.createInterface({ input, crlfDelay: Infinity });
-  for await (const line of lines) {
+  function applyWhenIdle() {
+    if (!pendingApplication || applying || operations.size > 0) return applicationPromise;
+    applying = true;
+    applicationPromise = applyConfiguration();
+    return applicationPromise;
+  }
+
+  async function applyConfiguration() {
+    const credentials = pendingApplication;
+    pendingApplication = undefined;
+    emit({ type: "configuration_status", state: "applying" });
+    const buffered = [];
+    const sink = { live: true, forwarding: false };
+    let candidate;
+    try {
+      candidate = await runtimeFactory({
+        previousRuntime: runtime,
+        credentialValues: credentials,
+        emit: (event) => {
+          if (!sink.live) return;
+          if (sink.forwarding) emitRuntimeEvent(event);
+          else buffered.push(event);
+        },
+      });
+    } catch {
+      sink.live = false;
+      emit({ type: "configuration_status", state: "failed", message: "The saved configuration could not be applied. The previous runtime is retained; check provider, model and endpoint settings." });
+      applying = false;
+      void applyWhenIdle();
+      return;
+    }
+    const hadRuntime = Boolean(runtime);
+    currentSink.live = false;
+    try {
+      await runtime?.dispose?.();
+    } catch {
+      emit({ type: "runtime_warning", code: "runtime_cleanup_failed", message: "The previous runtime could not finish cleanup. Restart Aside before running another task." });
+      sink.live = false;
+      await candidate.dispose?.();
+      runtime = undefined;
+      emit({ type: "runtime_unavailable", message: "Runtime cleanup failed. Restart Aside." });
+      applying = false;
+      return;
+    }
+    runtime = candidate;
+    credentialValues = credentials;
+    currentSink = sink;
+    setupError = undefined;
+    startupComplete = true;
+    emit({ type: "runtime_reconfigured" });
+    if (!hadRuntime) emit({ type: "history_restored", messages: Array.isArray(candidate.history) ? candidate.history : [] });
+    sink.forwarding = true;
+    for (const event of buffered) emitRuntimeEvent(event);
+    emit({ type: "configuration_status", state: "applied" });
+    applying = false;
+    void applyWhenIdle();
+  }
+
+  function track(operation, onError) {
+    const pending = Promise.resolve().then(operation).catch(onError).finally(() => {
+      operations.delete(pending);
+      void applyWhenIdle();
+    });
+    operations.add(pending);
+  }
+
+  for await (const line of iterator) {
     if (!line.trim()) continue;
     let parsed;
     try {
@@ -216,6 +314,20 @@ export async function runProtocol({
       continue;
     }
 
+    if (request.type === "apply_settings") {
+      pendingApplication = request.credential_values;
+      emit({ type: "configuration_status", state: "pending" });
+      void applyWhenIdle();
+      continue;
+    }
+
+    if (applying && ["prompt", "set_workspace", "clear_workspace"].includes(request.type)) {
+      emit(request.type === "prompt"
+        ? { type: "failed", request_id: request.request_id, message: "Configuration is being applied. Try again when it finishes.", retryable: true }
+        : { type: "session_warning", message: "Configuration is being applied. Try the workspace change again when it finishes." });
+      continue;
+    }
+
     if (request.type === "prompt") {
       if (!runtime) {
         emit({
@@ -226,13 +338,12 @@ export async function runProtocol({
         });
         continue;
       }
-      void runtime
-        .prompt(request.request_id, request.text, request.context)
-        .catch((error) =>
+      const target = runtime;
+      track(() => target.prompt(request.request_id, request.text, request.context), (error) =>
           emitRuntimeEvent({
             type: "failed",
             request_id: request.request_id,
-            message: sanitizeError(error),
+            message: runtimeError(error),
             retryable: true,
           }),
         );
@@ -265,12 +376,11 @@ export async function runProtocol({
         });
         continue;
       }
-      void runtime
-        .setWorkspace(request.task_id, request.workspace)
-        .catch((error) =>
+      const target = runtime;
+      track(() => target.setWorkspace(request.task_id, request.workspace), (error) =>
           emitRuntimeEvent({
             type: "session_warning",
-            message: sanitizeError(error),
+            message: runtimeError(error),
           }),
         );
       continue;
@@ -284,11 +394,19 @@ export async function runProtocol({
         });
         continue;
       }
-      runtime.clearWorkspace(request.task_id);
+      try {
+        runtime.clearWorkspace(request.task_id);
+      } catch (error) {
+        emitRuntimeEvent({ type: "session_warning", message: runtimeError(error) });
+      }
       continue;
     }
 
     if (runtime) runtime.cancel(request.request_id);
+  }
+  await Promise.allSettled([...operations]);
+  while (pendingApplication || applying) {
+    await applyWhenIdle();
   }
 }
 
@@ -338,5 +456,5 @@ if (
     );
     process.exit(1);
   }
-  await runProtocol();
+  await runProtocol({ requireInitialization: true });
 }

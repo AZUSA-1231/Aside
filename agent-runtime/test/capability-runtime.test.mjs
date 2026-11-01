@@ -679,17 +679,20 @@ test("publishes the full contract on the run registry without trusted ids", asyn
   }
 });
 
-test("C6-I023: the system prompt states the capability the registry provides", async () => {
+test("C6-I023: the system prompt states the capability the registry provides", async (context) => {
   const { createConfiguredAgent } = await import("../src/runtime.mjs");
   const { describeDocumentFormats } = await import("../src/workspace-tools.mjs");
+  const root = await mkdtemp(join(tmpdir(), "aside-capability-config-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
 
   const configured = await createConfiguredAgent({
     environment: {
+      ASIDE_SETTINGS_PATH: join(root, "settings.json"),
       ASIDE_PROVIDER: "deepseek",
       ASIDE_MODEL: "deepseek-v4-flash",
       DEEPSEEK_API_KEY: "test-key",
     },
-    configCwd: process.cwd(),
+    configCwd: root,
     skills: [],
   });
   const prompt = configured.agent.state.systemPrompt;

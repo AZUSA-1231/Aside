@@ -17,6 +17,7 @@ import {
   RotateCcw,
   ScanSearch,
   Send,
+  Settings,
   Shield,
   Sparkles,
   Square,
@@ -55,6 +56,7 @@ import {
 import { isDesktopRuntime, nativeClient, toNativeError } from "./lib/ipc";
 import "./App.css";
 import "./plate.css";
+import SettingsPanel from "./SettingsPanel";
 
 type ChatMessageStatus = "complete" | "streaming" | "cancelled" | "error";
 type CaptureStatus = "idle" | "capturing" | "captured" | "unavailable" | "failed";
@@ -247,6 +249,7 @@ function provenanceFrom(tools: RuntimeToolDescriptor[]): Record<string, RuntimeT
 }
 
 function App() {
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [agentState, setAgentState] = useState<AgentState>(initialAgentState);
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [draft, setDraft] = useState("");
@@ -565,6 +568,20 @@ function App() {
       });
     void nativeClient
       .onRuntimeEvent((event: RuntimeEvent) => {
+        if (event.type === "runtime_reconfigured") {
+          setRuntimeReady(false);
+          setRuntimeInfo(null);
+          setActiveSkill(null);
+          setMcpServers([]);
+          setToolProvenance({});
+          updatePendingPermission(null);
+          setRunWaiting(null);
+          setToolActivity(null);
+          setVerification(null);
+          setNativeError((current) => current?.operation === "conversation" ? null : current);
+          return;
+        }
+        if (event.type === "configuration_status") return;
         if (event.type === "history_restored") {
           if (historyHydratedRef.current) return;
           historyHydratedRef.current = true;
@@ -828,11 +845,12 @@ function App() {
         setPreviewAttachment(null);
         return;
       }
+      if (settingsOpen) { setSettingsOpen(false); return; }
       void execute("hide_agent", nativeClient.hideAgent);
     };
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
-  }, [agentState.visibility, execute, previewAttachment]);
+  }, [agentState.visibility, execute, previewAttachment, settingsOpen]);
 
   useEffect(() => {
     if (isDesktopRuntime()) return;
@@ -982,6 +1000,8 @@ function App() {
       <div className="island-controls">
         <span className="island-name">Aside</span>
         <span className="island-state" role="status">{taskLabel === "Aside" ? "" : taskLabel}</span>
+        <button className={`icon-button ${settingsOpen ? "active" : ""}`} type="button" aria-label="Open settings" aria-pressed={settingsOpen}
+          title="Model and API settings" onClick={() => setSettingsOpen((current) => !current)}><Settings size={15} /></button>
         <button className={`icon-button ${agentState.pinned ? "active" : ""}`} type="button"
           aria-label={agentState.pinned ? "Unpin Aside" : "Pin Aside"} aria-pressed={agentState.pinned}
           title="Keep panel on top" onClick={() => void execute("pin", () => nativeClient.setPinned(!agentState.pinned))}>
@@ -990,6 +1010,7 @@ function App() {
         <button className="icon-button" type="button" aria-label="Hide Aside" title="Hide · Esc · Ctrl + Alt + A"
           onClick={() => void execute("hide_agent", nativeClient.hideAgent)}><PanelRightClose size={17} /></button>
       </div>
+      {settingsOpen ? <SettingsPanel onClose={() => setSettingsOpen(false)} taskRunning={Boolean(activeRun)} /> : <>
       <div className="panel-scroll">
       <section className="status-strip" aria-live="polite">
         <button
@@ -1506,8 +1527,7 @@ function App() {
           </button>
         )}
       </form>
-
-
+      </>}
     </main>
   );
 }

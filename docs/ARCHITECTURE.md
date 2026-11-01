@@ -223,6 +223,34 @@ uses screen scraping, OCR, or unbounded accessibility traversal as a fallback.
 
 ### Agent Runtime
 
+Cycle 8 P0 adds an independent settings control process alongside the
+conversation process. Node owns the settings schema, precedence, revision
+checking, atomic persistence and redacted snapshots; Tauri supplies separate
+settings IPC without requiring provider initialization. Environment overrides
+user settings, which override ordinary legacy env values. The conversation,
+session store and MCP initialization share one loaded configuration snapshot.
+Tauri tracks its revision from `ready`; saving does not change an active run.
+The current `runtime_fields` list excludes reserved workspace/thinking settings
+until their feature plans are implemented. See
+[`cycle-8/plans/P0-settings-foundation.md`](./cycle-8/plans/P0-settings-foundation.md).
+
+P1 adds a Model & API panel that remains available without a ready conversation
+runtime. Rust owns Windows Credential Manager access and dedicated key writes;
+key readback is status only. Private stdin envelopes carry stored keys to Node,
+below inherited environment and above legacy env credentials. Provider catalog
+and connection-test logic live in the backend, sharing model selection with the
+conversation runtime; React never imports Pi or receives saved key values.
+
+`apply_settings` queues in the conversation protocol until prompt persistence
+and workspace operations settle. The candidate keeps the existing session,
+messages and persistence cursor. After successful construction, the old emitter
+is disabled and MCP/permissions are disposed before new ready events are
+forwarded. A failed candidate leaves the old runtime available. Tauri tracks
+actual ready revisions and `configuration_status`; React retains conversation
+and draft on `runtime_reconfigured`, clearing old permission/tool projections.
+The connection test is explicit and sends a minimal model text request without
+opening history or tools. See [P1](./cycle-8/plans/P1-api-settings.md).
+
 `agent-runtime` is the only Aside-owned boundary around Pi. It owns:
 
 - Pi agent construction and session lifecycle;

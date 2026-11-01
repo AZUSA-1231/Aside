@@ -83,6 +83,38 @@ it('starts with no resident surface and opens on the native state event', async 
   expect(container.querySelector('.edge-capsule')).toBeNull();
 });
 
+it('opens settings without a ready runtime and preserves the conversation draft', async () => {
+  await expand();
+  await setInput(container.querySelector('textarea')!, 'Keep draft while configuring');
+  vi.spyOn(nativeClient, 'getSettings').mockRejectedValue(new Error('Settings preview unavailable'));
+  vi.spyOn(nativeClient, 'getProviderCatalog').mockRejectedValue(new Error('Catalog preview unavailable'));
+  await click(button('Open settings'));
+  expect(container.querySelector('[aria-label="Model and API settings"]')).toBeTruthy();
+  expect(container.textContent).toContain('Settings preview unavailable');
+  await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })));
+  expect(container.querySelector('textarea')!.value).toBe('Keep draft while configuring');
+  expect(nativeClient.hideAgent).not.toHaveBeenCalled();
+});
+
+it('reconfiguration clears old permissions and tool state while retaining messages and draft', async () => {
+  await expand();
+  await act(async () => emit({ type: 'history_restored', messages: [] }));
+  const requestId = await send();
+  await act(async () => {
+    emit({ type: 'text_delta', request_id: requestId, delta: 'Retain this answer' });
+    emit({ type: 'completed', request_id: requestId });
+  });
+  await setInput(container.querySelector('textarea')!, 'Retain this draft');
+  await act(async () => {
+    emit({ type: 'runtime_reconfigured' });
+    emit({ type: 'ready', provider: 'fixture', model: 'new-model' });
+    emit({ type: 'history_restored', messages: [] });
+  });
+  expect(container.textContent).toContain('Retain this answer');
+  expect(container.querySelector('textarea')!.value).toBe('Retain this draft');
+  expect(container.querySelector('.permission-card')).toBeNull();
+});
+
 it('keeps the draft across Escape and reopening', async () => {
   await expand();
   await setInput(container.querySelector('textarea')!, 'Unsent draft');

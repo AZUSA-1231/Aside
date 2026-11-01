@@ -1,7 +1,160 @@
 import assert from "node:assert/strict";
-import { Readable } from "node:stream";
+import { PassThrough, Readable } from "node:stream";
 import test from "node:test";
 import { checkNodeVersion, parseRuntimeRequest, runProtocol } from "../src/protocol.mjs";
+
+function protocolFixture(factory) {
+  const input = new PassThrough();
+  const events = [];
+  const waiters = [];
+  const done = runProtocol({ input, runtimeFactory: factory, emit: (event) => {
+    events.push(event);
+    for (const waiter of waiters) if (waiter.predicate(event)) waiter.resolve(event);
+  } });
+  return {
+    input, events, done,
+    send: (request) => input.write(`${JSON.stringify(request)}\n`),
+    wait: (predicate) => {
+      const found = events.find(predicate);
+      return found ? Promise.resolve(found) : new Promise((resolve) => waiters.push({ predicate, resolve }));
+    },
+  };
+}
+
+test("private initialization supplies keys without emitting them and rejects malformed envelopes", async () => {
+  const received = [];
+  const events = [];
+  await runProtocol({
+    requireInitialization: true,
+    input: Readable.from([`${JSON.stringify({ type: "initialize", credential_values: { openai: "private-fixture" } })}\n`]),
+    runtimeFactory: async ({ credentialValues }) => { received.push(credentialValues); return { history: [] }; },
+    emit: (event) => events.push(event),
+  });
+  assert.deepEqual(received, [{ openai: "private-fixture" }]);
+  assert.doesNotMatch(JSON.stringify(events), /private-fixture/);
+  for (const envelope of [{ type: "prompt", text: "private-fixture" }, { type: "initialize", credential_values: { unknown: "private-fixture" } }]) {
+    const failures = [];
+    await runProtocol({ requireInitialization: true, input: Readable.from([`${JSON.stringify(envelope)}\n`]), runtimeFactory: async () => { throw new Error("must not initialize"); }, emit: (event) => failures.push(event) });
+    assert.equal(failures[0].type, "runtime_unavailable");
+    assert.doesNotMatch(JSON.stringify(failures), /private-fixture/);
+  }
+});
+
+test("apply queues until prompt persistence and old cleanup finish, then drops old events", async () => {
+  const persistence = Promise.withResolvers();
+  const cleanup = Promise.withResolvers();
+  const oldDisposed = Promise.withResolvers();
+  const calls = [];
+  let oldEmit;
+  let oldRuntime;
+  const fixture = protocolFixture(async ({ emit, previousRuntime, credentialValues }) => {
+    calls.push({ previousRuntime, credentialValues });
+    emit({ type: "ready", provider: "fixture", model: calls.length === 1 ? "old" : "new" });
+    if (calls.length === 1) {
+      oldEmit = emit;
+      oldRuntime = {
+        history: [],
+        prompt: async (id) => { emit({ type: "completed", request_id: id }); await persistence.promise; },
+        dispose: async () => { oldDisposed.resolve(); await cleanup.promise; },
+      };
+      return oldRuntime;
+    }
+    return { history: [], prompt: async (id) => {
+      emit({ type: "completed", request_id: id });
+      throw new Error("late duplicate terminal");
+    } };
+  });
+  await fixture.wait((event) => event.type === "ready");
+  fixture.send({ type: "prompt", request_id: "old-task", text: "question" });
+  await fixture.wait((event) => event.type === "completed");
+  fixture.send({ type: "apply_settings", credential_values: { openai: "new-private-fixture" } });
+  await fixture.wait((event) => event.state === "pending");
+  assert.equal(calls.length, 1);
+  persistence.resolve();
+  await oldDisposed.promise;
+  assert.equal(calls[1].previousRuntime, oldRuntime);
+  assert.deepEqual(calls[1].credentialValues, { openai: "new-private-fixture" });
+  assert.equal(fixture.events.filter((event) => event.type === "ready").length, 1);
+  oldEmit({ type: "session_warning", message: "late-old-event" });
+  cleanup.resolve();
+  await fixture.wait((event) => event.state === "applied");
+  oldEmit({ type: "text_delta", request_id: "old-task", delta: "late-old-event" });
+  assert.equal(fixture.events.filter((event) => event.type === "ready").length, 2);
+  assert.doesNotMatch(JSON.stringify(fixture.events), /late-old-event|new-private-fixture/);
+  assert.equal(fixture.events.filter((event) => event.type === "history_restored").length, 1);
+  fixture.send({ type: "prompt", request_id: "new-task", text: "question" });
+  await fixture.wait((event) => event.request_id === "new-task");
+  fixture.input.end();
+  await fixture.done;
+  assert.equal(fixture.events.filter((event) => event.request_id === "new-task").length, 1);
+});
+
+test("failed candidate configuration retains the old runtime and can be retried", async () => {
+  let builds = 0;
+  let disposed = false;
+  const prompts = [];
+  const fixture = protocolFixture(async ({ emit }) => {
+    builds += 1;
+    if (builds === 2) throw new Error("private-provider-error");
+    emit({ type: "ready", provider: "fixture", model: "model" });
+    return { history: [], prompt: async (id) => { prompts.push(id); emit({ type: "completed", request_id: id }); }, dispose: () => { disposed = true; } };
+  });
+  await fixture.wait((event) => event.type === "ready");
+  fixture.send({ type: "apply_settings", credential_values: {} });
+  await fixture.wait((event) => event.state === "failed");
+  assert.equal(disposed, false);
+  fixture.send({ type: "prompt", request_id: "retained", text: "question" });
+  await fixture.wait((event) => event.request_id === "retained");
+  fixture.send({ type: "apply_settings", credential_values: {} });
+  await fixture.wait((event) => event.state === "applied");
+  assert.equal(disposed, true);
+  assert.deepEqual(prompts, ["retained"]);
+  assert.doesNotMatch(JSON.stringify(fixture.events), /private-provider-error/);
+  fixture.input.end();
+  await fixture.done;
+});
+
+test("reconfiguration waits for workspace validation and rejects new work while applying", async () => {
+  const workspace = Promise.withResolvers();
+  const building = Promise.withResolvers();
+  let builds = 0;
+  const fixture = protocolFixture(async ({ emit }) => {
+    builds += 1;
+    if (builds === 2) await building.promise;
+    emit({ type: "ready", provider: "fixture", model: "model" });
+    return { history: [], setWorkspace: async () => workspace.promise, clearWorkspace() {}, dispose() {} };
+  });
+  await fixture.wait((event) => event.type === "ready");
+  fixture.send({ type: "set_workspace", workspace: "D:/fixture" });
+  fixture.send({ type: "apply_settings", credential_values: {} });
+  await fixture.wait((event) => event.state === "pending");
+  assert.equal(builds, 1);
+  workspace.resolve();
+  await fixture.wait((event) => event.state === "applying");
+  fixture.send({ type: "prompt", request_id: "blocked", text: "question" });
+  assert.equal((await fixture.wait((event) => event.request_id === "blocked")).type, "failed");
+  building.resolve();
+  await fixture.wait((event) => event.state === "applied");
+  fixture.input.end();
+  await fixture.done;
+});
+
+test("initial startup failure can be repaired without losing restored history", async () => {
+  let builds = 0;
+  const fixture = protocolFixture(async ({ emit }) => {
+    if (++builds === 1) throw new Error("invalid configuration");
+    emit({ type: "ready", provider: "fixture", model: "model" });
+    return { history: [{ id: "restored", role: "user", text: "earlier message" }] };
+  });
+  await fixture.wait((event) => event.type === "runtime_unavailable");
+  fixture.send({ type: "apply_settings", credential_values: {} });
+  await fixture.wait((event) => event.state === "applied");
+  const restored = fixture.events.find((event) => event.type === "history_restored");
+  assert.equal(restored.messages[0].text, "earlier message");
+  assert.ok(fixture.events.indexOf(restored) < fixture.events.findIndex((event) => event.type === "ready"));
+  fixture.input.end();
+  await fixture.done;
+});
 
 // The Cycle 6 capability dimensions must survive the process boundary verbatim.
 // Tauri forwards events as `serde_json::Value`, so this module is the only

@@ -359,10 +359,14 @@ export interface RuntimeVerificationState {
 }
 
 export type RuntimeEvent =
+  | { type: "runtime_reconfigured" }
+  | { type: "configuration_status"; state: "pending" | "applying" | "applied" | "failed"; message?: string }
   | {
       type: "ready";
       provider: string;
       model: string;
+      configuration_revision?: string;
+      settings_revision?: string;
       tools?: RuntimeToolDescriptor[];
       skills?: RuntimeSkillEvent[];
       skill_diagnostics?: Array<{ code: string; message: string; path?: string }>;

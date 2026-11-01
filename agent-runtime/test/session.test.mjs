@@ -43,6 +43,25 @@ function makeFauxAgent(responses) {
   return { faux, agent: makeAgent(faux) };
 }
 
+test("runtime reconstruction retains the same session, messages and persistence cursor", async () => {
+  const first = makeFauxAgent([fauxAssistantMessage("first answer")]);
+  const original = await createAsideConversationRuntime({ repository: createInMemoryAsideSessionRepository(), agent: first.agent });
+  await original.prompt("before-rebuild", "first question");
+  const next = makeFauxAgent([fauxAssistantMessage("second answer")]);
+  const rebuilt = await createAsideConversationRuntime({ agent: next.agent, previousRuntime: original });
+  assert.equal(rebuilt.session, original.session);
+  assert.equal(rebuilt.agent.sessionId, original.agent.sessionId);
+  assert.equal(rebuilt.persistRun, original.persistRun);
+  assert.deepEqual(rebuilt.agent.state.messages, original.agent.state.messages);
+  assert.deepEqual(rebuilt.history, []);
+  await original.dispose();
+  await rebuilt.prompt("after-rebuild", "second question");
+  const entries = await rebuilt.session.findEntries({ type: "message", order: "oldestFirst" });
+  assert.deepEqual(entries.map((entry) => messageText(entry.message)), ["first question", "first answer", "second question", "second answer"]);
+  assert.equal(rebuilt.pendingPermissions.length, 0);
+  await rebuilt.dispose();
+});
+
 test("persists finalized messages and restores the active Aside session", async () => {
   const repository = createInMemoryAsideSessionRepository();
   const first = makeFauxAgent([fauxAssistantMessage("first answer")]);

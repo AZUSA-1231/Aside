@@ -23,6 +23,43 @@ function makeAgent(faux) {
   });
 }
 
+test("a prompt does not settle before its terminal-event persistence has finished", async () => {
+  const faux = fauxProvider({ tokensPerSecond: 1000 });
+  faux.setResponses([fauxAssistantMessage("saved answer")]);
+  const persistence = Promise.withResolvers();
+  const terminal = Promise.withResolvers();
+  let finished = false;
+  const runtime = await createConversationRuntime({
+    agent: makeAgent(faux),
+    emit: (event) => { if (event.type === "completed") terminal.resolve(); },
+    onRunSettled: () => persistence.promise,
+  });
+  const work = runtime.prompt("persist-boundary", "question").then(() => { finished = true; });
+  await terminal.promise;
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(finished, false);
+  assert.ok(runtime.activeTaskRun);
+  persistence.resolve();
+  await work;
+  assert.equal(finished, true);
+  assert.equal(runtime.activeTaskRun, undefined);
+  await runtime.dispose();
+});
+
+test("failure events redact the exact configured secret even without a recognizable key prefix", async () => {
+  const faux = fauxProvider({ tokensPerSecond: 1000 });
+  const message = fauxAssistantMessage("failure");
+  message.stopReason = "error";
+  message.errorMessage = "Provider echoed unusual-private-value in its failure";
+  faux.setResponses([message]);
+  const events = [];
+  const runtime = await createConversationRuntime({ agent: makeAgent(faux), sensitiveValues: ["unusual-private-value"], emit: (event) => events.push(event) });
+  await runtime.prompt("redaction", "question");
+  assert.ok(events.some((event) => event.type === "failed"));
+  assert.doesNotMatch(JSON.stringify(events), /unusual-private-value/);
+  await runtime.dispose();
+});
+
 function hostAttachment({
   id,
   host,

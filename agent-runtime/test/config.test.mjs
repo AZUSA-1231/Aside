@@ -36,6 +36,7 @@ test("parses .env.local and gives existing environment values precedence", async
   const configuration = await loadAsideConfig({
     cwd: child,
     environment: {
+      ASIDE_SETTINGS_PATH: join(root, "settings.json"),
       ASIDE_MODEL: "gpt-4.1",
       OPENAI_API_KEY: "environment-secret",
     },
@@ -70,7 +71,7 @@ test("injects file credentials into Pi auth without mutating process.env", async
   const root = await createTempDirectory(t);
   const originalKey = process.env.OPENAI_API_KEY;
   await writeFile(join(root, ".env.local"), "OPENAI_API_KEY=file-secret\n");
-  const configuration = await loadAsideConfig({ cwd: root, environment: {} });
+  const configuration = await loadAsideConfig({ cwd: root, environment: { ASIDE_SETTINGS_PATH: join(root, "settings.json") } });
   const models = createModels({
     authContext: {
       env: async (name) => configuration.values[name],
@@ -96,7 +97,7 @@ test("applies an Aside API URL to the selected Pi model", async (t) => {
 
   const configured = await createConfiguredAgent({
     configCwd: root,
-    environment: {},
+    environment: { ASIDE_SETTINGS_PATH: join(root, "settings.json") },
   });
 
   assert.equal(configured.provider, "openai");

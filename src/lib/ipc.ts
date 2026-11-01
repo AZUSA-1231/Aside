@@ -9,6 +9,7 @@ import type {
   NativeError,
   RuntimeEvent,
 } from "./contracts";
+import type { SettingsDocument, SettingsSnapshot, SettingsProvider, ProviderCatalog, ConnectionTestResult } from "./settings";
 
 const initialPreviewState: AgentState = {
   visibility: "visible",
@@ -77,6 +78,32 @@ async function previewCommand(action: (state: AgentState) => AgentState): Promis
 }
 
 export const nativeClient = {
+  setApiKey: (provider: SettingsProvider, key: string | null): Promise<SettingsSnapshot> =>
+    command<SettingsSnapshot>("set_api_key", { provider, key }),
+
+  getProviderCatalog: (provider: SettingsProvider): Promise<ProviderCatalog> =>
+    command<ProviderCatalog>("get_provider_catalog", { provider }),
+
+  testApiConnection: (): Promise<ConnectionTestResult> =>
+    command<ConnectionTestResult>("test_api_connection"),
+
+  applySettings: (): Promise<SettingsSnapshot> => command<SettingsSnapshot>("apply_settings"),
+
+  getSettings: async (): Promise<SettingsSnapshot> => {
+    if (!isDesktopRuntime()) throw new Error("Persistent settings are available in the desktop app.");
+    return command<SettingsSnapshot>("get_settings");
+  },
+
+  saveSettings: async (document: SettingsDocument, expectedRevision: string): Promise<SettingsSnapshot> => {
+    if (!isDesktopRuntime()) throw new Error("Persistent settings are available in the desktop app.");
+    return command<SettingsSnapshot>("save_settings", { document, expectedRevision });
+  },
+
+  importLegacySettings: async (expectedRevision: string): Promise<SettingsSnapshot> => {
+    if (!isDesktopRuntime()) throw new Error("Persistent settings are available in the desktop app.");
+    return command<SettingsSnapshot>("import_legacy_settings", { expectedRevision });
+  },
+
   getAgentState: async (): Promise<AgentState> => {
     if (!isDesktopRuntime()) return { ...previewState };
     return command<AgentState>("get_agent_state");

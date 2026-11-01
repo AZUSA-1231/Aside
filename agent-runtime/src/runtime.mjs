@@ -1,16 +1,13 @@
 import { Agent } from "@earendil-works/pi-agent-core/aside";
-import { createModels, defaultProviderAuthContext } from "@earendil-works/pi-ai";
+import { selectConfiguredProvider } from "./provider-settings.mjs";
 import {
   buildSkillProjection,
   projectAsideContext,
   toProviderMessages,
   validateTurnContext,
 } from "./context.mjs";
-import {
-  getAsideConfigValue,
-  loadAsideConfig,
-  normalizeAsideApiUrl,
-} from "./config.mjs";
+import { loadAsideConfig } from "./config.mjs";
+import { PROVIDER_CREDENTIAL_NAMES } from "./settings-schema.mjs";
 import {
   AsideContractError,
   DEFAULT_AGENT_LIMITS,
@@ -64,19 +61,11 @@ export { DEFAULT_AGENT_LIMITS } from "./agent-contracts.mjs";
 export const DEFAULT_SYSTEM_PROMPT =
   "You are Aside, a concise and thoughtful desktop assistant. Answer directly and keep short requests practical.";
 
-const providerFactories = {
-  anthropic: async () =>
-    (await import("@earendil-works/pi-ai/providers/anthropic")).anthropicProvider(),
-  deepseek: async () =>
-    (await import("@earendil-works/pi-ai/providers/deepseek")).deepseekProvider(),
-  google: async () =>
-    (await import("@earendil-works/pi-ai/providers/google")).googleProvider(),
-  openai: async () =>
-    (await import("@earendil-works/pi-ai/providers/openai")).openaiProvider(),
-};
-
-export function sanitizeError(error) {
-  const message = error instanceof Error ? error.message : String(error);
+export function sanitizeError(error, sensitiveValues = []) {
+  let message = error instanceof Error ? error.message : String(error);
+  for (const value of sensitiveValues.filter((value) => typeof value === "string" && value.length > 0)) {
+    message = message.split(value).join("[redacted]");
+  }
   return message
     .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
     .replace(
@@ -88,6 +77,8 @@ export function sanitizeError(error) {
     .replace(/https?:\/\/[^\s]+/gi, "[provider endpoint]")
     .slice(0, 280);
 }
+
+const sanitizePublicError = sanitizeError;
 
 function workspaceEventState(state) {
   if (!state || state.status !== "resolved") return undefined;
@@ -127,19 +118,6 @@ export function isUnsuccessfulAssistantMessage(message) {
       message.stopReason === "deferred" ||
       Boolean(message.errorMessage))
   );
-}
-
-function createConfiguredAuthContext(values) {
-  const baseContext = defaultProviderAuthContext();
-  return {
-    env: async (name) => {
-      const value = values[name];
-      return typeof value === "string" && value.trim().length > 0
-        ? value
-        : undefined;
-    },
-    fileExists: baseContext.fileExists,
-  };
 }
 
 function removeUnsuccessfulAssistantMessages(agent) {
@@ -301,39 +279,17 @@ export async function createConfiguredAgent({
   limits = DEFAULT_AGENT_LIMITS,
   environment = process.env,
   configCwd = process.cwd(),
+  configuration: suppliedConfiguration,
   skills,
   skillLoader,
   mcpIntegration,
 } = {}) {
-  const configuration = await loadAsideConfig({
+  const configuration = suppliedConfiguration ?? await loadAsideConfig({
     cwd: configCwd,
     environment,
   });
   const values = configuration.values;
-  const providerId = (getAsideConfigValue(values, "ASIDE_PROVIDER") ?? "openai").toLowerCase();
-  const factory = providerFactories[providerId];
-  if (!factory) {
-    throw new Error(
-      `Unsupported provider "${providerId}". Use openai, anthropic, deepseek, or google.`,
-    );
-  }
-
-  const provider = await factory();
-  const models = createModels({
-    authContext: createConfiguredAuthContext(values),
-  });
-  models.setProvider(provider);
-  const requestedModel = getAsideConfigValue(values, "ASIDE_MODEL");
-  const configuredModel = requestedModel
-    ? models.getModel(providerId, requestedModel)
-    : models.getModels(providerId)[0];
-  if (!configuredModel) {
-    throw new Error(
-      `Model "${requestedModel ?? "default"}" is not available for ${providerId}. Set ASIDE_MODEL to a supported model.`,
-    );
-  }
-  const apiUrl = normalizeAsideApiUrl(getAsideConfigValue(values, "ASIDE_API_URL"));
-  const model = apiUrl ? { ...configuredModel, baseUrl: apiUrl } : configuredModel;
+  const { models, providerId, model } = await selectConfiguredProvider(configuration);
   const normalizedLimits = normalizeAgentLimits(limits);
   const registry = normalizeToolSet(tools ?? createDefaultWorkspaceTools());
   const normalizedSystemPolicy = normalizeSystemPolicy(systemPolicy);
@@ -355,6 +311,7 @@ export async function createConfiguredAgent({
   // what it was before P6 and the SDK never loads.
   const mcp = await createMcpIntegrationIfConfigured({
     configDir: configuration.source ? dirname(configuration.source) : configCwd,
+    configPath: configuration.mcpConfigPath,
     values,
     inject: mcpIntegration,
   });
@@ -382,6 +339,9 @@ export async function createConfiguredAgent({
     agent,
     provider: providerId,
     model: model.id,
+    configurationRevision: configuration.effectiveRevision,
+    settingsRevision: configuration.settings.revision,
+    sensitiveValues: Object.values(PROVIDER_CREDENTIAL_NAMES).flat().map((name) => values[name]).filter(Boolean),
     registry,
     limits: normalizedLimits,
     skills: loadedSkills.skills,
@@ -400,12 +360,12 @@ export async function createConfiguredAgent({
  * and the MCP SDK is never loaded — so a user who does not use MCP pays no
  * startup cost, and a problem in the SDK cannot break ordinary file work.
  */
-async function createMcpIntegrationIfConfigured({ configDir, values, inject }) {
+async function createMcpIntegrationIfConfigured({ configDir, configPath, values, inject }) {
   if (inject !== undefined) {
     return { integration: inject, servers: [], diagnostics: [] };
   }
   const { createMcpIntegration, loadMcpServerConfigs } = await import("./mcp-runtime.mjs");
-  const loaded = await loadMcpServerConfigs({ configDir });
+  const loaded = await loadMcpServerConfigs({ configDir, configPath });
   const diagnostics = [...loaded.diagnostics];
   if (loaded.servers.length === 0) {
     return { integration: undefined, servers: [], diagnostics };
@@ -430,10 +390,14 @@ export async function createConversationRuntime({
   permissionBroker,
   environment = process.env,
   configCwd = process.cwd(),
+  configurationRevision,
+  settingsRevision,
   skills,
   skillDiagnostics,
   mcp,
   buildSystemPromptFor,
+  continuation,
+  sensitiveValues = [],
 } = {}) {
   const mcpTools = mcp?.toolFactory;
   const send = emit ?? (() => undefined);
@@ -466,12 +430,15 @@ export async function createConversationRuntime({
         skills,
       });
   const conversationAgent = configured.agent;
+  const sanitizeError = (error) => sanitizePublicError(error, configured.sensitiveValues ?? sensitiveValues);
   const runtimeSkills = configured.skills ?? [];
-  let activeSkillName;
+  let activeSkillName = runtimeSkills.some((skill) => skill.name === continuation?.activeSkillName)
+    ? continuation.activeSkillName : undefined;
   let active = null;
   let disposed = false;
-  let selectedWorkspace;
-  let previousWorkspace;
+  let selectedWorkspace = continuation?.selectedWorkspace;
+  let previousWorkspace = continuation?.previousWorkspace;
+  taskId ??= continuation?.taskId;
 
   /**
    * The identity of the conversation that owns the current workspace. It comes
@@ -786,6 +753,7 @@ export async function createConversationRuntime({
   }
 
   async function settle(run, status, failure) {
+    if (run.settlement) return run.settlement;
     if (run.settled || active !== run || disposed) return;
     run.settled = true;
     const terminalStatus = run.limit_code ? "failed" : status;
@@ -831,7 +799,8 @@ export async function createConversationRuntime({
       });
     }
 
-    await notifyRunSettled(run, terminalStatus);
+    run.settlement = notifyRunSettled(run, terminalStatus);
+    await run.settlement;
   }
 
   const unsubscribe = conversationAgent.subscribe(async (event) => {
@@ -905,12 +874,21 @@ export async function createConversationRuntime({
     type: "ready",
     provider: configured.provider,
     model: configured.model,
+    ...(configurationRevision ?? configured.configurationRevision
+      ? { configuration_revision: configurationRevision ?? configured.configurationRevision }
+      : {}),
+    ...(settingsRevision ?? configured.settingsRevision
+      ? { settings_revision: settingsRevision ?? configured.settingsRevision }
+      : {}),
     tools: activeRegistry.describe(),
     ...(runtimeSkills.length > 0 ? { skills: skillEventList(runtimeSkills) } : {}),
     ...(configured.skillDiagnostics?.length > 0
       ? { skill_diagnostics: configured.skillDiagnostics }
       : {}),
   });
+  if (continuation && activeSkillName) {
+    send({ type: "skill_activated", ...(taskId ? { task_id: taskId } : {}), skill: skillEvent(runtimeSkills.find((skill) => skill.name === activeSkillName)) });
+  }
 
   async function prompt(requestId, text, context, workspaceHint) {
     const validationError = validatePromptInput(requestId, text);
@@ -1168,18 +1146,18 @@ export async function createConversationRuntime({
     runtimePermissionBroker.dispose?.();
     unsubscribe?.();
     active = null;
-    // Tearing down the server processes is part of disposing the runtime: a
-    // connection that outlived the conversation would be a process the user
-    // never asked to keep running. Not awaited — dispose is synchronous and the
-    // teardown is bounded internally.
-    mcp?.close?.("runtime_disposed");
+    return mcp?.close?.("runtime_disposed");
   }
 
   return {
     prompt,
     cancel,
     dispose,
+    redactError: sanitizeError,
     agent: conversationAgent,
+    get continuation() {
+      return { selectedWorkspace, previousWorkspace, activeSkillName, taskId };
+    },
     get registry() {
       return activeRegistry;
     },

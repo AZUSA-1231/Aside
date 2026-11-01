@@ -1,12 +1,14 @@
 mod chromium_uia;
 mod commands;
 mod context;
+mod credentials;
 mod explorer_shell;
 mod file_hosts;
 mod generic_uia;
 mod path;
 mod platform;
 mod runtime;
+mod settings;
 mod uia;
 mod window_corner;
 mod workspace;
@@ -19,6 +21,7 @@ use tauri_plugin_global_shortcut::ShortcutState;
 pub fn run() {
     let app = tauri::Builder::default()
         .manage(AppState::default())
+        .manage(settings::SettingsManager::default())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_shortcut("CommandOrControl+Alt+A")
@@ -76,6 +79,13 @@ pub fn run() {
             commands::runtime_permission_response,
             commands::runtime_set_workspace,
             commands::runtime_clear_workspace,
+            settings::get_settings,
+            settings::save_settings,
+            settings::import_legacy_settings,
+            settings::set_api_key,
+            settings::get_provider_catalog,
+            settings::test_api_connection,
+            settings::apply_settings,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Aside");

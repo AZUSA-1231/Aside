@@ -1,6 +1,6 @@
 # 前端复查：当前实现、接口展示与证据
 
-状态：**R1 轻量视觉修正完成，R3 已实现 FE-08 动态焦点 Capture；真实桌面与完整原生验收仍未执行。** 当前工作区尚未提交。R2 自动化复核见 [复核记录](./cycle-6/R2-RECHECK.md)，本轮集成见 [R3 记录](./cycle-6/R3-INTEGRATION.md)；既有人工验收与安装包的无限期延期不变。
+状态：**R1 轻量视觉修正完成，R3 已实现 FE-08 动态焦点 Capture；C8 P1 已新增模型 / API 设置，沿用原侧栏布局。真实桌面与完整原生验收仍未执行。** 当前 C8 工作区尚未提交。R2 自动化复核见 [复核记录](./cycle-6/R2-RECHECK.md)，本轮集成见 [R3 记录](./cycle-6/R3-INTEGRATION.md)；既有人工验收与安装包的无限期延期不变。
 
 要求见 [SUMMONED-SIDEBAR.md](./design/SUMMONED-SIDEBAR.md)，阶段与问题状态见 [RECOVERY-PLAN.md](./RECOVERY-PLAN.md)。此前误删的快捷键自动分屏与原窗口恢复已重新实现；自动化证据的适用范围见第 7 节。
 
@@ -50,6 +50,8 @@
 | `runtime_set_workspace`、`runtime_clear_workspace` | 路径输入、Set / Clear、来源、根目录与 target、覆盖提示。 | 文件 workspace 与原生窗口布局仍是两个概念。 |
 | `get_active_window_state`、`get_active_host` | 诊断查询；宿主信息也随 capture 返回。 | 没有独立查询按钮。 |
 | `move_agent`、`resize_agent` | 保留的低层定位接口，界面不调用。 | 没有手动移动 / 缩放把手；不能宣传为用户功能。 |
+| `get_settings`、`save_settings`、`set_api_key` | 头部设置按钮，provider / model / Base URL，key 独立写入 / 删除；显示来源和环境覆盖。 | 模型不 ready 也可打开；不读回 key，普通保存不清掉未提交 key。 |
+| `get_provider_catalog`、`test_api_connection`、`apply_settings` | 后端受支持模型与能力、显式测试、空闲应用与实际状态。 | 测试前说明有效端点和少量用量；当前任务继续，协议等落盘后重建。 |
 
 ## 4. Runtime 事件到界面的对应
 
@@ -66,13 +68,14 @@
 | `permission_requested/resolved`、`run_waiting` | 审批卡片、等待、发送中禁用重复决定、发送失败保留卡片。 |
 | `verification_started/completed` | 工具、路径、状态；终态后保留验证结果。 |
 | `text_delta`、`completed/cancelled/failed` | 回复、终态、截断与适用的重试；不自行展开侧栏。 |
+| `configuration_status`、`runtime_reconfigured` | 设置页刷新实际应用状态；聊天保留历史 / 草稿 / 附件，清理旧权限 / 工具 / skill 投影，新 ready 随后更新。 |
 
-策略元数据仍由 runtime 执行；本轮没有新增设置页面、完整工具时间线或协议能力。
+策略元数据仍由 runtime 执行；P1 仅新增 API 设置及应用协议，完整工具时间线仍未提供。
 
 ## 5. 确实还没有的功能
 
 - Skill 手动选择：runtime 内部方法存在，但 stdio 与 Rust 请求尚未贯通；R4 明确为后续功能。
-- Provider/model / 凭据编辑、热重载、会话切换、新建会话、MCP 配置编辑：R4 已逐项归入 FEATURE-01 后续功能，当前继续文件配置、重启加载与单一活动会话。
+- P1 已实现 provider/model / 凭据编辑与显式空闲应用；默认目录、思考控制、会话切换 / 新建、MCP 配置编辑仍按 C8 P2–P5 推进。当前只恢复单一活动会话，不支持任务中途任意热替换。
 - 完整工具轨迹、手动移动 / 缩放、隐藏通知：本轮未提供。
 - 长期 memory、自整理、Mac capture、外部 agent：后续范围；Codex / Claude Code 适配继续延后。
 
