@@ -30,6 +30,10 @@
 | C8-I022 | P3 closeout 核对发现已保存档位在当前模型不可用时，下拉框显示 `offeredLevels[0]`（对推理模型恒为 `off`），旁边的说明却说“使用最近的受支持档位”，有效值框又显示回落值，三处互相矛盾。 | 不可用的保存值改为在选项中明确标出并禁用，说明文字直接给出实际会使用的档位（优先取后端 `thinking.applied`），不再显示一个运行时不会采用的值。 | 已解决，回归通过 |
 | C8-I023 | P3 closeout 核对发现思考强度卡片用 `baseDocument` 保存，却按界面上未保存的模型列举档位；用户先改模型、再单独保存档位时，会把档位写给文件中的旧模型。 | 档位列表、标签和“不支持推理”提示都改为取自已保存的 provider / model；草稿 provider 切换不再改变该卡片呈现。 | 已解决，回归通过 |
 | C8-I024 | 调用方自建的 Agent 可以没有 model，`resolveThinkingLevel` 会把它直接传给 Pi 的 `getSupportedThinkingLevels`，该函数要求模型元数据，缺少时抛错而不是报告安全默认值。 | 无模型时直接返回 `off` 语义的安全结果，不进入 clamp；补充无模型解析回归。 | 已解决，回归通过 |
+| C8-I025 | 产品只有单一活动会话：`openAsideSession` 按修改时间打开最近一个 Aside 会话，没有新建、列表、指定恢复、重命名和删除入口。 | P4 实施会话管理：仓库层增加列表 / 按 id 打开 / 新建 / 重命名 / 删除，协议层四条会话请求串行排队，切换重建 runtime 且不继承 continuation，界面新增会话面板。 | 已解决，回归通过 |
+| C8-I026 | 会话请求若与 `prompt` 一样用 `track()` 并发执行，同一会话上连续的 rename / delete 会竞争，落败方报告用户没有请求过的失败；`switch` 与紧随其后的 `list` 也会读到尚未写完的目录。 | 会话请求改走单一串行队列，按到达顺序执行；测试覆盖 rename→delete→list 连续顺序与 switch→list。 | 已解决，回归通过 |
+| C8-I028 | 用户实测：新建会话后界面报 “no longer exists”，退出重进却能看到该会话确实已创建。根因是 `sessionStore` 用原始参数重建，未复用已解析的 root / cwd；`createAsideSessionStore` 里 `repository ? "aside-memory"` 的回退又把真实仓库的 cwd 指向内存标签，于是列表与实际会话不在同一目录。 | `sessionStore` 一律由 `opened` 的 root / cwd 构造；回退仅在无 root 的仓库（测试内存仓）使用 `aside-memory`。回归覆盖“只传 environment / 只传 root 两种构造下列表都能看到活动会话”，以及切换后新建的会话立即可见。 | 已解决，回归通过 |
+| C8-I027 | 会话切换没有等待在途 `prompt`：切换会在任务仍在运行时 dispose 旧 runtime，正在生成的对话在落盘前就被丢掉。第一版等待逻辑又把自身放进 `operations`，形成自等死锁；收尾时以快照方式读取 `operations` 还会漏掉仍在排队的会话请求。 | 切换在触碰会话文件前等待所有在途操作结束，条目由串行队列保证不与自己竞争；收尾显式 drain 会话队列。回归断言 dispose 发生在 prompt 落盘之后，以及切换期间到达的 prompt 被可重试拒绝。 | 已解决，回归通过 |
 
 ## 证据记录
 
@@ -43,4 +47,7 @@
 - P3 最终：runtime **457/457**（较 P2 新增 12 项 thinking-level 回归）、前端 **46/46**（新增 5 项）、Rust **57/57**、类型检查与生产构建通过。实际出站请求断言使用 faux provider 的 `streamOptions.reasoning`，覆盖有效档、`off` 不发该字段、相邻回落、上下越界、无推理模型、失效保存值与模型不可解析。
 - P3 失败记录：首轮新增测试 4/10 失败，原因是夹具把 `thinkingLevelMap` 的 `off` 写成 `null`，而 Pi 以 `null` 表示“明确不支持”、`undefined` 表示隐式支持，等于反而放宽了可用集合；另有两项把 `createConversationRuntime` 当同步函数调用。均为测试夹具错误，按 Pi 实际语义修正，没有为迁就夹具放宽产品校验。前端首次构建失败是 `??` 与 `||` 混用的真实语法错误，已修正；随后一次类型检查发现 `thinking_level` 不接受 `null` 清空值，已补类型。
 - P3 未执行真实厂商连通性验证；档位映射的实际请求只覆盖 faux provider，不证明四家厂商的 reasoning 参数已被真实接受。P3 于 `f4df270` 提交；本次记录的“没有创建提交”在提交后已失效，保留原句仅作沿革。
+- P4 最终：runtime **478/478**（较 P3 closeout 新增 19 项会话回归）、前端 **55/55**（新增 8 项）、Rust **57/57**、类型检查与生产构建通过。新增文件 `agent-runtime/test/session-management.test.mjs`、`src/SessionPanel.tsx`、`tests/sessions.test.tsx`。C8-I025–I028 已解决。
+- P4 失败记录：首轮测试暴露三处真实缺陷，均已修复并留回归。①会话请求用 `track()` 并发执行，同一会话的 rename / delete 互相竞争；②切换未等待在途 `prompt`，会在任务运行时 dispose 旧 runtime 丢掉未落盘对话，第一版等待逻辑又把自身放进 `operations` 造成自等死锁，收尾快照也会漏掉排队中的会话请求；③`hits` 断言曾用不存在的 `assert.match.string`，属测试写法错误。另有一次测试因 `store.cwd` 被 Pi 编码成目录名而路径写错。
+- P4 未执行：真实桌面窗口内的会话面板人工操作、安装包路径、以及切换时真实 MCP / 权限卡的实际交互。上述仍为未验证，不由自动证据替代。
 - P3 closeout（2026-11-02）：核对实际源码与界面后发现 C8-I021–I024，已全部修复。最终 runtime **460/460**、前端 **47/47**、Rust **57/57**、类型检查与生产构建通过。Rust 于 2026-11-03 在新装好的 Rust 1.99.1 + MSVC 14.44 环境上重跑通过。改动涉及 `runtime.mjs` 的每次任务重解析、`SettingsPanel.tsx` 的档位卡片与保存语义，以及 `thinking-level.mjs` 的无模型保护。

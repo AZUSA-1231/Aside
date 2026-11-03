@@ -230,6 +230,30 @@ export const nativeClient = {
     }
   },
 
+  runtimeListSessions: async (requestId: string): Promise<void> => {
+    if (!isDesktopRuntime()) return;
+    await command<void>("runtime_list_sessions", { requestId });
+  },
+
+  runtimeSwitchSession: async (requestId: string, target: { sessionId?: string; create?: boolean }): Promise<void> => {
+    if (!isDesktopRuntime()) return;
+    await command<void>("runtime_switch_session", {
+      requestId,
+      sessionId: target.sessionId,
+      create: target.create,
+    });
+  },
+
+  runtimeRenameSession: async (requestId: string, sessionId: string, name: string | null): Promise<void> => {
+    if (!isDesktopRuntime()) return;
+    await command<void>("runtime_rename_session", { requestId, sessionId, name });
+  },
+
+  runtimeDeleteSession: async (requestId: string, sessionId: string): Promise<void> => {
+    if (!isDesktopRuntime()) return;
+    await command<void>("runtime_delete_session", { requestId, sessionId });
+  },
+
   runtimePermissionResponse: async (
     permissionId: string,
     decision: "allow" | "deny" | "cancel",

@@ -61,3 +61,23 @@
 .settings-effective { display: flex; flex-direction: column; gap: 4px; padding-top: 5px; font-size: 11px; color: var(--muted); }
 .settings-operation { color: var(--muted); }
 .settings-panel select:focus-visible { outline: 2px solid #6577a2; outline-offset: 3px; }
+
+/* Conversation history: one row per saved session, with the current one marked. */
+.session-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.session-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--component-radius);
+  background: #fff;
+}
+.session-row-current { border-color: #b8c4d6; background: #f6f9ff; }
+.session-line, .session-rename { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.session-rename input { flex: 1; min-height: 32px; padding: 6px 8px; border: 1px solid #dce2eb; border-radius: var(--component-radius); }
+.session-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.session-name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-current { font-weight: 400; color: var(--muted); }
+.session-when { font-size: 11px; color: var(--muted); }
+.session-confirm { display: flex; flex-direction: column; gap: 6px; }

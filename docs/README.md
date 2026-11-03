@@ -4,14 +4,14 @@
 
 **R1–R4 当前有界开发与自动证据已完成。有限清单 RT-01–11 和候选功能处置见总计划第 7 节；R4 补齐 MCP 分类双绑定与失效提示。394 项 runtime、24 项前端及构建通过；完整原生 / 人工与产品级 runtime 验收尚未成立，G01 同步解析限制保留。**
 
-既有收束快照为 `ea4db29`；[Cycle 8](./cycle-8/README.md) 的 P0/P1 已提交为 `b5a0bd1`，P2 已提交为 `4a88a9b`，P3 思考强度已提交为 `f4df270` 并在 2026-11-02 完成 closeout。当前 runtime 460/460、前端 47/47、Rust 57/57、类型与生产构建通过。下一步 P4 会话管理，P4–P5 尚未实施；继续逐功能先 plan、执行并维护 issues。
+既有收束快照为 `ea4db29`；[Cycle 8](./cycle-8/README.md) 的 P0/P1 已提交为 `b5a0bd1`，P2 已提交为 `4a88a9b`，P3 思考强度已提交为 `f4df270` 并在 2026-11-02 完成 closeout，P4 会话管理已完成开发验证并留在工作区。当前 runtime 476/476、前端 55/55、Rust 57/57、类型与生产构建通过。下一步 P5 MCP 配置 GUI，P5 尚未实施；继续逐功能先 plan、执行并维护 issues。
 
 ## 1. 现在先看哪几份
 
 | 文档 | 它负责什么 | 当前角色 |
 | --- | --- | --- |
 | [RECOVERY-PLAN.md](./RECOVERY-PLAN.md) | 工作先后、FE／A／INT／RT 等编号、完成条件和证据状态。 | 当前执行与遗留项的唯一总入口；第 7 节明确有界开发范围与剩余验收，C8 记录新周期定义状态。 |
-| [cycle-8/README.md](./cycle-8/README.md) | 基础设置 / 会话 / MCP 的现状对照、六份功能 plan、issues 与验收目标。 | P0–P3 开发验证完成，下一步 P4 会话管理。 |
+| [cycle-8/README.md](./cycle-8/README.md) | 基础设置 / 会话 / MCP 的现状对照、六份功能 plan、issues 与验收目标。 | P0–P4 开发验证完成，下一步 P5 MCP 配置 GUI。 |
 | [design/SUMMONED-SIDEBAR.md](./design/SUMMONED-SIDEBAR.md) | 快捷键采集→自动分屏→收起恢复；全高侧栏与连续底板、白色组件。 | 当前规范；R1 已开发实现，原生观察仍待补。 |
 | [FRONTEND-REVIEW.md](./FRONTEND-REVIEW.md) | 当前技术栈、材质沿革、接口投影与开发检查、限制。 | 当前实现说明；区分 R1 浏览器证据与 R3 动态焦点开发回归，均不代表原生桌面验收。 |
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | Rust／React／runtime 职责、状态与 IPC、上下文和权限边界。 | 仍使用的工程约束；其中当前源码描述与待恢复行为已分开标注。 |
@@ -31,7 +31,7 @@
 | 已执行：R2 | A01–A12 自动化复核，修正不完整的续读、截断和搜索游标；重验 G01。 | [逐项证据](./cycle-6/R2-RECHECK.md) 与 [机器汇总](./cycle-6/R2-EVIDENCE.json)；379 项 runtime 通过，不能替代人工验收。 |
 | 已执行：R3 | 动态焦点 Capture、现有 capture→文件 workspace→工具→权限→结果的集成核对。 | [集成记录](./cycle-6/R3-INTEGRATION.md) 和 [Windows 合成测量](./cycle-6/R3-BENCHMARK.json)；388 项 runtime、45 项 Rust、23 项前端与构建通过，真实桌面待复测。 |
 | 已执行：R4 | 定义 RT-01–11，补齐 POLICY-01，明确 LIMIT-01 与设置 / 会话 / skill 等候选功能处置。 | [开发证据](./cycle-6/R4-RUNTIME.md)；394 项 runtime、24 项前端和构建通过。有限开发清单完成，产品级验收未成立。 |
-| 执行中：Cycle 8 | 统一配置、API / 模型 / 思考强度、默认目录、会话、现有 stdio MCP GUI。 | [P0](./cycle-8/plans/P0-settings-foundation.md)、[P1](./cycle-8/plans/P1-api-settings.md)、[P2](./cycle-8/plans/P2-default-workspace.md)、[P3](./cycle-8/plans/P3-thinking-level.md)已完成开发验证（P3 含 closeout）；下一步 P4，P4–P5 未实施。 |
+| 执行中：Cycle 8 | 统一配置、API / 模型 / 思考强度、默认目录、会话、现有 stdio MCP GUI。 | [P0](./cycle-8/plans/P0-settings-foundation.md)、[P1](./cycle-8/plans/P1-api-settings.md)、[P2](./cycle-8/plans/P2-default-workspace.md)、[P3](./cycle-8/plans/P3-thinking-level.md)、[P4](./cycle-8/plans/P4-sessions.md)已完成开发验证（P3 含 closeout）；下一步 P5，P5 未实施。 |
 
 R1–R4 已纳入的开发任务没有剩余项；当前 Cycle 8 优先完善普通 agent 的设置、存储与会话基础，不开发长期 memory、工作记录或自组织机制。外部 agent 适配、Mac 移植仍在后续范围；窗口渲染研究由用户在独立项目进行。既有人工验收与安装包的无限期延期不变。
 
@@ -59,7 +59,7 @@ R1–R4 已纳入的开发任务没有剩余项；当前 Cycle 8 优先完善普
 | [cycle-5-agent-capability/](./cycle-5-agent-capability/)，10 份 Markdown | 任务／workspace、工具、权限写入、skills、会话与 IPC；需求、计划、issue。 | 已实现能力的历史要求与问题来源；人工证据结转未关闭。 |
 | [cycle-6/](./cycle-6/)，24 个文件 | 文件／PDF／Word／MCP／策略能力；20 份 Markdown 加审计数据、R2/R3/R4 证据与复现脚本。 | **混合目录：旧研发计划是历史，审计／issue／验收状态仍需追踪。** 不能整体废弃。 |
 | [cycle-7/](./cycle-7/)，7 份 Markdown | 上一轮 UI 提案、旧开发／遗留拆分、执行记录、两版材质记录及导航。 | 旧路线与证据来源；不再直接按旧计划开任务，详见该目录导航。 |
-| [cycle-8/](./cycle-8/)，8 份 Markdown | 周期定义、六个功能 plan、开发 issues。 | P0–P3 开发证据已记录，P4–P5 未执行；不能当成整轮功能已验收。 |
+| [cycle-8/](./cycle-8/)，8 份 Markdown | 周期定义、六个功能 plan、开发 issues。 | P0–P4 开发证据已记录，P5 未执行；不能当成整轮功能已验收。 |
 
 ## 5. 已废止或被取代、但保留留痕的内容
 

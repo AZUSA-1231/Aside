@@ -115,6 +115,31 @@ it('reconfiguration clears old permissions and tool state while retaining messag
   expect(container.querySelector('.permission-card')).toBeNull();
 });
 
+it('a replaced history clears the previous conversation and its draft', async () => {
+  await expand();
+  await act(async () => emit({ type: 'history_restored', messages: [] }));
+  const requestId = await send();
+  await act(async () => {
+    emit({ type: 'text_delta', request_id: requestId, delta: 'From the old conversation' });
+    emit({ type: 'completed', request_id: requestId });
+  });
+  await setInput(container.querySelector('textarea')!, 'Draft that belongs to the old one');
+
+  await act(async () => {
+    emit({
+      type: 'history_restored',
+      replaced: true,
+      messages: [{ id: 'new-1', role: 'user', text: 'From the new conversation', status: 'complete', timestamp: 1 }],
+    });
+  });
+
+  // A switch is not a rebuild: the old transcript and draft must not survive
+  // into a conversation the user did not write them in.
+  expect(container.textContent).toContain('From the new conversation');
+  expect(container.textContent).not.toContain('From the old conversation');
+  expect(container.querySelector('textarea')!.value).toBe('');
+});
+
 it('keeps the draft across Escape and reopening', async () => {
   await expand();
   await setInput(container.querySelector('textarea')!, 'Unsent draft');

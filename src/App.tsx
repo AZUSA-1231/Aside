@@ -11,6 +11,7 @@ import {
   FileJson,
   FolderOpen,
   LoaderCircle,
+  MessagesSquare,
   PanelRightClose,
   Paperclip,
   Pin,
@@ -57,6 +58,7 @@ import { isDesktopRuntime, nativeClient, toNativeError } from "./lib/ipc";
 import "./App.css";
 import "./plate.css";
 import SettingsPanel from "./SettingsPanel";
+import SessionPanel from "./SessionPanel";
 
 type ChatMessageStatus = "complete" | "streaming" | "cancelled" | "error";
 type CaptureStatus = "idle" | "capturing" | "captured" | "unavailable" | "failed";
@@ -252,6 +254,7 @@ function provenanceFrom(tools: RuntimeToolDescriptor[]): Record<string, RuntimeT
 
 function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [sessionsOpen, setSessionsOpen] = useState(false);
   const [agentState, setAgentState] = useState<AgentState>(initialAgentState);
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [draft, setDraft] = useState("");
@@ -385,6 +388,32 @@ function App() {
       ];
     });
   }, []);
+
+  /**
+   * Drops everything that belonged to the conversation being closed.
+   *
+   * A switch must not carry a draft, a capture, an old permission card or a
+   * stale workspace into the conversation that replaces it: none of those are
+   * restored from history, and showing them would claim state the new session
+   * never had.
+   */
+  const resetConversationSurface = useCallback(() => {
+    setDraft("");
+    setAttachments([]);
+    setCapturePaths({});
+    setCaptureJson({});
+    setCaptureStatus("idle");
+    setCaptureHost(null);
+    setPreviewAttachment(null);
+    setRuntimeWorkspace(null);
+    setActiveSkill(null);
+    updatePendingPermission(null);
+    setToolActivity(null);
+    setVerification(null);
+    setWorkspaceOverride(null);
+    setRunWaiting(null);
+    setNativeError((current) => current?.operation === "conversation" ? null : current);
+  }, [updatePendingPermission]);
 
   const startRun = useCallback(
     async (prompt: string, assistantId?: string): Promise<boolean> => {
@@ -585,6 +614,16 @@ function App() {
         }
         if (event.type === "configuration_status") return;
         if (event.type === "history_restored") {
+          // A `replaced` history belongs to a different conversation, so it
+          // must overwrite what is on screen rather than be skipped by the
+          // one-time hydration guard. Everything run-scoped from the previous
+          // conversation is cleared with it.
+          if (event.replaced) {
+            historyHydratedRef.current = true;
+            resetConversationSurface();
+            hydrateHistory(event.messages);
+            return;
+          }
           if (historyHydratedRef.current) return;
           historyHydratedRef.current = true;
           hydrateHistory(event.messages);
@@ -1002,8 +1041,10 @@ function App() {
       <div className="island-controls">
         <span className="island-name">Aside</span>
         <span className="island-state" role="status">{taskLabel === "Aside" ? "" : taskLabel}</span>
+        <button className={`icon-button ${sessionsOpen ? "active" : ""}`} type="button" aria-label="Open conversations" aria-pressed={sessionsOpen}
+          title="Conversations" onClick={() => { setSessionsOpen((current) => !current); setSettingsOpen(false); }}><MessagesSquare size={15} /></button>
         <button className={`icon-button ${settingsOpen ? "active" : ""}`} type="button" aria-label="Open settings" aria-pressed={settingsOpen}
-          title="Model and API settings" onClick={() => setSettingsOpen((current) => !current)}><Settings size={15} /></button>
+          title="Model and API settings" onClick={() => { setSettingsOpen((current) => !current); setSessionsOpen(false); }}><Settings size={15} /></button>
         <button className={`icon-button ${agentState.pinned ? "active" : ""}`} type="button"
           aria-label={agentState.pinned ? "Unpin Aside" : "Pin Aside"} aria-pressed={agentState.pinned}
           title="Keep panel on top" onClick={() => void execute("pin", () => nativeClient.setPinned(!agentState.pinned))}>
@@ -1012,7 +1053,11 @@ function App() {
         <button className="icon-button" type="button" aria-label="Hide Aside" title="Hide · Esc · Ctrl + Alt + A"
           onClick={() => void execute("hide_agent", nativeClient.hideAgent)}><PanelRightClose size={17} /></button>
       </div>
-      {settingsOpen ? <SettingsPanel onClose={() => setSettingsOpen(false)} taskRunning={Boolean(activeRun)} /> : <>
+      {sessionsOpen
+        ? <SessionPanel onClose={() => setSessionsOpen(false)} taskRunning={Boolean(activeRun)} />
+        : settingsOpen
+          ? <SettingsPanel onClose={() => setSettingsOpen(false)} taskRunning={Boolean(activeRun)} />
+          : <>
       <div className="panel-scroll">
       <section className="status-strip" aria-live="polite">
         <button

@@ -79,6 +79,25 @@ pub enum RuntimeRequest {
         #[serde(skip_serializing_if = "Option::is_none")]
         task_id: Option<String>,
     },
+    ListSessions {
+        request_id: String,
+    },
+    SwitchSession {
+        request_id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        session_id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        create: Option<bool>,
+    },
+    RenameSession {
+        request_id: String,
+        session_id: String,
+        name: Option<String>,
+    },
+    DeleteSession {
+        request_id: String,
+        session_id: String,
+    },
 }
 
 /// Runtime events are Aside-owned serialized contracts produced by the agent

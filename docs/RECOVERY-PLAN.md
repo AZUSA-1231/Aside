@@ -1,6 +1,6 @@
 # Aside 收束与遗留问题跟踪
 
-更新日期：2026-11-02。状态：**R1–R4 的有界开发与自动证据已完成，原始证据保留。C8 的 P0 / P1 已提交为 `b5a0bd1`，P2 已提交为 `4a88a9b`，P3 已提交为 `f4df270` 并在 2026-11-02 完成 closeout（C8-I021–I024）。当前 runtime 460/460、前端 47/47、Rust 57/57、类型与生产构建通过。下一步 P4 会话管理。真实桌面、厂商连通、Office 人工与发布验收仍未完成。**
+更新日期：2026-11-03。状态：**R1–R4 的有界开发与自动证据已完成，原始证据保留。C8 的 P0 / P1 已提交为 `b5a0bd1`，P2 已提交为 `4a88a9b`，P3 已提交为 `f4df270`（含 closeout，C8-I021–I024）。P4 会话管理已完成开发验证、留在工作区。当前 runtime 476/476、前端 55/55、Rust 57/57、类型与生产构建通过。下一步 P5 MCP 配置 GUI。真实桌面、厂商连通、Office 人工与发布验收仍未完成。**
 
 本文是当前工作顺序与遗留项的统一跟踪入口。长期方向见 [PRODUCT-DIRECTION.md](./PRODUCT-DIRECTION.md)；旧 cycle 的 issue、修复记录和验收矩阵继续保存原始证据。本文记录安排和当前开发结果，不把历史修复、测试或观察升级为当前通过。
 
@@ -30,7 +30,7 @@
 | 历史审计缺陷复核 | R2 自动化复核与定向修正完成 | A07 / A08 / A10 的旧修复不完整，已修正；逐项结果与失败证据见 [R2 记录](./cycle-6/R2-RECHECK.md)。不等于第二人审查或完整人工验收。 |
 | 现有链路集成与动态 Capture | R3 开发实现与自动证据完成 | 新增 9 项集成回归、4 项焦点状态回归；核对编码 / 搜索边界并完成 Windows 合成 benchmark。见 [R3 记录](./cycle-6/R3-INTEGRATION.md)。 |
 | 自研 runtime 功能齐备 | 当前有界开发清单完成；产品级验收尚未成立 | 第 7 节 RT-01–11 已有实现和自动证据，POLICY-01 已修正，LIMIT-01 明确保留；人工与发布空白单独列出。 |
-| 既有工作提交 / Cycle 8 | R1–R4、P0 / P1 / P2 / P3 已提交；P3 closeout 完成 | `ea4db29` 保存 R1–R4，`b5a0bd1` 保存 P0/P1，`4a88a9b` 保存 P2，`f4df270` 保存 P3；[C8 入口](./cycle-8/README.md)分六个功能 plan，配套 [ISSUES](./cycle-8/ISSUES.md)。P3 closeout 修复 C8-I021–I024，下一步 P4。 |
+| 既有工作提交 / Cycle 8 | R1–R4、P0 / P1 / P2 / P3 已提交；P4 开发验证完成 | `ea4db29` 保存 R1–R4，`b5a0bd1` 保存 P0/P1，`4a88a9b` 保存 P2，`f4df270` 保存 P3；[C8 入口](./cycle-8/README.md)分六个功能 plan，配套 [ISSUES](./cycle-8/ISSUES.md)。P4 会话管理留在工作区，下一步 P5。 |
 | 外部 agent 适配 | 延后 | 当前不安排消息适配、登录、skill 注入或第二引擎验证。 |
 
 代码核对入口：`commands.rs` 编排后台 capture 完成后的自动排列与显示，所有收起入口共享恢复；`platform.rs` 保存 / 恢复完整 `WINDOWPLACEMENT` 并校正 DWM 可见边界；`workspace.rs` 计算互补物理分区、保留失败恢复快照和过期请求状态。窗口重新启用 Acrylic / 阴影；`plate.css` 已重写为连续底板与白色组件。检查细节见 [FRONTEND-REVIEW.md](./FRONTEND-REVIEW.md)，源码与浏览器证据不能代替真实桌面观察。
@@ -52,7 +52,7 @@
 | R2 已知缺陷复核与修复 | 逐项核对 A01–A12 与 G01，先处理数据完整性、内容丢失、取消和权限等问题。 | 每项有针对当前工作区的复现结果；失败则修复并回归，未复核项保留原状态。 | 本轮自动化复核完成；379 项 runtime、41 项 Rust 通过，G01 同步解析限制明确保留 |
 | R3 保留范围的集成闭环 | 完成现有 capture→workspace→工具→权限→结果路径，核对 PDF/Word、MCP 和状态投影的实际缺口。 | 针对当前集成版记录自动证据、可观察任务结果和剩余限制；同步 issue 与矩阵。 | 开发实现与自动证据完成；388 项 runtime、45 项 Rust、23 项前端与构建通过；原生焦点 / 桌面完整验收仍未执行 |
 | R4 runtime 完整性定义与补齐 | 形成现有 runtime 的有限功能清单；对新增功能逐项决定必需、限制或 backlog。 | 必需项全部完成，保留缺陷有处置，未验证/延期项明确；发布验收单独记录。 | 第 7 节 RT-01–11 开发与自动验证完成；394 项 runtime、24 项前端与构建通过，见 [R4 证据](./cycle-6/R4-RUNTIME.md) |
-| C8 基础设置与会话 | API / 模型 / 思考强度、默认工作与产物位置、统一配置、会话管理、现有 stdio MCP GUI。 | C8.0 配置底座→C8.1 基础设置→C8.2 会话→C8.3 MCP；每个功能先 plan、再执行与记 issue。 | [P0](./cycle-8/plans/P0-settings-foundation.md)、[P1](./cycle-8/plans/P1-api-settings.md)、[P2](./cycle-8/plans/P2-default-workspace.md)、[P3](./cycle-8/plans/P3-thinking-level.md)开发验证完成（P3 含 closeout）；下一步 P4 会话管理，P4–P5 未实施。真实厂商连通性未验证；memory / 自整理和外部适配继续延期 |
+| C8 基础设置与会话 | API / 模型 / 思考强度、默认工作与产物位置、统一配置、会话管理、现有 stdio MCP GUI。 | C8.0 配置底座→C8.1 基础设置→C8.2 会话→C8.3 MCP；每个功能先 plan、再执行与记 issue。 | [P0](./cycle-8/plans/P0-settings-foundation.md)、[P1](./cycle-8/plans/P1-api-settings.md)、[P2](./cycle-8/plans/P2-default-workspace.md)、[P3](./cycle-8/plans/P3-thinking-level.md)开发验证完成（P3 含 closeout，P4 会话管理完成）；下一步 P5 MCP 配置 GUI，P5 未实施。真实厂商连通性未验证；memory / 自整理和外部适配继续延期 |
 | F1 外部 agent 新 feature | 在以上基础上重新评估 Codex/Claude Code 接入和可迁移工作流。 | runtime 齐备条件满足后，再提出独立需求、接口选择与验证计划。 | 延后，无排期 |
 
 R1 已按 [当前设计](./design/SUMMONED-SIDEBAR.md) 完成代码调整，保留 Pin、文件 workspace、上下文预览 / 移除、流式、权限、取消、错误及隐藏期间的状态连续性。原生排列和材质没有桌面观察结果，不能把开发状态写成全量验收通过。普通窗口保持原布局；目标拒绝调整时恢复并明确报告降级，失败恢复快照保留供重试。

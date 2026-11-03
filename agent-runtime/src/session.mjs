@@ -162,7 +162,15 @@ function genericStoreFailure() {
   return new SessionStoreError("Aside could not access its local session.");
 }
 
-export async function openAsideSession({
+/**
+ * Builds the repository and the Aside session directory this product uses.
+ *
+ * Both the active conversation and the history list must agree on the cwd,
+ * because Pi stores sessions under one directory per cwd. Building it in one
+ * place is what keeps the list from showing another tool's sessions, or none
+ * of Aside's.
+ */
+export function createAsideSessionStore({
   repository,
   root,
   environment = process.env,
@@ -175,13 +183,203 @@ export async function openAsideSession({
       : root === undefined
         ? undefined
         : resolve(root);
-  const sessionCwd = cwd ?? (repository ? "aside-memory" : join(sessionRoot, ASIDE_SESSION_CWD_NAME));
+  // An explicit cwd wins. Without one, a caller-supplied repository (in-memory
+  // or a custom adapter) gets the historical "aside-memory" label, but a real
+  // root must resolve to the same directory the active session lives in. The
+  // old `repository ?` test also caught *real* repositories passed alongside a
+  // root, which silently pointed the history list at the wrong directory.
+  const sessionCwd = cwd ?? (repository
+    ? (sessionRoot === undefined ? "aside-memory" : join(sessionRoot, ASIDE_SESSION_CWD_NAME))
+    : join(sessionRoot, ASIDE_SESSION_CWD_NAME));
   const activeRepository =
     repository ??
     new JsonlSessionRepo({
       fs: fileSystem ?? createNodeSessionFileSystem(),
       sessionsRoot: sessionRoot,
     });
+  return { repository: activeRepository, root: sessionRoot, cwd: sessionCwd };
+}
+
+/** Session ids become filenames and directory keys, so only the safe shape is accepted. */
+const ASIDE_SESSION_ID = /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/;
+export const ASIDE_SESSION_NAME_MAX_LENGTH = 120;
+
+export class AsideSessionError extends Error {
+  constructor(code, message) {
+    super(message);
+    this.name = "AsideSessionError";
+    this.code = code;
+  }
+}
+
+export function validateAsideSessionId(value) {
+  if (typeof value !== "string" || value.length === 0 || value.length > 200 || !ASIDE_SESSION_ID.test(value)) {
+    throw new AsideSessionError("session_invalid_id", "The selected session is not valid.");
+  }
+  return value;
+}
+
+export function normalizeAsideSessionName(value) {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value !== "string") {
+    throw new AsideSessionError("session_invalid_name", "A session name must be text.");
+  }
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return undefined;
+  if (trimmed.length > ASIDE_SESSION_NAME_MAX_LENGTH) {
+    throw new AsideSessionError("session_invalid_name", "The session name is too long.");
+  }
+  return trimmed;
+}
+
+/**
+ * The Aside sessions in the history directory, newest first.
+ *
+ * The name lives in an appended `fact: "name"` record rather than the JSONL
+ * header, so it can only be read by opening the session. That is a per-history
+ * cost, not a per-task one, and the list is bounded by what a person manages by
+ * hand; a second index would have to be kept consistent with the files, which
+ * is the trade this avoids.
+ *
+ * A session that cannot be opened is reported rather than silently missing, so
+ * a damaged history does not look like a deleted one.
+ */
+export async function listAsideSessions(store) {
+  const warnings = [];
+  let metadataList;
+  try {
+    metadataList = await store.repository.list({ cwd: store.cwd });
+  } catch (error) {
+    throw genericStoreFailure(error);
+  }
+  const sessions = [];
+  for (const metadata of metadataList.filter(isAsideMetadata)) {
+    try {
+      const session = await store.repository.open(metadata);
+      const opened = await session.getMetadata();
+      if (!isAsideMetadata(opened)) continue;
+      sessions.push({
+        id: opened.id,
+        name: await session.getName(),
+        created_at: opened.createdAt,
+        modified_at: opened.modifiedAt,
+      });
+    } catch {
+      warnings.push({
+        id: metadata?.id ?? "unknown",
+        message: "A saved session could not be read. It is left in place.",
+      });
+    }
+  }
+  sessions.sort((left, right) => right.modified_at - left.modified_at);
+  return { sessions, warnings };
+}
+
+/** Opens one Aside session by id, rejecting a history that is not ours. */
+export async function openAsideSessionById(store, id) {
+  validateAsideSessionId(id);
+  let metadataList;
+  try {
+    metadataList = await store.repository.list({ cwd: store.cwd });
+  } catch (error) {
+    throw genericStoreFailure(error);
+  }
+  const metadata = metadataList.find((entry) => entry.id === id);
+  if (!metadata || !isAsideMetadata(metadata)) {
+    throw new AsideSessionError("session_not_found", "The selected session no longer exists.");
+  }
+  try {
+    const session = await store.repository.open(metadata);
+    const opened = await session.getMetadata();
+    if (!isAsideMetadata(opened)) {
+      throw new AsideSessionError("session_not_found", "The selected session no longer exists.");
+    }
+    return { session, metadata: opened };
+  } catch (error) {
+    if (error instanceof AsideSessionError) throw error;
+    throw new AsideSessionError("session_unreadable", "The selected session could not be read.");
+  }
+}
+
+/** Resolves an explicit session switch to the session that will be opened. */
+async function openSessionTarget(store, target) {
+  if (!target || typeof target !== "object" || Array.isArray(target)) {
+    throw new AsideSessionError("session_invalid_target", "The session request is invalid.");
+  }
+  if (target.mode === "new") {
+    const created = await createAsideSession(store);
+    return { ...created, repository: store.repository, warnings: [], root: store.root, cwd: store.cwd };
+  }
+  if (target.mode === "open") {
+    const opened = await openAsideSessionById(store, target.id);
+    return { ...opened, repository: store.repository, warnings: [], root: store.root, cwd: store.cwd };
+  }
+  throw new AsideSessionError("session_invalid_target", "The session request is invalid.");
+}
+
+/** Creates an empty Aside session and returns it with its fresh metadata. */
+export async function createAsideSession(store) {
+  try {
+    const session = await store.repository.create({
+      id: `aside-${randomUUID()}`,
+      cwd: store.cwd,
+      metadata: { ...asideMetadata },
+    });
+    return { session, metadata: await session.getMetadata() };
+  } catch (error) {
+    throw new AsideSessionError("session_create_failed", "Aside could not create a new session.");
+  }
+}
+
+/**
+ * Deletes one Aside session file.
+ *
+ * Only a path that came back from the repository's own listing is removed, so a
+ * caller cannot point this at an arbitrary file. Sources and outputs are never
+ * touched: deleting a conversation does not delete the user's documents.
+ */
+export async function deleteAsideSession(store, id) {
+  let metadataList;
+  try {
+    metadataList = await store.repository.list({ cwd: store.cwd });
+  } catch (error) {
+    throw genericStoreFailure(error);
+  }
+  const metadata = metadataList.find((entry) => entry.id === id);
+  if (!metadata || !isAsideMetadata(metadata)) {
+    throw new AsideSessionError("session_not_found", "The selected session no longer exists.");
+  }
+  try {
+    await store.repository.delete(metadata);
+  } catch {
+    throw new AsideSessionError("session_delete_failed", "Aside could not delete the selected session.");
+  }
+  return { id };
+}
+
+/** Renames one Aside session. An empty name clears it. */
+export async function renameAsideSession(store, id, name) {
+  const normalized = normalizeAsideSessionName(name);
+  const opened = await openAsideSessionById(store, id);
+  try {
+    await opened.session.setName(normalized);
+    return { id, name: normalized ?? null };
+  } catch {
+    throw new AsideSessionError("session_rename_failed", "Aside could not rename the selected session.");
+  }
+}
+
+export async function openAsideSession({
+  repository,
+  root,
+  environment = process.env,
+  cwd,
+  fileSystem,
+} = {}) {
+  const store = createAsideSessionStore({ repository, root, environment, cwd, fileSystem });
+  const sessionRoot = store.root;
+  const sessionCwd = store.cwd;
+  const activeRepository = store.repository;
   const warnings = [];
 
   let metadataList;
@@ -336,22 +534,37 @@ export async function createAsideConversationRuntime({
   skillDiagnostics,
   credentialValues,
   previousRuntime,
+  sessionTarget,
 } = {}) {
   const send = emit ?? (() => undefined);
   const configuration = agent ? undefined : await loadAsideConfig({ environment, cwd: configCwd, credentialValues });
-  const opened = previousRuntime ? {
+  // A session target is an explicit switch, so it never takes the
+  // `previousRuntime` path: that path is a same-session rebuild for settings and
+  // carries the old persistence cursor, continuation and permission state with
+  // it. Reusing it here would let one conversation's state reach another's.
+  const store = sessionTarget
+    ? createAsideSessionStore({ repository, root, environment: configuration?.values ?? environment, cwd, fileSystem })
+    : undefined;
+  const opened = previousRuntime && !sessionTarget ? {
     session: previousRuntime.session,
     repository: previousRuntime.sessionRepository,
     metadata: { id: previousRuntime.agent.sessionId },
     warnings: [],
-  } : await openAsideSession({
-    repository,
-    root,
-    environment: configuration?.values ?? environment,
-    cwd,
-    fileSystem,
-  });
-  const restored = previousRuntime ? { messages: previousRuntime.agent.state.messages.slice(), history: [] }
+    // A same-session rebuild keeps pointing at the store the runtime already
+    // resolved, so the history list and the open conversation agree.
+    root: previousRuntime.sessionStore?.root,
+    cwd: previousRuntime.sessionStore?.cwd,
+  } : sessionTarget
+    ? await openSessionTarget(store, sessionTarget)
+    : await openAsideSession({
+        repository,
+        root,
+        environment: configuration?.values ?? environment,
+        cwd,
+        fileSystem,
+      });
+  const restored = previousRuntime && !sessionTarget
+    ? { messages: previousRuntime.agent.state.messages.slice(), history: [] }
     : await restoreAsideSession(opened.session);
   for (const warning of opened.warnings) send({ type: "session_warning", message: warning });
 
@@ -423,7 +636,10 @@ export async function createAsideConversationRuntime({
     skillDiagnostics: configuredSkillDiagnostics,
     mcp: configuredMcp,
     buildSystemPromptFor: configuredBuildSystemPromptFor,
-    continuation: previousRuntime?.continuation,
+    // Continuation is per conversation: a captured source, selected workspace
+    // or active skill belongs to the session that produced it. Carrying it
+    // across a switch would hand the new conversation state it never captured.
+    continuation: previousRuntime && !sessionTarget ? previousRuntime.continuation : undefined,
     sensitiveValues,
     defaultWorkspaceRoot: configuration?.publicValues.workspace_root,
     protectedWorkspacePaths: configuration ? [...configuration.protectedWorkspacePaths, root ?? resolveSessionRoot(configuration.values)] : [],
@@ -432,6 +648,17 @@ export async function createAsideConversationRuntime({
     history: restored.history,
     session: opened.session,
     sessionRepository: opened.repository,
+    // Built from what the session was actually opened with, not from the raw
+    // arguments: a caller that passed only `environment` leaves `root`/`cwd`
+    // undefined here, and falling back to the in-memory conventions would point
+    // the history list at a directory the conversation is not in.
+    sessionStore: store ?? createAsideSessionStore({
+      repository: opened.repository,
+      root: opened.root,
+      environment: configuration?.values ?? environment,
+      cwd: opened.cwd,
+      fileSystem,
+    }),
     persistRun,
   });
 }

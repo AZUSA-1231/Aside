@@ -265,6 +265,16 @@ reveal. The session facade keeps runtime getters live, so same-session rebuilds
 preserve validated source/selection state while loading a new default root.
 See [P2](./cycle-8/plans/P2-default-workspace.md).
 
+P4 adds conversation management over the same JSONL store. The history list and
+the active conversation share one store object, so they always read the same
+cwd-encoded directory. A switch builds a new runtime from an explicit session
+target instead of the `previousRuntime` (same-session rebuild) path, because
+that path carries the old persistence cursor and continuation. Session requests
+are serialized and wait for in-flight prompts to finish persisting, so a switch
+cannot dispose a runtime mid-run; a prompt arriving during the switch is refused
+as retryable. Deleting the active conversation moves to a new one first, and
+deletion only ever removes a path returned by the repository's own listing.
+
 `agent-runtime` is the only Aside-owned boundary around Pi. It owns:
 
 - Pi agent construction and session lifecycle;

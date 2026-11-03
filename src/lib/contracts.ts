@@ -159,6 +159,13 @@ export interface AsideTurnContext {
   attachments?: AsideHostAttachment[];
 }
 
+export interface RuntimeSessionSummary {
+  id: string;
+  name: string | null;
+  created_at: number;
+  modified_at: number;
+}
+
 export interface RuntimeHistoryMessage {
   id: string;
   role: "user" | "assistant";
@@ -505,7 +512,18 @@ export type RuntimeEvent =
       code?: string;
     }
   | { type: "session_warning"; request_id?: string; message: string }
-  | { type: "history_restored"; messages: RuntimeHistoryMessage[] }
+  /**
+   * Conversation history for the surface to display.
+   *
+   * `replaced` marks a switch: the surface must drop what it showed rather than
+   * append, because the messages belong to a different conversation.
+   */
+  | { type: "history_restored"; messages: RuntimeHistoryMessage[]; replaced?: boolean }
+  | { type: "sessions_listed"; request_id: string; active_session_id: string | null; sessions: RuntimeSessionSummary[]; warnings: Array<{ id: string; message: string }> }
+  | { type: "session_switched"; request_id: string; session_id: string | null }
+  | { type: "session_renamed"; request_id: string; id: string; name: string | null }
+  | { type: "session_deleted"; request_id: string; id: string }
+  | { type: "session_failed"; request_id: string; message: string }
   | { type: "runtime_unavailable"; message: string }
   /**
    * A runtime warning raised outside a run. MCP configuration and adaptation

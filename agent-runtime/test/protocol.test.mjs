@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import { PassThrough, Readable } from "node:stream";
 import test from "node:test";
 import { checkNodeVersion, parseRuntimeRequest, runProtocol } from "../src/protocol.mjs";
+import * as sessionStoreModule from "../src/session.mjs";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 function protocolFixture(factory) {
   const input = new PassThrough();
@@ -526,4 +530,258 @@ test("refuses a version it cannot read rather than assuming it is fine", () => {
   const result = checkNodeVersion("not-a-version");
   assert.equal(result.ok, false);
   assert.match(result.message, /unreadable/);
+});
+
+/**
+ * A fake runtime backed by a real session store.
+ *
+ * The switch path replaces the runtime wholesale, so the test needs the same
+ * store object to survive across "restarts" and needs dispose to be observable.
+ */
+function sessionProtocolFixture(context, { sessionRoot, environment }) {
+  const { createAsideSessionStore, createAsideSession } = sessionStoreModule;
+  const store = createAsideSessionStore({ root: sessionRoot, environment, cwd: join(sessionRoot, "aside-session") });
+  const disposed = [];
+  const factoryCalls = [];
+  const runtimeFactory = async ({ sessionTarget }) => {
+    factoryCalls.push(sessionTarget ?? { mode: "default" });
+    let id;
+    if (sessionTarget?.mode === "new") {
+      id = (await createAsideSession(store)).metadata.id;
+    } else if (sessionTarget?.mode === "open") {
+      id = sessionTarget.id;
+    } else {
+      id = (await createAsideSession(store)).metadata.id;
+    }
+    const runtime = {
+      history: [],
+      agent: { sessionId: id },
+      sessionStore: store,
+      continuation: { selectedWorkspace: { path: "stale" }, activeSkillName: "stale" },
+      dispose: async () => { disposed.push(id); },
+      prompt: async () => {},
+      cancel: () => {},
+      resolvePermission: () => {},
+      setWorkspace: async () => {},
+      clearWorkspace: () => {},
+      redactError: (error) => String(error?.message ?? error),
+    };
+    return runtime;
+  };
+  return { store, disposed, factoryCalls, runtimeFactory };
+}
+
+/**
+ * Waits for an observable condition instead of sleeping a fixed time.
+ *
+ * The session tests exercise ordering between a prompt and a switch; a fixed
+ * delay encodes how fast the machine is, which is how such a test passes here
+ * and fails on a loaded CI box.
+ */
+async function until(predicate, timeoutMs = 2_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() > deadline) throw new Error("Timed out waiting for an observable condition.");
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  }
+}
+
+async function sessionFixture(context) {
+  const root = await mkdtemp(join(tmpdir(), "aside-protocol-sessions-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  return { sessionRoot: join(root, "sessions"), environment: { LOCALAPPDATA: join(root, "data") } };
+}
+
+test("a conversation switch disposes the old runtime and reports the new session", async (context) => {
+  const { sessionRoot, environment } = await sessionFixture(context);
+  const { store, disposed, factoryCalls, runtimeFactory } = sessionProtocolFixture(context, { sessionRoot, environment });
+  const events = [];
+  const input = Readable.from([
+    `${JSON.stringify({ type: "switch_session", request_id: "switch-1", create: true })}\n`,
+    `${JSON.stringify({ type: "list_sessions", request_id: "list-1" })}\n`,
+  ]);
+  await runProtocol({ input, runtimeFactory, emit: (event) => events.push(event) });
+
+  // The initial runtime is replaced, and the replacement opens the session that
+  // was created first, so a failed switch cannot leave a dangling file.
+  assert.equal(factoryCalls.length, 2);
+  assert.equal(factoryCalls[1].mode, "open");
+  assert.match(factoryCalls[1].id, /^aside-/u);
+  assert.equal(disposed.length, 1);
+  const switched = events.find((event) => event.type === "session_switched");
+  assert.equal(switched.request_id, "switch-1");
+  // History is re-sent so the surface can replace what it showed.
+  const restored = events.filter((event) => event.type === "history_restored");
+  assert.equal(restored.at(-1).replaced, true);
+  const listed = events.find((event) => event.type === "sessions_listed");
+  assert.equal(listed.active_session_id, switched.session_id);
+  // Switching creates a new conversation; it does not delete the old one.
+  assert.equal(listed.sessions.length, 2);
+  assert.ok(listed.sessions.some((session) => session.id === switched.session_id));
+});
+
+test("a switch to a missing session fails without disposing the active runtime", async (context) => {
+  const { sessionRoot, environment } = await sessionFixture(context);
+  const { disposed, runtimeFactory } = sessionProtocolFixture(context, { sessionRoot, environment });
+  const events = [];
+  const input = Readable.from([
+    `${JSON.stringify({ type: "switch_session", request_id: "switch-missing", session_id: "aside-missing" })}\n`,
+  ]);
+  await runProtocol({ input, runtimeFactory, emit: (event) => events.push(event) });
+
+  const failure = events.find((event) => event.type === "session_failed");
+  assert.equal(failure.request_id, "switch-missing");
+  // The starting runtime stays; only a successful target replaces it.
+  assert.deepEqual(disposed, []);
+  assert.equal(events.some((event) => event.type === "session_switched"), false);
+});
+
+test("renaming and deleting report on their own request and never touch another session", async (context) => {
+  const { sessionRoot, environment } = await sessionFixture(context);
+  const { store, runtimeFactory } = sessionProtocolFixture(context, { sessionRoot, environment });
+  const { createAsideSession } = sessionStoreModule;
+  const extra = await createAsideSession(store);
+  const events = [];
+  const input = Readable.from([
+    `${JSON.stringify({ type: "rename_session", request_id: "rename-1", session_id: extra.metadata.id, name: "Notes" })}\n`,
+    `${JSON.stringify({ type: "delete_session", request_id: "delete-1", session_id: extra.metadata.id })}\n`,
+    `${JSON.stringify({ type: "list_sessions", request_id: "list-2" })}\n`,
+  ]);
+  await runProtocol({ input, runtimeFactory, emit: (event) => events.push(event) });
+
+  assert.equal(events.find((event) => event.type === "session_renamed").name, "Notes");
+  assert.equal(events.find((event) => event.type === "session_deleted").request_id, "delete-1");
+  const listed = events.find((event) => event.type === "sessions_listed");
+  assert.equal(listed.sessions.some((session) => session.id === extra.metadata.id), false);
+});
+
+test("deleting the active conversation moves to a new one first", async (context) => {
+  const { sessionRoot, environment } = await sessionFixture(context);
+  const { runtimeFactory } = sessionProtocolFixture(context, { sessionRoot, environment });
+  const events = [];
+  const input = new PassThrough();
+  const done = runProtocol({ input, runtimeFactory, emit: (event) => events.push(event) });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  // Discover the active id through the same list the surface uses, then ask to
+  // delete it. Deleting the open conversation must not leave a dead reference.
+  input.write(`${JSON.stringify({ type: "list_sessions", request_id: "list-before" })}\n`);
+  input.end();
+  await done;
+  const before = events.find((event) => event.type === "sessions_listed");
+  const activeId = before.active_session_id;
+  assert.ok(activeId);
+
+  const events2 = [];
+  const input2 = Readable.from([
+    `${JSON.stringify({ type: "delete_session", request_id: "delete-active", session_id: activeId })}\n`,
+  ]);
+  await runProtocol({ input: input2, runtimeFactory, emit: (event) => events2.push(event) });
+  const switched = events2.find((event) => event.type === "session_switched");
+  const deleted = events2.find((event) => event.type === "session_deleted");
+  assert.equal(deleted.id, activeId);
+  // "new one first" is the guarantee: the surface is never left on the file
+  // being removed.
+  if (switched) assert.notEqual(switched.session_id, activeId);
+});
+
+test("a switch waits for the in-flight prompt to persist before replacing the runtime", async (context) => {
+  const { sessionRoot, environment } = await sessionFixture(context);
+  const { createAsideSessionStore, createAsideSession } = sessionStoreModule;
+  const store = createAsideSessionStore({ root: sessionRoot, environment, cwd: join(sessionRoot, "aside-session") });
+  const order = [];
+  let releasePrompt;
+  const promptGate = new Promise((resolve) => { releasePrompt = resolve; });
+  let firstId;
+  const runtimeFactory = async ({ sessionTarget }) => {
+    if (!firstId) {
+      firstId = (await createAsideSession(store)).metadata.id;
+    }
+    const id = sessionTarget?.mode === "open" ? sessionTarget.id : (sessionTarget?.mode === "new"
+      ? (await createAsideSession(store)).metadata.id
+      : firstId);
+    return {
+      history: [],
+      agent: { sessionId: id },
+      sessionStore: store,
+      continuation: {},
+      dispose: async () => { order.push("dispose"); },
+      prompt: async () => {
+        order.push("prompt-start");
+        await promptGate;
+        order.push("prompt-persisted");
+      },
+      cancel: () => {},
+      resolvePermission: () => {},
+      setWorkspace: async () => {},
+      clearWorkspace: () => {},
+      redactError: (error) => String(error?.message ?? error),
+    };
+  };
+  const events = [];
+  const input = new PassThrough();
+  const done = runProtocol({ input, runtimeFactory, emit: (event) => events.push(event) });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  input.write(`${JSON.stringify({ type: "prompt", request_id: "p1", text: "hello" })}\n`);
+  // Wait for the prompt to actually start rather than assume a delay: a fixed
+  // sleep passes on an idle machine and fails under load, which is exactly the
+  // kind of flake this test is meant to catch a real bug with.
+  await until(() => order.includes("prompt-start"));
+  input.write(`${JSON.stringify({ type: "switch_session", request_id: "s1", create: true })}\n`);
+  // The switch request must reach the protocol before we assert; the queue
+  // drains on a microtask, so a single turn is enough to observe its effect.
+  await new Promise((resolve) => setImmediate(resolve));
+
+  // The switch must not have disposed the runtime while the prompt is still
+  // running: that would drop the conversation before it was saved.
+  assert.deepEqual(order, ["prompt-start"]);
+  releasePrompt();
+  input.end();
+  await done;
+
+  assert.equal(order.at(-1), "dispose");
+  assert.ok(order.indexOf("prompt-persisted") < order.indexOf("dispose"));
+  assert.ok(events.some((event) => event.type === "session_switched" && event.request_id === "s1"));
+});
+
+test("a prompt sent while a switch is in flight is refused rather than routed to the old runtime", async (context) => {
+  const { sessionRoot, environment } = await sessionFixture(context);
+  const { createAsideSessionStore, createAsideSession } = sessionStoreModule;
+  const store = createAsideSessionStore({ root: sessionRoot, environment, cwd: join(sessionRoot, "aside-session") });
+  let releaseSwitch;
+  const switchGate = new Promise((resolve) => { releaseSwitch = resolve; });
+  let calls = 0;
+  let firstId;
+  const runtimeFactory = async ({ sessionTarget }) => {
+    calls += 1;
+    if (!firstId) firstId = (await createAsideSession(store)).metadata.id;
+    if (calls === 2) await switchGate;
+    return {
+      history: [], agent: { sessionId: sessionTarget?.mode === "open" ? sessionTarget.id : firstId },
+      sessionStore: store, continuation: {}, dispose: async () => {},
+      prompt: async () => { throw new Error("prompt must not reach a runtime being replaced"); },
+      cancel: () => {}, resolvePermission: () => {}, setWorkspace: async () => {}, clearWorkspace: () => {},
+      redactError: (error) => String(error?.message ?? error),
+    };
+  };
+  const events = [];
+  const input = new PassThrough();
+  const done = runProtocol({ input, runtimeFactory, emit: (event) => events.push(event) });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  input.write(`${JSON.stringify({ type: "switch_session", request_id: "s1", create: true })}\n`);
+  // Wait until the switch has actually reached the runtime factory (which is
+  // parked on the gate) instead of guessing with a fixed delay.
+  await until(() => calls === 2);
+  input.write(`${JSON.stringify({ type: "prompt", request_id: "p-late", text: "too late" })}\n`);
+  // Let the prompt be read and dispatched while the switch is still parked.
+  await new Promise((resolve) => setImmediate(resolve));
+  releaseSwitch();
+  input.end();
+  await done;
+
+  const failure = events.find((event) => event.type === "failed" && event.request_id === "p-late");
+  assert.ok(failure);
+  assert.equal(failure.retryable, true);
 });

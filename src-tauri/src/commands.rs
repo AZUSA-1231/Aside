@@ -765,6 +765,129 @@ pub fn runtime_prompt(
         .map_err(|message| native_error("conversation", message, true))
 }
 
+/// Session ids become filenames under the history root, so the native layer
+/// applies the same boundary it does for request ids before forwarding.
+fn valid_session_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 200
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+}
+
+#[tauri::command]
+pub fn runtime_list_sessions(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    request_id: String,
+) -> Result<(), NativeError> {
+    if request_id.is_empty() || request_id.len() > 128 {
+        return Err(native_error(
+            "conversation_session",
+            "The session list request was invalid.",
+            true,
+        ));
+    }
+    state
+        .runtime
+        .send(&app, RuntimeRequest::ListSessions { request_id })
+        .map_err(|message| native_error("conversation_session", message, true))
+}
+
+#[tauri::command]
+pub fn runtime_switch_session(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    request_id: String,
+    session_id: Option<String>,
+    create: Option<bool>,
+) -> Result<(), NativeError> {
+    let valid_target = match (&session_id, create) {
+        (None, Some(true)) => true,
+        (Some(id), None) => valid_session_id(id),
+        _ => false,
+    };
+    if request_id.is_empty() || request_id.len() > 128 || !valid_target {
+        return Err(native_error(
+            "conversation_session",
+            "The session switch request was invalid.",
+            true,
+        ));
+    }
+    state
+        .runtime
+        .send(
+            &app,
+            RuntimeRequest::SwitchSession {
+                request_id,
+                session_id,
+                create,
+            },
+        )
+        .map_err(|message| native_error("conversation_session", message, true))
+}
+
+#[tauri::command]
+pub fn runtime_rename_session(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    request_id: String,
+    session_id: String,
+    name: Option<String>,
+) -> Result<(), NativeError> {
+    if request_id.is_empty() || request_id.len() > 128 || !valid_session_id(&session_id) {
+        return Err(native_error(
+            "conversation_session",
+            "The session rename request was invalid.",
+            true,
+        ));
+    }
+    if name.as_deref().is_some_and(|value| value.chars().count() > 120) {
+        return Err(native_error(
+            "conversation_session",
+            "The session name is too long.",
+            true,
+        ));
+    }
+    state
+        .runtime
+        .send(
+            &app,
+            RuntimeRequest::RenameSession {
+                request_id,
+                session_id,
+                name,
+            },
+        )
+        .map_err(|message| native_error("conversation_session", message, true))
+}
+
+#[tauri::command]
+pub fn runtime_delete_session(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    request_id: String,
+    session_id: String,
+) -> Result<(), NativeError> {
+    if request_id.is_empty() || request_id.len() > 128 || !valid_session_id(&session_id) {
+        return Err(native_error(
+            "conversation_session",
+            "The session delete request was invalid.",
+            true,
+        ));
+    }
+    state
+        .runtime
+        .send(
+            &app,
+            RuntimeRequest::DeleteSession {
+                request_id,
+                session_id,
+            },
+        )
+        .map_err(|message| native_error("conversation_session", message, true))
+}
+
 #[tauri::command]
 pub fn runtime_cancel(
     app: AppHandle,
