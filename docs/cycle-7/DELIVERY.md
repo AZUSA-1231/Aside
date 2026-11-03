@@ -1,17 +1,21 @@
 # Cycle 7 — 岛状界面交付记录
 
+> **归档（2026-11-02）：** 本文件原在仓库根目录，名为 `CYCLE-7.md`。迁移到
+> `docs/cycle-7/` 的原因见同目录 [README](./README.md)；内容未改写，原路径理由已失效
+> （它写着“docs/ 遵循忽略策略”，但 `docs/` 自 `e32a278` 起已纳入版本管理）。
+
 > 当前快捷键呼出/真正隐藏的实现、接口展示复查和材质沿革见
-> [docs/FRONTEND-REVIEW.md](docs/FRONTEND-REVIEW.md)。以下胶囊、排列和材质试验保留为历史。
+> [docs/FRONTEND-REVIEW.md](../FRONTEND-REVIEW.md)。以下胶囊、排列和材质试验保留为历史。
 
 > **2026-10-31 状态更新：** 本文件保留旧版交付与材质试验记录，不是当前执行计划。
 > 当前优先收束前端路线、处理历史遗留并补齐自研 runtime；Codex/Claude Code 接入延后为新 feature。
-> 当前任务见 [docs/RECOVERY-PLAN.md](docs/RECOVERY-PLAN.md)。下文“当前窗口材质决定”属于旧阶段，
+> 当前任务见 [docs/RECOVERY-PLAN.md](../RECOVERY-PLAN.md)。下文“当前窗口材质决定”属于旧阶段，
 > 不覆盖现有分岛版配置，也不能用其中的旧测试结果证明当前工作区或后续收束版已通过。
 
 > 本文件的窗口材质与旧验证描述属于已存档的 Acrylic 版本
 > `cycle-7-acrylic-v1`（`ffd8780`）。当前分岛版的参数位置和未验收边界，
-> 请参阅 `docs/cycle-7/PLATE-V2-STYLE.md`；旧版参数见
-> `docs/cycle-7/ACRYLIC-V1-STYLE.md`。
+> 请参阅 [PLATE-V2-STYLE.md](./PLATE-V2-STYLE.md)；旧版参数见
+> [ACRYLIC-V1-STYLE.md](./ACRYLIC-V1-STYLE.md)。
 
 ## 当前窗口材质决定（取代下文早期实现与材质复核结论）
 
@@ -74,6 +78,8 @@
 - 尚未完成完整人工验收、安装验收、多显示器热插拔、不同 Windows 对比度/透明度配置下的视觉矩阵和真实 provider 全流程。上述范围不宣称发布验收通过。
 
 本记录放在根目录以随代码可追踪；docs/ 与 WinIsland/ 仍遵循已有忽略策略。没有改动用户已有的 .claude/ 文件。
+
+（2026-11-02 注：上述理由已失效——`docs/` 早已纳入版本管理，本文件随后迁入 `docs/cycle-7/DELIVERY.md`。原句保留以记录当时的决定。）
 
 ## 2026-09-26 窗口材质复核
 

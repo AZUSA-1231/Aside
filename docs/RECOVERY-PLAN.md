@@ -41,7 +41,7 @@
 - 修改 [README.md](./README.md)、[PROJECT-BASELINE.md](./PROJECT-BASELINE.md)、[ARCHITECTURE.md](./ARCHITECTURE.md)：阅读入口、方向注释和旧基线的适用范围。
 - 修改 [cycle-7/README.md](./cycle-7/README.md)、[cycle-7/EXECUTION.md](./cycle-7/EXECUTION.md)：将前一阶段的 UI 工作标成历史记录。
 
-此前共新增 1 份、修改 5 份文档，没有改应用源代码。工作区原已有 `CYCLE-7.md`、`src/App.tsx`、`src-tauri/tauri.conf.json` 的修改，以及 `plate.css`、两份材质记录等未跟踪文件，不能归为本轮完成的代码工作。本轮对 `CYCLE-7.md` 只追加路线状态说明，保留原修改。
+此前共新增 1 份、修改 5 份文档，没有改应用源代码。工作区原已有 `CYCLE-7.md`、`src/App.tsx`、`src-tauri/tauri.conf.json` 的修改，以及 `plate.css`、两份材质记录等未跟踪文件，不能归为本轮完成的代码工作。本轮对 `CYCLE-7.md` 只追加路线状态说明，保留原修改。（2026-11-02：该文件已迁为 [cycle-7/DELIVERY.md](./cycle-7/DELIVERY.md)。）
 
 ## 3. 当前执行顺序与完成条件
 
@@ -82,7 +82,7 @@ R0–R4 已纳入的开发任务没有剩余项，既有快照已提交为 `ea4d
 | FE-06 DPI 宽度 | 旧独立侧栏曾用 340–520 逻辑像素限制；不符合严格互补 80/20。 | 呼出改为同一物理工作区互补取整，无最小 / 最大宽度夹持；移动后校正 DWM 可见边框，窄逻辑宽度允许内容滚动。 | 几何回归及 256px 宽浏览器检查通过；真实混合 DPI 未观察 |
 | FE-07 快捷键自动分屏与原窗口恢复误删 | 删除原排列 / 恢复属于错误，核心设计要求保留。 | 已实现完整 placement 快照、先 capture 后排列 / 聚焦、同一目标恢复、重复键取消、失败回退与重试快照；不增加分屏开关。 | 开发实现与定向回归完成；真实 Win32 布局 / 恢复尚无桌面证据 |
 | FE-08 展开后的 capture 目标不会随焦点更新 | 2026-10-31 用户试用发现原 `capture_target` 固定于呼出，且与收起后的焦点返回目标共用。 | R3 接入 Windows 前台事件监听，保留最新外部窗口；Capture 调用时锁定 / 复核目标。原 `summon_target` 与 placement 快照保持独立；不可用目标不回退采集旧宿主。 | 开发实现与 4 项状态回归通过；真实窗口切换 / 采集 / 收起恢复仍待桌面复测 |
-| DOC-01 历史记录与代码不一致 | `cycle-7/EXECUTION.md` 的 proximity/morph、`tokens.css`/`app.css`、15 项测试等叙述不匹配当前文件集合；根 `CYCLE-7.md` 含旧 Acrylic 决定。 | 继续保留为历史；新增 [当前复查](./FRONTEND-REVIEW.md)，更新架构文档中的窗口/材质/IPC 现状。 | 当前来源已区分；旧 observation 的代码归属未全部重建 |
+| DOC-01 历史记录与代码不一致 | `cycle-7/EXECUTION.md` 的 proximity/morph、`tokens.css`/`app.css`、15 项测试等叙述不匹配当前文件集合；原根目录 `CYCLE-7.md` 含旧 Acrylic 决定。 | 继续保留为历史；新增 [当前复查](./FRONTEND-REVIEW.md)，更新架构文档中的窗口/材质/IPC 现状。2026-11-02 将 `CYCLE-7.md` 迁为 [cycle-7/DELIVERY.md](./cycle-7/DELIVERY.md)；内容是历史记录，不按它重建旧效果。 | 当前来源已区分，根目录遗留文档已归档；旧 observation 的代码归属未全部重建 |
 
 不因历史记录写“已完成”而重建已放弃的效果，也不以旧构建、旧截图或旧通过数证明当前分岛版或收束版正确。
 
