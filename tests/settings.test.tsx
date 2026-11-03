@@ -268,22 +268,38 @@ it("reports a saved level the current model cannot use instead of showing it as 
   expect(container.textContent).toContain("Supported by this model: off, high, max");
 });
 
-it("narrows the offered levels when switching to a model with fewer of them", async () => {
-  let dropped = false;
-  vi.mocked(nativeClient.getProviderCatalog).mockImplementation(async (requested) => dropped
-    ? reasoningCatalog(["off", "high"], true, "deepseek")
-    : reasoningCatalog(["off", "low", "medium", "high"], true, requested));
+it("keeps the saved model's level list while a different provider is only a draft", async () => {
+  vi.mocked(nativeClient.getProviderCatalog).mockImplementation(async (requested) => reasoningCatalog(
+    requested === "deepseek" ? ["off", "high"] : ["off", "low", "medium", "high"],
+    true,
+    requested,
+  ));
   await render();
-  await selectOption("settings-model", "reasoner");
-  await selectOption("settings-thinking", "medium");
-  dropped = true;
+  // Switching the draft provider must not rewrite the level list stored under
+  // the saved document: the card writes to that document, so offering the
+  // draft model's levels would save a level for a model that is not in the file.
   await act(async () => {
     const element = container.querySelector<HTMLSelectElement>("#settings-provider")!;
     element.value = "deepseek";
     element.dispatchEvent(new Event("change", { bubbles: true }));
   });
   const options = [...container.querySelectorAll<HTMLOptionElement>("#settings-thinking option")].map((option) => option.value);
-  expect(options).not.toContain("medium");
-  // The unavailable saved value is called out rather than silently dropped.
-  expect(container.textContent).toContain("nearest supported level");
+  expect(options).toEqual(["off", "low", "medium", "high"]);
+});
+
+it("names the level the runtime will use when the saved one is unavailable", async () => {
+  snapshot = {
+    ...snapshot,
+    document: { ...snapshot.document, model: "reasoner", thinking_level: "medium" },
+    effective: { ...snapshot.effective, model: "reasoner", thinking_level: "medium" },
+    thinking: { requested: "medium", applied: "high", supported: ["off", "high", "max"], adjusted: true },
+  };
+  vi.mocked(nativeClient.getProviderCatalog).mockImplementation(async () => reasoningCatalog(["off", "high", "max"]));
+  await render();
+  // The select shows the saved value as unavailable, and the note names the
+  // level that actually runs rather than the lowest supported one.
+  const select = container.querySelector<HTMLSelectElement>("#settings-thinking")!;
+  expect(select.value).toBe("");
+  expect(container.textContent).toContain("Saved: medium · not available on this model");
+  expect(container.textContent).toContain("This model will use “high” instead");
 });

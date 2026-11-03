@@ -207,3 +207,127 @@ test("a settings snapshot still loads when the selected model cannot be resolved
   assert.equal(snapshot.thinking, null);
   assert.equal(snapshot.document.thinking_level, "high");
 });
+
+test("a saved level applies to the next task without rebuilding the runtime", async (context) => {
+  const options = await fixture(context);
+  await writeSettings(options, { schema_version: 1, provider: "deepseek", model: "deepseek-v4-flash", thinking_level: "low" });
+
+  // Capture what each outbound request actually asks for, then hand the call
+  // to a faux stream so the task can complete.
+  const captured = [];
+  const faux = fauxProvider({ tokensPerSecond: 10_000 });
+  const models = createModels();
+  models.setProvider(faux.provider);
+  faux.setResponses([
+    () => fauxAssistantMessage("first"),
+    () => fauxAssistantMessage("second"),
+  ]);
+
+  // A key must exist for the provider to be selectable at all; the request
+  // itself never leaves the process because the stream below is faux.
+  const configuration = await loadAsideConfig({
+    ...options,
+    environment: { ...options.environment, DEEPSEEK_API_KEY: "fixture-key" },
+  });
+  const configured = await createConfiguredAgent({
+    configuration,
+    environment: { ...options.environment, DEEPSEEK_API_KEY: "fixture-key" },
+    configCwd: options.cwd,
+    tools: [],
+  });
+  const fauxModel = faux.getModel();
+  // The agent reads `streamFunction`, not the constructor option, after
+  // construction; replacing it is what lets the request be intercepted.
+  configured.agent.streamFunction = (model, context, streamOptions) => {
+    captured.push(streamOptions?.reasoning);
+    return models.streamSimple(fauxModel, context, streamOptions);
+  };
+  const runtime = await createConversationRuntime({ agent: configured.agent, thinking: configured.thinking, resolveThinking: configured.resolveThinking });
+  context.after(() => runtime.dispose?.());
+
+  await runtime.prompt("first-task", "question one");
+  assert.deepEqual(captured, ["low"]);
+
+  // The user saves a different level while the runtime is still alive. An idle
+  // apply is not guaranteed; the next task must pick it up on its own.
+  const saved = await handleSettingsRequest({ operation: "get" }, { ...options });
+  await handleSettingsRequest(
+    { operation: "save", document: { ...saved.document, thinking_level: "max" }, expected_revision: saved.revision },
+    { ...options },
+  );
+
+  await runtime.prompt("second-task", "question two");
+  assert.deepEqual(captured, ["low", "max"]);
+});
+
+test("an environment override outranks a level saved mid-session", async (context) => {
+  const options = await fixture(context);
+  await writeSettings(options, { schema_version: 1, provider: "deepseek", model: "deepseek-v4-flash", thinking_level: "low" });
+  const environment = { ...options.environment, DEEPSEEK_API_KEY: "fixture-key", ASIDE_THINKING_LEVEL: "high" };
+
+  const captured = [];
+  const faux = fauxProvider({ tokensPerSecond: 10_000 });
+  const models = createModels();
+  models.setProvider(faux.provider);
+  faux.setResponses([() => fauxAssistantMessage("one"), () => fauxAssistantMessage("two")]);
+
+  const configuration = await loadAsideConfig({ environment, cwd: options.cwd });
+  const configured = await createConfiguredAgent({ configuration, environment, configCwd: options.cwd, tools: [] });
+  const fauxModel = faux.getModel();
+  configured.agent.streamFunction = (model, context, streamOptions) => {
+    captured.push(streamOptions?.reasoning);
+    return models.streamSimple(fauxModel, context, streamOptions);
+  };
+  const runtime = await createConversationRuntime({
+    agent: configured.agent,
+    environment,
+    configCwd: options.cwd,
+    thinking: configured.thinking,
+    resolveThinking: configured.resolveThinking,
+  });
+  context.after(() => runtime.dispose?.());
+
+  await runtime.prompt("override-first", "question one");
+  const saved = await handleSettingsRequest({ operation: "get" }, { ...options, environment });
+  await handleSettingsRequest(
+    { operation: "save", document: { ...saved.document, thinking_level: "max" }, expected_revision: saved.revision },
+    { ...options, environment },
+  );
+  await runtime.prompt("override-second", "question two");
+
+  // The override keeps winning even though the file now says "max".
+  assert.deepEqual(captured, ["high", "high"]);
+});
+
+test("an empty environment variable does not override the saved level", async (context) => {
+  const options = await fixture(context);
+  await writeSettings(options, { schema_version: 1, provider: "deepseek", model: "deepseek-v4-flash", thinking_level: "high" });
+  // An empty variable is what an unset shell export looks like; the config
+  // loader already ignores it, so the task-level re-read must agree.
+  const environment = { ...options.environment, DEEPSEEK_API_KEY: "fixture-key", ASIDE_THINKING_LEVEL: "  " };
+
+  const captured = [];
+  const faux = fauxProvider({ tokensPerSecond: 10_000 });
+  const models = createModels();
+  models.setProvider(faux.provider);
+  faux.setResponses([() => fauxAssistantMessage("done")]);
+
+  const configuration = await loadAsideConfig({ environment, cwd: options.cwd });
+  const configured = await createConfiguredAgent({ configuration, environment, configCwd: options.cwd, tools: [] });
+  const fauxModel = faux.getModel();
+  configured.agent.streamFunction = (model, context, streamOptions) => {
+    captured.push(streamOptions?.reasoning);
+    return models.streamSimple(fauxModel, context, streamOptions);
+  };
+  const runtime = await createConversationRuntime({
+    agent: configured.agent,
+    environment,
+    configCwd: options.cwd,
+    thinking: configured.thinking,
+    resolveThinking: configured.resolveThinking,
+  });
+  context.after(() => runtime.dispose?.());
+
+  await runtime.prompt("blank-override", "question");
+  assert.deepEqual(captured, ["high"]);
+});

@@ -8,6 +8,7 @@ import {
 } from "./context.mjs";
 import { loadAsideConfig } from "./config.mjs";
 import { PROVIDER_CREDENTIAL_NAMES } from "./settings-schema.mjs";
+import { readUserSettings } from "./settings-store.mjs";
 import {
   AsideContractError,
   DEFAULT_AGENT_LIMITS,
@@ -348,6 +349,37 @@ export async function createConfiguredAgent({
     provider: providerId,
     model: model.id,
     thinking,
+    // Re-resolving at task start reads the saved file again: a level saved
+    // while this runtime was alive must reach the next task without waiting for
+    // an idle rebuild or a restart. The model is what the agent carries now,
+    // because a rebuild can hand it a different one than this construction saw.
+    resolveThinking: async (model) => {
+      let requested = configuration.publicValues.thinking_level;
+      try {
+        // Reading the settings document is enough: the effective value is the
+        // saved one unless a process-environment override is present, and that
+        // override is already captured in `configuration.publicValues`.
+        const current = await readUserSettings({ environment });
+        const saved = current.document.thinking_level;
+        const override = typeof environment.ASIDE_THINKING_LEVEL === "string"
+          ? environment.ASIDE_THINKING_LEVEL.trim()
+          : "";
+        if (override.length > 0) {
+          // An empty variable is not an override; `getAsideConfigValue` treats
+          // it the same way, so the saved value must still win.
+          requested = override;
+        } else if (typeof saved === "string" && saved.trim().length > 0) {
+          requested = saved;
+        } else if (saved === null || Object.hasOwn(current.document, "thinking_level")) {
+          requested = "off";
+        }
+      } catch {
+        // An unreadable or invalid settings file keeps this runtime's last
+        // known level rather than forfeiting the task; settings I/O reports
+        // its own failure through the settings surface.
+      }
+      return resolveThinkingLevel(model, requested);
+    },
     configurationRevision: configuration.effectiveRevision,
     settingsRevision: configuration.settings.revision,
     defaultWorkspaceRoot: configuration.publicValues.workspace_root,
@@ -406,6 +438,7 @@ export async function createConversationRuntime({
   configurationRevision,
   settingsRevision,
   thinking,
+  resolveThinking,
   skills,
   skillDiagnostics,
   mcp,
@@ -427,14 +460,16 @@ export async function createConversationRuntime({
     ? undefined
     : normalizeToolSet(tools);
   normalizeSkillOptions(skills, skillDiagnostics);
+  const described = agent ? describeAgent(agent) : undefined;
   const configured = agent
     ? {
-        ...describeAgent(agent),
+        ...described,
         registry: requestedRegistry ?? normalizeToolSet([]),
         limits: normalizedLimits,
         skills: skills ?? [],
         skillDiagnostics: skillDiagnostics ?? [],
-        thinking: thinking ?? describeAgent(agent).thinking,
+        thinking: thinking ?? described.thinking,
+        resolveThinking,
       }
     : await createConfiguredAgent({
         environment,
@@ -913,6 +948,17 @@ export async function createConversationRuntime({
     send({ type: "skill_activated", ...(taskId ? { task_id: taskId } : {}), skill: skillEvent(runtimeSkills.find((skill) => skill.name === activeSkillName)) });
   }
 
+  async function applyConfiguredThinking() {
+    // A caller-supplied agent (tests, embedders) already chose its level; there
+    // is no saved preference to re-resolve, so what it reports stands. A
+    // configured runtime re-resolves against the model it will actually call,
+    // because an idle rebuild can hand it a different one than at construction.
+    if (!configured.resolveThinking) return;
+    const resolved = await configured.resolveThinking(conversationAgent.state.model);
+    conversationAgent.state.thinkingLevel = resolved.applied;
+    configured.thinking = resolved;
+  }
+
   async function prompt(requestId, text, context, workspaceHint) {
     const validationError = validatePromptInput(requestId, text);
     if (validationError) {
@@ -1052,11 +1098,13 @@ export async function createConversationRuntime({
       }
 
       installRegistry(runRegistry);
+      await applyConfiguredThinking();
       send({
         type: "run_started",
         request_id: requestId,
         task_id: run.task_id,
         limits: run.limits,
+        thinking_level: configured.thinking?.applied ?? "off",
         tools: activeRegistry.describe(),
         ...(run.workspace ? { workspace: run.workspace } : {}),
         ...(run.active_skill ? { active_skill: run.active_skill } : {}),

@@ -85,30 +85,40 @@ export default function SettingsPanel({ onClose, taskRunning }: { onClose: () =>
   }, []);
 
   const effectiveProvider = snapshot?.effective.provider;
+  // The thinking card writes to the saved document, so its level list must come
+  // from the saved model. Listing the draft model's levels let a user save a
+  // level for the model still on screen while the file kept the previous one.
+  const savedProvider = isProvider(baseDocument.provider ?? "") ? baseDocument.provider : effectiveProvider;
   useEffect(() => {
     let cancelled = false;
     setCatalogError(null);
-    const requested = [...new Set([provider, effectiveProvider].filter((value): value is SettingsProvider => Boolean(value && isProvider(value))))];
+    const requested = [...new Set([provider, effectiveProvider, savedProvider].filter((value): value is SettingsProvider => Boolean(value && isProvider(value))))];
     void Promise.all(requested.map((selected) => nativeClient.getProviderCatalog(selected))).then((results) => {
       if (!cancelled) setCatalogs((current) => ({ ...current, ...Object.fromEntries(results.map((catalog) => [catalog.provider, catalog])) }));
     }).catch((failure) => { if (!cancelled) setCatalogError(toNativeError(failure, "settings").message); });
     return () => { cancelled = true; };
-  }, [provider, effectiveProvider]);
+  }, [provider, effectiveProvider, savedProvider]);
 
   const catalog = catalogs[provider];
   const selectedModel = catalog?.models.find((entry) => entry.id === (model || catalog.default_model));
   const effectiveCatalog = effectiveProvider && isProvider(effectiveProvider) ? catalogs[effectiveProvider] : undefined;
   const effectiveModel = effectiveCatalog?.models.find((entry) => entry.id === (snapshot?.effective.model || effectiveCatalog.default_model));
+  const savedCatalog = savedProvider && isProvider(savedProvider) ? catalogs[savedProvider] : undefined;
+  const savedModel = savedCatalog?.models.find((entry) => entry.id === (baseDocument.model || savedCatalog.default_model));
   const endpoint = snapshot?.effective.api_url || effectiveModel?.base_url;
   const credential = snapshot?.credentials[provider];
   // The offered levels belong to the selected model, so switching to a model
   // with fewer levels removes the others rather than showing a choice that
   // cannot be sent. `snapshot.thinking` is the backend's own resolution against
   // the effective model and is shown as "will use", never as if it were saved.
-  const offeredLevels = selectedModel?.thinking_levels ?? effectiveModel?.thinking_levels ?? ["off"];
+  const offeredLevels = savedModel?.thinking_levels ?? effectiveModel?.thinking_levels ?? ["off"];
   const resolvedThinking: ResolvedThinkingLevel | undefined = snapshot?.thinking ?? undefined;
   const previewLevel = thinkingLevel && offeredLevels.includes(thinkingLevel as ThinkingLevel) ? thinkingLevel : "";
-  const adjustedPreview = thinkingLevel && !previewLevel ? offeredLevels[0] : "";
+  // When the saved level is not one this model offers, the select still shows
+  // the saved value, marked as unavailable. Showing `offeredLevels[0]` instead
+  // displayed "off" beside a note promising "the nearest supported level" —
+  // a level the runtime would not use, since the backend clamps upward.
+  const savedLevelUnavailable = Boolean(thinkingLevel) && !previewLevel;
   const busy = operation !== null;
   const unsaved = dirty || workspaceDirty || thinkingDirty || apiKey.length > 0;
   const changed = () => { setDirty(true); setNotice(null); setTestResult(null); };
@@ -164,22 +174,27 @@ export default function SettingsPanel({ onClose, taskRunning }: { onClose: () =>
       event.preventDefault();
       if (busy || !snapshot) return;
       void perform("Saving thinking level", async () => {
-        const next = await nativeClient.saveSettings({ ...baseDocument, thinking_level: (thinkingLevel || null) as ThinkingLevel | null }, revision);        accept(next); setBaseDocument(next.document); setRevision(next.revision); setThinkingDirty(false); setTestResult(null);
-        setNotice("Thinking level saved. It applies to the next task, or when you apply settings while idle.");
+        const next = await nativeClient.saveSettings({ ...baseDocument, thinking_level: (thinkingLevel || null) as ThinkingLevel | null }, revision);
+        accept(next); setBaseDocument(next.document); setRevision(next.revision); setThinkingDirty(false); setTestResult(null);
+        setNotice("Thinking level saved. Apply when idle to use it; the task already running keeps its current level.");
       });
     }}>
       <h2>Thinking level</h2>
-      {!selectedModel?.reasoning && offeredLevels.length <= 1
-        ? <p className="settings-note">{providerName(provider)} · {model || catalog?.default_model || "Provider default"} does not support reasoning, so only “off” is available.</p>
+      {offeredLevels.length <= 1
+        ? <p className="settings-note">{providerName(savedProvider ?? provider)} · {baseDocument.model || savedCatalog?.default_model || "Provider default"} does not support reasoning, so only “off” is available.</p>
         : <>
-          <label htmlFor="settings-thinking">Level for {selectedModel?.name ?? (model || "this model")}</label>
-          <select id="settings-thinking" value={previewLevel || (adjustedPreview ? offeredLevels[0] : "")} disabled={busy} onChange={(event) => {
+          <label htmlFor="settings-thinking">Level for {savedModel?.name ?? (baseDocument.model || "this model")}</label>
+          <select id="settings-thinking" value={previewLevel} disabled={busy} onChange={(event) => {
             setThinkingLevel(event.currentTarget.value); setThinkingDirty(true); setNotice(null); setTestResult(null);
           }}>
             {!thinkingLevel && <option value="">Provider default · {offeredLevels[0]}</option>}
+            {/* The saved level stays visible so the user can see what is on disk,
+                but it is not selectable: choosing it again would ask for a value
+                this model cannot express. */}
+            {savedLevelUnavailable && <option value="" disabled>Saved: {thinkingLevel} · not available on this model</option>}
             {offeredLevels.map((level) => <option key={level} value={level}>{level}</option>)}
           </select>
-          {adjustedPreview && <p className="settings-note">Saved level “{thinkingLevel}” is not available on this model. The nearest supported level from this list is used instead.</p>}
+          {savedLevelUnavailable && <p className="settings-note">Saved level “{thinkingLevel}” is not available on this model. {resolvedThinking ? `This model will use “${resolvedThinking.applied}” instead.` : "The nearest supported level is used instead."}</p>}
         </>}
       {resolvedThinking && <div className="settings-effective">
         <strong>Effective thinking level</strong>

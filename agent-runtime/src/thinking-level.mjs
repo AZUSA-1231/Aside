@@ -31,7 +31,12 @@ export function resolveThinkingLevel(model, requested) {
   const configured = typeof requested === "string" && SETTINGS_THINKING_LEVELS.includes(requested.trim())
     ? requested.trim()
     : "off";
-  const applied = supported.includes(configured) ? configured : clampThinkingLevel(model, configured);
+  // An agent a caller built itself can arrive without a model. `getSupportedThinkingLevels`
+  // dereferences the model, so clamping against one here would throw instead of
+  // reporting the safe default the runtime would actually send.
+  const applied = !model || supported.includes(configured)
+    ? (model ? configured : "off")
+    : clampThinkingLevel(model, configured);
   return Object.freeze({
     requested: configured,
     applied: supported.includes(applied) ? applied : "off",

@@ -396,6 +396,8 @@ export type RuntimeEvent =
       request_id: string;
       task_id?: string;
       limits?: Record<string, number>;
+      /** The level this run will actually send, after model-capability resolution. */
+      thinking_level?: string;
       tools?: RuntimeToolDescriptor[];
       workspace?: RuntimeWorkspaceState;
       active_skill?: RuntimeSkillEvent;
