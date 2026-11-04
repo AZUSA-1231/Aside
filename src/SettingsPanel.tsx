@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, LoaderCircle } from "lucide-react";
 import { nativeClient, toNativeError } from "./lib/ipc";
 import type { ConnectionTestResult, ProviderCatalog, ResolvedThinkingLevel, SettingsDocument, SettingsProvider, SettingsSnapshot, ThinkingLevel } from "./lib/settings";
+import McpSettingsCard from "./McpSettingsCard";
 import "./settings.css";
 
 const providers: SettingsProvider[] = ["openai", "anthropic", "deepseek", "google"];
@@ -251,6 +252,15 @@ export default function SettingsPanel({ onClose, taskRunning }: { onClose: () =>
         })}>Remove stored key</button>
       </div>
     </section>
+
+    <McpSettingsCard disabled={busy} onSaved={() => {
+      // Saving MCP changes the effective configuration revision, so the
+      // application status shown here is stale until this re-reads it.
+      const sequence = ++requestSequence.current;
+      void nativeClient.getSettings().then((next) => {
+        if (mounted.current && sequence === requestSequence.current) accept(next);
+      }).catch(() => undefined);
+    }} />
 
     <section className="settings-card" aria-label="Configuration status">
       <h2>Apply and test</h2>

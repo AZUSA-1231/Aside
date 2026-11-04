@@ -248,9 +248,12 @@ async fn execute(app: AppHandle, mut request: Value) -> Result<Value, SettingsCo
                 "Aside's settings state is unavailable.",
             )
         })?;
+        // `test_mcp` resolves the server's `from_config` references, so it needs
+        // the same real keys a provider test does. `get_mcp`/`save_mcp` edit the
+        // server definitions and must not read the credential store at all.
         let (keys, credential_errors) = if request["operation"] == "catalog" {
             (json!({}), Vec::new())
-        } else if request["operation"] == "test_connection" {
+        } else if request["operation"] == "test_connection" || request["operation"] == "test_mcp" {
             (crate::credentials::read_api_keys().map_err(|message| failure("credential_store_unavailable", message))?, Vec::new())
         } else { crate::credentials::read_api_keys_status() };
         request["credential_values"] = keys;
@@ -260,7 +263,10 @@ async fn execute(app: AppHandle, mut request: Value) -> Result<Value, SettingsCo
             &request,
             default_workspace(&app).as_deref(),
         )?;
-        if request["operation"] == "catalog" || request["operation"] == "test_connection" {
+        if request["operation"] == "catalog"
+            || request["operation"] == "test_connection"
+            || request["operation"] == "test_mcp"
+        {
             return Ok(settings);
         }
         for provider in credential_errors {
@@ -344,6 +350,32 @@ pub async fn apply_settings(app: AppHandle) -> Result<Value, SettingsCommandErro
 #[tauri::command]
 pub async fn get_settings(app: AppHandle) -> Result<Value, SettingsCommandError> {
     execute(app, json!({ "operation": "get" })).await
+}
+
+#[tauri::command]
+pub async fn get_mcp_settings(app: AppHandle) -> Result<Value, SettingsCommandError> {
+    execute(app, json!({ "operation": "get_mcp" })).await
+}
+
+#[tauri::command]
+pub async fn save_mcp_settings(
+    app: AppHandle,
+    servers: Value,
+    expected_revision: String,
+) -> Result<Value, SettingsCommandError> {
+    execute(
+        app,
+        json!({ "operation": "save_mcp", "servers": servers, "expected_revision": expected_revision }),
+    )
+    .await
+}
+
+/// Starts one configured server in a throwaway process and reports what it
+/// lists. The entry travels as the editor has it, so an unsaved change can be
+/// tested without writing it to the file first.
+#[tauri::command]
+pub async fn test_mcp_server(app: AppHandle, server: Value) -> Result<Value, SettingsCommandError> {
+    execute(app, json!({ "operation": "test_mcp", "server": server })).await
 }
 
 #[tauri::command]

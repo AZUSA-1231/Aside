@@ -81,3 +81,21 @@
 .session-current { font-weight: 400; color: var(--muted); }
 .session-when { font-size: 11px; color: var(--muted); }
 .session-confirm { display: flex; flex-direction: column; gap: 6px; }
+
+/* MCP servers: one collapsible block per configured program. */
+.mcp-server { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: var(--component-radius); background: #fff; }
+.mcp-server-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.mcp-server-title { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.mcp-server-name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mcp-server-state { font-size: 11px; color: var(--muted); }
+.mcp-server-body { display: flex; flex-direction: column; gap: 6px; padding-left: 4px; }
+.mcp-env-list { margin: 0; padding-left: 16px; font-size: 11px; color: var(--muted); }
+.mcp-env-list li { overflow-wrap: anywhere; }
+.mcp-stale { color: #a03a20; font-weight: 600; }
+.mcp-check { display: flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 400; }
+.mcp-check input { width: auto; min-height: 0; }
+.mcp-form { display: flex; flex-direction: column; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: var(--component-radius); background: #f8fafc; }
+.mcp-form h3 { margin: 0; font-size: 13px; }
+.mcp-form textarea { width: 100%; min-width: 0; padding: 8px; border: 1px solid #dce2eb; border-radius: var(--component-radius); font: inherit; resize: vertical; }
+.mcp-env-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.mcp-env-row input { flex: 1; min-width: 0; min-height: 32px; padding: 6px 8px; border: 1px solid #dce2eb; border-radius: var(--component-radius); }

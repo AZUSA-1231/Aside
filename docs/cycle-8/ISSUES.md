@@ -32,8 +32,10 @@
 | C8-I024 | 调用方自建的 Agent 可以没有 model，`resolveThinkingLevel` 会把它直接传给 Pi 的 `getSupportedThinkingLevels`，该函数要求模型元数据，缺少时抛错而不是报告安全默认值。 | 无模型时直接返回 `off` 语义的安全结果，不进入 clamp；补充无模型解析回归。 | 已解决，回归通过 |
 | C8-I025 | 产品只有单一活动会话：`openAsideSession` 按修改时间打开最近一个 Aside 会话，没有新建、列表、指定恢复、重命名和删除入口。 | P4 实施会话管理：仓库层增加列表 / 按 id 打开 / 新建 / 重命名 / 删除，协议层四条会话请求串行排队，切换重建 runtime 且不继承 continuation，界面新增会话面板。 | 已解决，回归通过 |
 | C8-I026 | 会话请求若与 `prompt` 一样用 `track()` 并发执行，同一会话上连续的 rename / delete 会竞争，落败方报告用户没有请求过的失败；`switch` 与紧随其后的 `list` 也会读到尚未写完的目录。 | 会话请求改走单一串行队列，按到达顺序执行；测试覆盖 rename→delete→list 连续顺序与 switch→list。 | 已解决，回归通过 |
-| C8-I028 | 用户实测：新建会话后界面报 “no longer exists”，退出重进却能看到该会话确实已创建。根因是 `sessionStore` 用原始参数重建，未复用已解析的 root / cwd；`createAsideSessionStore` 里 `repository ? "aside-memory"` 的回退又把真实仓库的 cwd 指向内存标签，于是列表与实际会话不在同一目录。 | `sessionStore` 一律由 `opened` 的 root / cwd 构造；回退仅在无 root 的仓库（测试内存仓）使用 `aside-memory`。回归覆盖“只传 environment / 只传 root 两种构造下列表都能看到活动会话”，以及切换后新建的会话立即可见。 | 已解决，回归通过 |
 | C8-I027 | 会话切换没有等待在途 `prompt`：切换会在任务仍在运行时 dispose 旧 runtime，正在生成的对话在落盘前就被丢掉。第一版等待逻辑又把自身放进 `operations`，形成自等死锁；收尾时以快照方式读取 `operations` 还会漏掉仍在排队的会话请求。 | 切换在触碰会话文件前等待所有在途操作结束，条目由串行队列保证不与自己竞争；收尾显式 drain 会话队列。回归断言 dispose 发生在 prompt 落盘之后，以及切换期间到达的 prompt 被可重试拒绝。 | 已解决，回归通过 |
+| C8-I028 | 用户实测：新建会话后界面报 “no longer exists”，退出重进却能看到该会话确实已创建。根因是 `sessionStore` 用原始参数重建，未复用已解析的 root / cwd；`createAsideSessionStore` 里 `repository ? "aside-memory"` 的回退又把真实仓库的 cwd 指向内存标签，于是列表与实际会话不在同一目录。 | `sessionStore` 一律由 `opened` 的 root / cwd 构造；回退仅在无 root 的仓库（测试内存仓）使用 `aside-memory`。回归覆盖“只传 environment / 只传 root 两种构造下列表都能看到活动会话”，以及切换后新建的会话立即可见。 | 已解决，回归通过 |
+| C8-I029 | 用户已配置的 MCP 服务只能手写 `mcp.json`：代码里只有 `loadMcpServerConfigs` 读取路径，没有写入、revision 冲突处理或界面入口；也无法在不运行任务的情况下测试连接。 | P5 实施 MCP 配置分区：新增 `mcp-store.mjs` 原子读写与冲突检测、`mcp-test.mjs` 一次性连接测试、Settings 内的 MCP 分区。 | 已解决，回归通过 |
+| C8-I030 | `effectiveRevision` 只由设置值与凭据组成，不含 `mcp.json` 内容。改动 MCP 后 revision 不变，设置界面会把尚未被 runtime 读取的服务列表报成 `loaded`。 | MCP 文件内容摘要进入 revision；缺失或不可读文件不计为变更（由 MCP loader 自己报告诊断）。回归断言保存 MCP 后 revision 变化、未改动时保持稳定。 | 已解决，回归通过 |
 
 ## 证据记录
 
@@ -47,6 +49,9 @@
 - P3 最终：runtime **457/457**（较 P2 新增 12 项 thinking-level 回归）、前端 **46/46**（新增 5 项）、Rust **57/57**、类型检查与生产构建通过。实际出站请求断言使用 faux provider 的 `streamOptions.reasoning`，覆盖有效档、`off` 不发该字段、相邻回落、上下越界、无推理模型、失效保存值与模型不可解析。
 - P3 失败记录：首轮新增测试 4/10 失败，原因是夹具把 `thinkingLevelMap` 的 `off` 写成 `null`，而 Pi 以 `null` 表示“明确不支持”、`undefined` 表示隐式支持，等于反而放宽了可用集合；另有两项把 `createConversationRuntime` 当同步函数调用。均为测试夹具错误，按 Pi 实际语义修正，没有为迁就夹具放宽产品校验。前端首次构建失败是 `??` 与 `||` 混用的真实语法错误，已修正；随后一次类型检查发现 `thinking_level` 不接受 `null` 清空值，已补类型。
 - P3 未执行真实厂商连通性验证；档位映射的实际请求只覆盖 faux provider，不证明四家厂商的 reasoning 参数已被真实接受。P3 于 `f4df270` 提交；本次记录的“没有创建提交”在提交后已失效，保留原句仅作沿革。
+- P5 最终：runtime **497/497**（较 P4 新增 19 项 MCP 配置回归）、前端 **63/63**（新增 8 项）、Rust **57/57**、类型检查与生产构建通过。新增 `mcp-store.mjs`、`mcp-test.mjs`、`McpSettingsCard.tsx` 与两个测试文件。C8-I029–I030 已解决。
+- P5 边界：`test_mcp` 是唯一读取真实凭据的 MCP 操作（`get_mcp` / `save_mcp` 不碰凭据存储）；连接测试的三种结果（正常 / 工具全被拒 / 起不来）分开呈现；新增服务默认 `enabled: false`、`trust_acknowledged: false`。真实 MCP 服务进程、真实 Windows 桌面交互与安装包路径未验证。
+- P5 失败记录：首轮 `McpSettingsCard` 的启用 / 信任独立性测试因 mock 未反映保存后的状态而失败（测试夹具问题）；为 MCP 写回归时先在测试里误用了不存在的 `application` 字段（该字段只由原生层注入）。均修正测试，未放宽产品行为。
 - P4 最终：runtime **478/478**（较 P3 closeout 新增 19 项会话回归）、前端 **55/55**（新增 8 项）、Rust **57/57**、类型检查与生产构建通过。新增文件 `agent-runtime/test/session-management.test.mjs`、`src/SessionPanel.tsx`、`tests/sessions.test.tsx`。C8-I025–I028 已解决。
 - P4 失败记录：首轮测试暴露三处真实缺陷，均已修复并留回归。①会话请求用 `track()` 并发执行，同一会话的 rename / delete 互相竞争；②切换未等待在途 `prompt`，会在任务运行时 dispose 旧 runtime 丢掉未落盘对话，第一版等待逻辑又把自身放进 `operations` 造成自等死锁，收尾快照也会漏掉排队中的会话请求；③`hits` 断言曾用不存在的 `assert.match.string`，属测试写法错误。另有一次测试因 `store.cwd` 被 Pi 编码成目录名而路径写错。
 - P4 未执行：真实桌面窗口内的会话面板人工操作、安装包路径、以及切换时真实 MCP / 权限卡的实际交互。上述仍为未验证，不由自动证据替代。

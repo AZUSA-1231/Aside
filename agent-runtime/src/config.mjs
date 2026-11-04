@@ -163,6 +163,17 @@ export async function loadAsideConfig({
       stored: Object.hasOwn(storedCredentials, provider),
     });
   }
+  // The MCP file's own digest participates in the configuration revision.
+  // Without it, editing `mcp.json` left the revision unchanged, so the settings
+  // surface reported "loaded" for a configuration the runtime had never read —
+  // the saved server list would look applied until the next unrelated change.
+  let mcpRevision = null;
+  try {
+    mcpRevision = createHash("sha256").update(await readTextFile(mcpConfigPath, "utf8")).digest("hex");
+  } catch {
+    // A missing or unreadable file is not a revision change; the MCP loader
+    // reports its own diagnostics for that case.
+  }
   const effectiveRevision = createHash("sha256")
     .update(JSON.stringify({
       values: publicValues,
@@ -171,6 +182,7 @@ export async function loadAsideConfig({
         .update(JSON.stringify(Object.values(PROVIDER_CREDENTIAL_NAMES).flat().map((name) => values[name] ?? null)))
         .digest("hex"),
       session_root: getAsideConfigValue(values, "ASIDE_SESSION_ROOT") ?? null,
+      mcp_revision: mcpRevision,
     }))
     .digest("hex");
   return Object.freeze({

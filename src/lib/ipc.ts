@@ -9,6 +9,7 @@ import type {
   RuntimeEvent,
 } from "./contracts";
 import type { SettingsDocument, SettingsSnapshot, SettingsProvider, ProviderCatalog, ConnectionTestResult } from "./settings";
+import type { McpServerEntry, McpSettingsSnapshot, McpTestResult } from "./mcp";
 
 const initialPreviewState: AgentState = {
   visibility: "visible",
@@ -101,6 +102,21 @@ export const nativeClient = {
   importLegacySettings: async (expectedRevision: string): Promise<SettingsSnapshot> => {
     if (!isDesktopRuntime()) throw new Error("Persistent settings are available in the desktop app.");
     return command<SettingsSnapshot>("import_legacy_settings", { expectedRevision });
+  },
+
+  getMcpSettings: async (): Promise<McpSettingsSnapshot> => {
+    if (!isDesktopRuntime()) throw new Error("MCP configuration is available in the desktop app.");
+    return command<McpSettingsSnapshot>("get_mcp_settings");
+  },
+
+  saveMcpSettings: async (servers: McpServerEntry[], expectedRevision: string): Promise<McpSettingsSnapshot> => {
+    if (!isDesktopRuntime()) throw new Error("MCP configuration is available in the desktop app.");
+    return command<McpSettingsSnapshot>("save_mcp_settings", { servers, expectedRevision });
+  },
+
+  testMcpServer: async (server: McpServerEntry): Promise<McpTestResult> => {
+    if (!isDesktopRuntime()) throw new Error("MCP configuration is available in the desktop app.");
+    return command<McpTestResult>("test_mcp_server", { server });
   },
 
   getAgentState: async (): Promise<AgentState> => {

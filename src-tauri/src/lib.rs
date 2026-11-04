@@ -91,6 +91,9 @@ pub fn run() {
             settings::get_provider_catalog,
             settings::test_api_connection,
             settings::apply_settings,
+            settings::get_mcp_settings,
+            settings::save_mcp_settings,
+            settings::test_mcp_server,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Aside");
