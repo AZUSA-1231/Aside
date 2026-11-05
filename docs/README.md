@@ -16,6 +16,8 @@
 | [FRONTEND-REVIEW.md](./FRONTEND-REVIEW.md) | 当前技术栈、材质沿革、接口投影与开发检查、限制。 | 当前实现说明；区分 R1 浏览器证据与 R3 动态焦点开发回归，均不代表原生桌面验收。 |
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | Rust／React／runtime 职责、状态与 IPC、上下文和权限边界。 | 仍使用的工程约束；其中当前源码描述与待恢复行为已分开标注。 |
 | [PRODUCT-DIRECTION.md](./PRODUCT-DIRECTION.md) | Context、文件、memory、ambient、可替换 agent 与薄接入思路。 | 长期方向与讨论记录，不是当前全部获准开发的功能清单。 |
+| [V1-SCOPE.md](./V1-SCOPE.md) | 第一版发布承诺什么、不承诺什么，以及冻结规则。 | 当前范围边界；新需求先按它归类，再决定进不进本周期。 |
+| [V1-ACCEPTANCE.md](./V1-ACCEPTANCE.md) | 五条 v1 承诺的实机验收步骤与证据载体。 | 未开始；自动测试不能替代其中任何一项。 |
 | [PROJECT-BASELINE.md](./PROJECT-BASELINE.md) | 2026-09 的项目状态、旧文档关系与范围决定。 | 历史基线，帮助追溯；不再负责当前排期。 |
 | [design/README.md](./design/README.md) | 区分当前侧栏规范与旧 mockup。 | 设计目录导航。 |
 
@@ -50,7 +52,7 @@ R1–R4 已纳入的开发任务没有剩余项；当前 Cycle 8 优先完善普
 
 | 位置 | 内容与用途 | 现在如何使用 |
 | --- | --- | --- |
-| `/docs` 根目录，6 份 Markdown | 本导航、总计划、长期方向、架构、实现复查和历史基线。 | 按第 1 节区分职责，不把六份都当作执行计划。 |
+| `/docs` 根目录，8 份 Markdown | 本导航、总计划、v1 范围与验收、长期方向、架构、实现复查和历史基线。 | 按第 1 节区分职责，不把六份都当作执行计划。 |
 | [design/](./design/)，3 个文件 | 当前 `SUMMONED-SIDEBAR.md`、设计导航和旧 `mockup.html`。 | 当前要求与历史原型同目录，按导航明确区分。 |
 | [cycle-1-MVP/](./cycle-1-MVP/)，8 份 Markdown | 初版悬浮助手、Pin／workspace、对话；`PRD`、`PLANS`、子计划与 `VERIFICATION`。 | 历史实现与“accepted with limitations”证据；不是新的待办。分屏恢复可追溯相关旧实现与要求。 |
 | [cycle-2/](./cycle-2/)，7 份 Markdown | 侧栏、原生几何与快捷键；需求、计划、子计划、验证。 | 历史实现。Windows 人工证据曾向后结转，不等于当前已经补齐。 |
