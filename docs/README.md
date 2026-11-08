@@ -1,10 +1,10 @@
 # 文档导航：当前工作、长期方向与历史留痕
 
-整理日期：2026-11-01。当前 `/docs` 共 121 个文件，其中 90 份 Markdown，其余为研究样本、截图、审计数据／脚本和旧 HTML 原型。本文是阅读导航，不再新增一套执行计划。
+更新日期：2026-11-08。本文是阅读导航，不维护容易过时的文件总数，不新增平行执行计划。当前主线是 Release-1 范围确认，统一实机默认延期。
 
 **R1–R4 当前有界开发与自动证据已完成。有限清单 RT-01–11 和候选功能处置见总计划第 7 节；R4 补齐 MCP 分类双绑定与失效提示。394 项 runtime、24 项前端及构建通过；完整原生 / 人工与产品级 runtime 验收尚未成立，G01 同步解析限制保留。**
 
-既有收束快照为 `ea4db29`；[Cycle 8](./cycle-8/README.md) 的 P0/P1 已提交为 `b5a0bd1`，P2 已提交为 `4a88a9b`，P3 思考强度已提交为 `f4df270` 并在 2026-11-02 完成 closeout，P4 会话管理已提交为 `17eca1b`，P5 MCP 配置已完成开发验证并留在工作区。当前 runtime 497/497、前端 63/63、Rust 57/57、类型与生产构建通过。Cycle 8 功能批次完成；继续逐功能先 plan、执行并维护 issues。
+既有收束快照为 `ea4db29`；[Cycle 8](./cycle-8/README.md) P0–P5 已提交，P6 严重缺陷修复已提交为 `bf3f231`。最近代码门禁为 runtime 511/511、前端 63/63、Rust 57/57、类型与构建通过。新增 [能力对照](./RELEASE-CAPABILITIES.md) 区分内部底座与用户可用功能；[首版范围](./V1-SCOPE.md) 是待确认的建议冻结稿，不表示所有新功能都已获准开发。
 
 ## 1. 现在先看哪几份
 
@@ -16,12 +16,15 @@
 | [FRONTEND-REVIEW.md](./FRONTEND-REVIEW.md) | 当前技术栈、材质沿革、接口投影与开发检查、限制。 | 当前实现说明；区分 R1 浏览器证据与 R3 动态焦点开发回归，均不代表原生桌面验收。 |
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | Rust／React／runtime 职责、状态与 IPC、上下文和权限边界。 | 仍使用的工程约束；其中当前源码描述与待恢复行为已分开标注。 |
 | [PRODUCT-DIRECTION.md](./PRODUCT-DIRECTION.md) | Context、文件、memory、ambient、可替换 agent 与薄接入思路。 | 长期方向与讨论记录，不是当前全部获准开发的功能清单。 |
-| [V1-SCOPE.md](./V1-SCOPE.md) | 第一版发布承诺什么、不承诺什么，以及冻结规则。 | 当前范围边界；新需求先按它归类，再决定进不进本周期。 |
-| [V1-ACCEPTANCE.md](./V1-ACCEPTANCE.md) | 五条 v1 承诺的实机验收步骤与证据载体。 | 未开始；自动测试不能替代其中任何一项。 |
+| [V1-SCOPE.md](./V1-SCOPE.md) | 第一版发布承诺什么、不承诺什么，以及冻结规则。 | 对照后的建议冻结稿，待用户确认；不批量授权新开发。 |
+| [RELEASE-CAPABILITIES.md](./RELEASE-CAPABILITIES.md) | Aside / 本地 DSH / 官方产品文档的能力事实、模块现状、R1 增量与 R2/R3 候选、既有 P2 去向建议。 | 研究与决策依据，不是另一份执行排期。 |
+| [V1-ACCEPTANCE.md](./V1-ACCEPTANCE.md) | R1 的集中实机验收步骤与证据载体；旧 F 组保留留痕。 | 默认延期、未执行；范围确认后再按开发完成情况集中运行。 |
 | [PROJECT-BASELINE.md](./PROJECT-BASELINE.md) | 2026-09 的项目状态、旧文档关系与范围决定。 | 历史基线，帮助追溯；不再负责当前排期。 |
 | [design/README.md](./design/README.md) | 区分当前侧栏规范与旧 mockup。 | 设计目录导航。 |
 
-阅读顺序是：**总计划 → 当前侧栏要求 → 实现复查**。做具体缺陷时，再按总计划中的来源链接回到原 issue、审计或子计划。
+当前阅读顺序：**能力对照 → 首版范围 → 总计划当前 WIP**。窗口问题再看当前侧栏规范 / 实现复查；具体缺陷回到原 issue 与证据。
+
+2026-11-08 换机接续：先补读 [项目记忆最新讨论](./PRODUCT-DIRECTION.md#2026-11-08-补充归纳文件夹与项目记忆)。这是“会话外套逻辑项目文件夹 + 简单 README + 目录引用”的轻量方案讨论，不是已实现功能；目标是不选工作区 / 会话也能继续相关工作，R1 / R2 发布归属仍待确认。
 
 ## 2. 现在、短期、后续分别做什么
 
@@ -33,9 +36,10 @@
 | 已执行：R2 | A01–A12 自动化复核，修正不完整的续读、截断和搜索游标；重验 G01。 | [逐项证据](./cycle-6/R2-RECHECK.md) 与 [机器汇总](./cycle-6/R2-EVIDENCE.json)；379 项 runtime 通过，不能替代人工验收。 |
 | 已执行：R3 | 动态焦点 Capture、现有 capture→文件 workspace→工具→权限→结果的集成核对。 | [集成记录](./cycle-6/R3-INTEGRATION.md) 和 [Windows 合成测量](./cycle-6/R3-BENCHMARK.json)；388 项 runtime、45 项 Rust、23 项前端与构建通过，真实桌面待复测。 |
 | 已执行：R4 | 定义 RT-01–11，补齐 POLICY-01，明确 LIMIT-01 与设置 / 会话 / skill 等候选功能处置。 | [开发证据](./cycle-6/R4-RUNTIME.md)；394 项 runtime、24 项前端和构建通过。有限开发清单完成，产品级验收未成立。 |
-| 执行中：Cycle 8 | 统一配置、API / 模型 / 思考强度、默认目录、会话、现有 stdio MCP GUI。 | [P0](./cycle-8/plans/P0-settings-foundation.md)、[P1](./cycle-8/plans/P1-api-settings.md)、[P2](./cycle-8/plans/P2-default-workspace.md)、[P3](./cycle-8/plans/P3-thinking-level.md)、[P4](./cycle-8/plans/P4-sessions.md)、[P5](./cycle-8/plans/P5-mcp-settings.md)已完成开发验证（P3 含 closeout）。 |
+| 已执行：Cycle 8 开发 | 设置、默认目录、会话、思考强度与 stdio MCP GUI，另含 P6 可靠性修复。 | P0–P6 开发与自动回归已有证据；P6 已提交，六组 P2 仍未修复，统一实机未执行。 |
+| 当前：Release-1 范围审阅 | 固定 M01–M14 模块和七个有依赖的交付包。 | 待用户确认；下一步是 R1-01 功能 plan，不直接批量实施。 |
 
-R1–R4 已纳入的开发任务没有剩余项；当前 Cycle 8 优先完善普通 agent 的设置、存储与会话基础，不开发长期 memory、工作记录或自组织机制。外部 agent 适配、Mac 移植仍在后续范围；窗口渲染研究由用户在独立项目进行。既有人工验收与安装包的无限期延期不变。
+历史恢复 R1–R4 与 Cycle 8 的已授权开发已收口；R1 新功能须先确认范围，继续逐功能 plan / 执行 / 记 issue。外部 agent、Mac 与窗口渲染研究不回流。实机默认延期到统一收口，不重复阻塞逐功能开发；公开发布前仍须具备实机与分发证据。
 
 ## 3. 长期方向、条件延期与无限期延期
 
@@ -61,7 +65,7 @@ R1–R4 已纳入的开发任务没有剩余项；当前 Cycle 8 优先完善普
 | [cycle-5-agent-capability/](./cycle-5-agent-capability/)，10 份 Markdown | 任务／workspace、工具、权限写入、skills、会话与 IPC；需求、计划、issue。 | 已实现能力的历史要求与问题来源；人工证据结转未关闭。 |
 | [cycle-6/](./cycle-6/)，24 个文件 | 文件／PDF／Word／MCP／策略能力；20 份 Markdown 加审计数据、R2/R3/R4 证据与复现脚本。 | **混合目录：旧研发计划是历史，审计／issue／验收状态仍需追踪。** 不能整体废弃。 |
 | [cycle-7/](./cycle-7/)，7 份 Markdown | 上一轮 UI 提案、旧开发／遗留拆分、执行记录、两版材质记录及导航。 | 旧路线与证据来源；不再直接按旧计划开任务，详见该目录导航。 |
-| [cycle-8/](./cycle-8/)，8 份 Markdown | 周期定义、六个功能 plan、开发 issues。 | P0–P5 开发证据已记录；不能当成整轮功能已验收。 |
+| [cycle-8/](./cycle-8/)，含 P0–P6 | 周期定义、功能与修复 plan、开发 issues。 | 开发与独立验收修复证据已记录；不能当成统一实机已通过。 |
 
 ## 5. 已废止或被取代、但保留留痕的内容
 
