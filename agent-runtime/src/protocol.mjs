@@ -304,6 +304,7 @@ export async function runProtocol({
     const sink = { live: true, forwarding: false };
     let candidate;
     try {
+      await runtime?.flushPersistence?.();
       candidate = await runtimeFactory({
         previousRuntime: runtime,
         credentialValues: credentials,
@@ -313,9 +314,11 @@ export async function runProtocol({
           else buffered.push(event);
         },
       });
-    } catch {
+    } catch (error) {
       sink.live = false;
-      emit({ type: "configuration_status", state: "failed", message: "The saved configuration could not be applied. The previous runtime is retained; check provider, model and endpoint settings." });
+      emit({ type: "configuration_status", state: "failed", message: error?.code === "session_save_failed"
+        ? "Aside could not save the current conversation. The previous runtime is retained; check storage access and try applying again."
+        : "The saved configuration could not be applied. The previous runtime is retained; check provider, model and endpoint settings." });
       applying = false;
       void applyWhenIdle();
       return;
@@ -358,7 +361,9 @@ export async function runProtocol({
       // prompt would drop a conversation before it was saved. This entry joins
       // `operations` only after that wait: joining first would make it wait on
       // itself.
-      while (operations.size > 0) await Promise.allSettled([...operations]);
+      while (operations.size > 0 || applying) {
+        await Promise.allSettled([...operations, ...(applying ? [applicationPromise] : [])]);
+      }
       operations.add(pending);
       try {
         return await operation();
@@ -400,22 +405,35 @@ export async function runProtocol({
    */
   async function switchSession(request) {
     if (!runtime) throw new Error(setupError ?? "The Aside runtime is unavailable.");
-    const store = runtime.sessionStore;
-    if (request.create) {
-      // Create first so the new session exists before anything is torn down.
-      const created = await createAsideSession(store);
-      await replaceRuntime({ mode: "open", id: created.metadata.id }, request.request_id);
-      return;
+    switching = true;
+    try {
+      await runtime.flushPersistence?.();
+      const store = runtime.sessionStore;
+      if (request.create) {
+        const created = await createAsideSession(store);
+        await replaceRuntime({ mode: "open", id: created.metadata.id }, request.request_id);
+        return;
+      }
+      await openAsideSessionById(store, request.session_id);
+      await replaceRuntime({ mode: "open", id: request.session_id }, request.request_id);
+    } finally {
+      switching = false;
     }
-    // Verify the target is readable before disposing the current runtime.
-    await openAsideSessionById(store, request.session_id);
-    await replaceRuntime({ mode: "open", id: request.session_id }, request.request_id);
   }
 
   async function replaceRuntime(sessionTarget, requestId) {
-    switching = true;
+    const buffered = [];
+    const sink = { live: true, forwarding: false };
     try {
-      const candidate = await runtimeFactory({ sessionTarget, credentialValues });
+      const candidate = await runtimeFactory({
+        sessionTarget,
+        credentialValues,
+        emit: (event) => {
+          if (!sink.live) return;
+          if (sink.forwarding) emitRuntimeEvent(event);
+          else buffered.push(event);
+        },
+      });
       currentSink.live = false;
       try {
         await runtime?.dispose?.();
@@ -430,14 +448,17 @@ export async function runProtocol({
         throw new Error("The previous conversation could not be closed.");
       }
       runtime = candidate;
-      currentSink = { live: true, forwarding: true };
+      currentSink = sink;
       setupError = undefined;
       startupComplete = true;
       const history = Array.isArray(candidate.history) ? candidate.history : [];
       emit({ type: "history_restored", messages: history, replaced: true });
       emit({ type: "session_switched", request_id: requestId, session_id: candidate.agent?.sessionId ?? null });
-    } finally {
-      switching = false;
+      sink.forwarding = true;
+      for (const event of buffered) emitRuntimeEvent(event);
+    } catch (error) {
+      sink.live = false;
+      throw error;
     }
   }
 
@@ -446,7 +467,7 @@ export async function runProtocol({
     if (!runtime) throw new Error(setupError ?? "The Aside runtime is unavailable.");
     const store = runtime.sessionStore;
     if (request.type === "rename_session") {
-      const result = await renameAsideSession(store, request.session_id, request.name);
+      const result = await renameAsideSession(store, request.session_id, request.name, { activeSession: runtime.session });
       emit({ type: "session_renamed", request_id: request.request_id, ...result });
       return;
     }

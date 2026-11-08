@@ -358,11 +358,14 @@ export async function deleteAsideSession(store, id) {
 }
 
 /** Renames one Aside session. An empty name clears it. */
-export async function renameAsideSession(store, id, name) {
+export async function renameAsideSession(store, id, name, { activeSession } = {}) {
+  validateAsideSessionId(id);
   const normalized = normalizeAsideSessionName(name);
-  const opened = await openAsideSessionById(store, id);
+  const session = activeSession && (await activeSession.getMetadata()).id === id
+    ? activeSession
+    : (await openAsideSessionById(store, id)).session;
   try {
-    await opened.session.setName(normalized);
+    await session.setName(normalized);
     return { id, name: normalized ?? null };
   } catch {
     throw new AsideSessionError("session_rename_failed", "Aside could not rename the selected session.");
@@ -660,5 +663,11 @@ export async function createAsideConversationRuntime({
       fileSystem,
     }),
     persistRun,
+    async flushPersistence() {
+      const result = await persistRun({ messages: conversationAgent.state.messages.slice() });
+      if (result?.warning) {
+        throw new AsideSessionError("session_save_failed", "Aside could not save the current conversation. It has been kept open; check storage access and try again.");
+      }
+    },
   });
 }

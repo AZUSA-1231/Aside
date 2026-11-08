@@ -1,6 +1,6 @@
 # Cycle 8：基础设置与会话管理
 
-定义日期：2026-10-31；执行更新：2026-11-01。**用户已同意开始，要求每个功能先写 plan，再执行，并维护 issues。P0 配置底座、P1 API / 模型 GUI、P2 默认目录与产物、P3 思考强度已完成开发和自动验证，下一步 P4 会话管理。** 各功能计划已建立，问题统一记录在 [ISSUES.md](./ISSUES.md)。本文的成熟产品对照保留当时查阅日期，阶段状态统一在 [RECOVERY-PLAN.md](../RECOVERY-PLAN.md) 跟踪。
+定义日期：2026-10-31；执行更新：2026-11-08。**P0–P5 基础设置与会话功能已完成开发；独立验收发现的严重度 P0 / P1 四项问题已按 [P6 会话可靠性](./plans/P6-session-reliability.md) 修复并回归（runtime 511/511）。六组严重度 P2 明确延期，待后续 release 范围与开源 harness 对比时参考修复。** 功能批次 P0–P6 与问题严重度不是同一套编号。仍遵守每功能先 plan、再执行和记 issue，问题统一记录在 [ISSUES.md](./ISSUES.md)。本文的成熟产品对照保留当时查阅日期，阶段状态统一在 [RECOVERY-PLAN.md](../RECOVERY-PLAN.md) 跟踪；v1 / V1.6 不属于本轮验收范围。
 
 既有前端收束、R1–R4 修复与当时的文档快照已提交为 `ea4db29`。此前本文提出的“可续接的本地上下文 / 最小任务记忆”建议被本次范围取代，移回 [长期方向](../PRODUCT-DIRECTION.md)；这不改变既有修复证据或人工、安装包验收的延期状态。
 
@@ -126,6 +126,7 @@ MCP 跟随 Settings 也意味着一件事：设置的形态（是否改为独立
 | 思考强度 | [P3](./plans/P3-thinking-level.md) | C8.1，开发验证完成 |
 | 会话管理 | [P4](./plans/P4-sessions.md) | C8.2，开发验证完成 |
 | MCP 配置 GUI | [P5](./plans/P5-mcp-settings.md) | C8.3，开发验证完成 |
+| 独立验收后的会话可靠性 | [P6](./plans/P6-session-reliability.md) | 严重度 P0 / P1 收口完成；P2 延期 |
 
 [ISSUES.md](./ISSUES.md) 保存编号、发现、修复与证据；计划内记录该功能的实现与验证结果。总计划只维护阶段级状态。
 

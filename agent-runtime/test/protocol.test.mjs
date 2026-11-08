@@ -6,6 +6,335 @@ import * as sessionStoreModule from "../src/session.mjs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Agent, FileError, err } from "@earendil-works/pi-agent-core/aside";
+import { createModels } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxProvider } from "@earendil-works/pi-ai/providers/faux";
+import { createNodeSessionFileSystem } from "../src/session-fs.mjs";
+
+async function reliabilityFixture(context, { beforeBuild, fileSystem, release = () => {}, tokensPerSecond = 10_000 } = {}) {
+  const root = await mkdtemp(join(tmpdir(), "aside-session-reliability-"));
+  const environment = {
+    LOCALAPPDATA: join(root, "data"),
+    ASIDE_SETTINGS_PATH: join(root, "settings.json"),
+    ASIDE_MCP_CONFIG_PATH: join(root, "mcp.json"),
+  };
+  const runtimes = [];
+  const sinks = [];
+  const harness = protocolFixture(async (options) => {
+    await beforeBuild?.(options);
+    const faux = fauxProvider({ tokensPerSecond, tokenSize: { min: 1, max: 1 } });
+    faux.setResponses([fauxAssistantMessage("First reply"), fauxAssistantMessage("Second reply")]);
+    const models = createModels();
+    models.setProvider(faux.provider);
+    const agent = new Agent({
+      initialState: { systemPrompt: "Answer briefly.", model: faux.getModel(), thinkingLevel: "off", tools: [] },
+      streamFn: models.streamSimple.bind(models),
+      convertToLlm: (messages) => messages,
+    });
+    sinks.push(options.emit);
+    const runtime = await sessionStoreModule.createAsideConversationRuntime({
+      ...options, agent, root: join(root, "sessions"), environment, cwd: root, configCwd: root, fileSystem,
+    });
+    runtimes.push(runtime);
+    return runtime;
+  });
+  context.after(async () => {
+    release();
+    harness.input.end();
+    await harness.done;
+    for (const runtime of runtimes) await runtime.dispose();
+    await rm(root, { recursive: true, force: true });
+  });
+  const wait = async (predicate) => {
+    let timer;
+    try {
+      return await Promise.race([
+        harness.wait(predicate),
+        new Promise((resolve, reject) => { timer = setTimeout(() => reject(new Error("Timed out waiting for protocol event")), 4_000); }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+  await wait((event) => event.type === "ready");
+  return { ...harness, wait, runtimes, sinks };
+}
+
+async function reliabilityBarrier(harness, requestId) {
+  harness.send({ type: "list_sessions", request_id: requestId });
+  return harness.wait((event) => event.type === "sessions_listed" && event.request_id === requestId);
+}
+
+for (const operation of ["switch", "apply"]) {
+  test(`a failed save can recover on the first ${operation} attempt without losing messages`, async (context) => {
+    const fileSystem = createNodeSessionFileSystem();
+    const append = fileSystem.appendFile.bind(fileSystem);
+    let denyAppend = false;
+    fileSystem.appendFile = async (...argumentsList) => denyAppend
+      ? err(new FileError("permission_denied", "Synthetic persistence denial"))
+      : append(...argumentsList);
+    const harness = await reliabilityFixture(context, { fileSystem });
+    const original = harness.runtimes[0];
+    denyAppend = true;
+    harness.send({ type: "prompt", request_id: "before-recovery", text: "Retain this" });
+    await harness.wait((event) => event.type === "session_warning");
+    denyAppend = false;
+    harness.send(operation === "apply"
+      ? { type: "apply_settings", credential_values: {} }
+      : { type: "switch_session", request_id: "recovered-save", create: true });
+    await harness.wait((event) => operation === "apply"
+      ? event.type === "configuration_status" && event.state === "applied"
+      : event.type === "session_switched");
+    if (operation === "apply") {
+      harness.send({ type: "prompt", request_id: "after-recovery", text: "Continue after apply" });
+      await harness.wait((event) => event.type === "completed" && event.request_id === "after-recovery");
+      await reliabilityBarrier(harness, "saved-after-apply");
+    }
+    const current = operation === "apply" ? harness.runtimes.at(-1) : original;
+    const opened = await sessionStoreModule.openAsideSessionById(original.sessionStore, original.agent.sessionId);
+    const restored = await sessionStoreModule.restoreAsideSession(opened.session);
+    assert.deepEqual(restored.messages, JSON.parse(JSON.stringify(current.agent.state.messages)));
+    assert.equal(restored.messages.length, operation === "apply" ? 4 : 2);
+    assert.ok(current.continuation);
+  });
+}
+
+test("switch preparation blocks new prompts but still routes permission responses", async (context) => {
+  const fileSystem = createNodeSessionFileSystem();
+  const append = fileSystem.appendFile.bind(fileSystem);
+  const saving = Promise.withResolvers();
+  const gate = Promise.withResolvers();
+  let mode = "normal";
+  fileSystem.appendFile = async (...argumentsList) => {
+    if (mode === "deny") return err(new FileError("permission_denied", "Synthetic persistence denial"));
+    if (mode === "wait") {
+      saving.resolve();
+      await gate.promise;
+    }
+    return append(...argumentsList);
+  };
+  const harness = await reliabilityFixture(context, { fileSystem, release: gate.resolve });
+  mode = "deny";
+  harness.send({ type: "prompt", request_id: "needs-save", text: "Needs saving" });
+  await harness.wait((event) => event.type === "session_warning");
+  mode = "wait";
+  harness.send({ type: "switch_session", request_id: "saving-switch", create: true });
+  await saving.promise;
+  harness.send({ type: "prompt", request_id: "too-late", text: "Do not run" });
+  assert.equal((await harness.wait((event) => event.request_id === "too-late")).type, "failed");
+  const identity = { request_id: "pending-decision", task_id: "task", tool_call_id: "call" };
+  const pending = harness.runtimes[0].permissionBroker.request({ ...identity, permission_id: "pending-permission", operation: "workspace.write" });
+  harness.send({ type: "permission_response", request_id: identity.request_id, permission_id: "pending-permission", identity, decision: "deny" });
+  assert.equal((await pending).decision, "deny");
+  mode = "normal";
+  gate.resolve();
+  await harness.wait((event) => event.type === "session_switched");
+});
+
+test("a queued apply and switch do not prevent cancelling a real streaming task", async (context) => {
+  const harness = await reliabilityFixture(context, { tokensPerSecond: 1 });
+  const original = harness.runtimes[0];
+  harness.send({ type: "prompt", request_id: "cancel-stream", text: "Stream slowly" });
+  await harness.wait((event) => event.type === "text_delta");
+  harness.send({ type: "apply_settings", credential_values: {} });
+  harness.send({ type: "switch_session", request_id: "after-cancel", create: true });
+  await harness.wait((event) => event.type === "configuration_status" && event.state === "pending");
+  harness.send({ type: "cancel", request_id: "cancel-stream" });
+  await harness.wait((event) => event.type === "cancelled" && event.request_id === "cancel-stream");
+  await harness.wait((event) => event.type === "session_switched" && event.request_id === "after-cancel");
+  assert.equal(harness.events.filter((event) => event.request_id === "cancel-stream" && ["completed", "failed", "cancelled"].includes(event.type)).length, 1);
+  const opened = await sessionStoreModule.openAsideSessionById(original.sessionStore, original.agent.sessionId);
+  const restored = await sessionStoreModule.restoreAsideSession(opened.session);
+  assert.deepEqual(restored.messages.map((message) => message.role), ["user"]);
+});
+
+test("an applying configuration finishes before a queued session replacement starts", async (context) => {
+  const gate = Promise.withResolvers();
+  const started = Promise.withResolvers();
+  const switchedBuild = Promise.withResolvers();
+  let applyingBuild = false;
+  let overlap = false;
+  const harness = await reliabilityFixture(context, { release: gate.resolve, beforeBuild: async (options) => {
+    if (options.previousRuntime) {
+      applyingBuild = true;
+      started.resolve();
+      await gate.promise;
+      applyingBuild = false;
+    }
+    if (options.sessionTarget) {
+      overlap ||= applyingBuild;
+      switchedBuild.resolve();
+    }
+  } });
+  harness.send({ type: "apply_settings", credential_values: {} });
+  await started.promise;
+  harness.send({ type: "switch_session", request_id: "after-apply", create: true });
+  await Promise.race([switchedBuild.promise, new Promise((resolve) => setTimeout(resolve, 300))]);
+  gate.resolve();
+  const switched = await harness.wait((event) => event.type === "session_switched");
+  const listed = await reliabilityBarrier(harness, "after-race");
+  assert.equal(overlap, false);
+  assert.equal(listed.active_session_id, switched.session_id);
+  assert.ok(harness.events.findIndex((event) => event.type === "configuration_status" && event.state === "applied") < harness.events.indexOf(switched));
+});
+
+test("a failed configuration application releases the queued switch", async (context) => {
+  const gate = Promise.withResolvers();
+  const started = Promise.withResolvers();
+  const harness = await reliabilityFixture(context, { release: gate.resolve, beforeBuild: async (options) => {
+    if (!options.previousRuntime) return;
+    started.resolve();
+    await gate.promise;
+    throw new Error("Configuration candidate failed");
+  } });
+  harness.send({ type: "apply_settings", credential_values: {} });
+  await started.promise;
+  harness.send({ type: "switch_session", request_id: "after-failed-apply", create: true });
+  harness.send({ type: "invalid-fence", request_id: "queue-fence" });
+  await harness.wait((event) => event.request_id === "queue-fence");
+  gate.resolve();
+  const failure = await harness.wait((event) => event.type === "configuration_status" && event.state === "failed");
+  const switched = await harness.wait((event) => event.type === "session_switched");
+  assert.ok(harness.events.indexOf(failure) < harness.events.indexOf(switched));
+  harness.send({ type: "prompt", request_id: "after-failure", text: "Still responds" });
+  await harness.wait((event) => event.type === "completed" && event.request_id === "after-failure");
+});
+
+for (const failed of [false, true]) {
+  test(`configuration waits for a ${failed ? "failed" : "successful"} switch and the queue remains usable`, async (context) => {
+    const gate = Promise.withResolvers();
+    const started = Promise.withResolvers();
+    let switchingBuild = false;
+    let overlap = false;
+    const harness = await reliabilityFixture(context, { release: gate.resolve, beforeBuild: async (options) => {
+      if (options.sessionTarget) {
+        switchingBuild = true;
+        started.resolve();
+        await gate.promise;
+        switchingBuild = false;
+        if (failed) throw new Error("Switch failed");
+      }
+      if (options.previousRuntime) overlap ||= switchingBuild;
+    } });
+    harness.send({ type: "switch_session", request_id: "switch-first", create: true });
+    await started.promise;
+    harness.send({ type: "apply_settings", credential_values: {} });
+    await harness.wait((event) => event.type === "configuration_status" && event.state === "pending");
+    assert.equal(harness.events.some((event) => event.type === "configuration_status" && event.state === "applying"), false);
+    gate.resolve();
+    const outcome = await harness.wait((event) => event.request_id === "switch-first");
+    await harness.wait((event) => event.type === "configuration_status" && event.state === "applied");
+    const listed = await reliabilityBarrier(harness, "after-switch-apply");
+    assert.equal(overlap, false);
+    assert.equal(listed.active_session_id, failed ? harness.runtimes[0].agent.sessionId : outcome.session_id);
+    harness.send({ type: "prompt", request_id: "after-both", text: "Keep responding" });
+    await harness.wait((event) => event.type === "completed" && event.request_id === "after-both");
+  });
+}
+
+for (const operation of ["switch", "delete", "apply"]) {
+  test(`unsaved history blocks ${operation}, then retries partial persistence without duplication`, async (context) => {
+    const fileSystem = createNodeSessionFileSystem();
+    const append = fileSystem.appendFile.bind(fileSystem);
+    let remaining = Infinity;
+    fileSystem.appendFile = async (...argumentsList) => remaining-- <= 0
+      ? err(new FileError("permission_denied", "Synthetic persistence denial"))
+      : append(...argumentsList);
+    const harness = await reliabilityFixture(context, { fileSystem });
+    const original = harness.runtimes[0];
+    remaining = 1;
+    harness.send({ type: "prompt", request_id: "unsaved", text: "Must survive" });
+    await harness.wait((event) => event.type === "session_warning");
+    assert.equal(original.agent.state.messages.length, 2);
+    const request = operation === "apply"
+      ? { type: "apply_settings", credential_values: {} }
+      : operation === "delete"
+        ? { type: "delete_session", request_id: "blocked", session_id: original.agent.sessionId }
+        : { type: "switch_session", request_id: "blocked", create: true };
+    harness.send(request);
+    const outcome = await harness.wait((event) => operation === "apply"
+      ? event.type === "configuration_status" && ["failed", "applied"].includes(event.state)
+      : ["session_failed", "session_switched"].includes(event.type) && event.request_id === "blocked");
+    assert.equal(operation === "apply" ? outcome.state : outcome.type, operation === "apply" ? "failed" : "session_failed");
+    assert.equal(harness.runtimes.length, 1);
+    const blocked = await reliabilityBarrier(harness, "blocked-list");
+    assert.equal(blocked.active_session_id, original.agent.sessionId);
+    assert.equal(blocked.sessions.length, 1);
+    remaining = Infinity;
+    harness.send({ type: "switch_session", request_id: "recovered", create: true });
+    await harness.wait((event) => event.type === "session_switched" && event.request_id === "recovered");
+    const opened = await sessionStoreModule.openAsideSessionById(original.sessionStore, original.agent.sessionId);
+    const restored = await sessionStoreModule.restoreAsideSession(opened.session);
+    assert.deepEqual(restored.messages, JSON.parse(JSON.stringify(original.agent.state.messages)));
+    assert.equal(restored.messages.length, 2);
+  });
+}
+
+test("active rename followed by more messages leaves a readable complete session", async (context) => {
+  const harness = await reliabilityFixture(context);
+  const original = harness.runtimes[0];
+  harness.send({ type: "prompt", request_id: "first", text: "Before rename" });
+  await harness.wait((event) => event.type === "completed" && event.request_id === "first");
+  harness.send({ type: "rename_session", request_id: "rename", session_id: original.agent.sessionId, name: "Active notes" });
+  await harness.wait((event) => event.type === "session_renamed");
+  harness.send({ type: "prompt", request_id: "second", text: "After rename" });
+  await harness.wait((event) => event.type === "completed" && event.request_id === "second");
+  const listed = await reliabilityBarrier(harness, "list-renamed");
+  const opened = await sessionStoreModule.openAsideSessionById(original.sessionStore, original.agent.sessionId);
+  assert.equal(await opened.session.getName(), "Active notes");
+  const restored = await sessionStoreModule.restoreAsideSession(opened.session);
+  assert.equal(restored.messages.length, 4);
+  assert.deepEqual(restored.messages, JSON.parse(JSON.stringify(original.agent.state.messages)));
+  assert.ok(listed.sessions.some((session) => session.id === original.agent.sessionId && session.name === "Active notes"));
+  assert.deepEqual(listed.warnings, []);
+});
+
+test("new and reopened conversations forward real replies and permission decisions", async (context) => {
+  const harness = await reliabilityFixture(context);
+  const original = harness.runtimes[0];
+  for (const [requestId, target] of [["new", { create: true }], ["reopen", { session_id: original.agent.sessionId }]]) {
+    harness.send({ type: "switch_session", request_id: requestId, ...target });
+    await harness.wait((event) => event.type === "session_switched" && event.request_id === requestId);
+    const switchedIndex = harness.events.findIndex((event) => event.type === "session_switched" && event.request_id === requestId);
+    assert.equal(harness.events[switchedIndex - 1].type, "history_restored");
+    assert.equal(harness.events[switchedIndex + 1].type, "ready");
+    harness.send({ type: "prompt", request_id: `reply-${requestId}`, text: "Reply here" });
+    await until(() => harness.runtimes.at(-1).agent.state.messages.length >= 2);
+    await reliabilityBarrier(harness, `saved-${requestId}`);
+    const replies = harness.events.filter((event) => event.request_id === `reply-${requestId}`);
+    assert.ok(replies.some((event) => event.type === "text_delta"));
+    assert.equal(replies.filter((event) => event.type === "completed").length, 1);
+    const identity = { request_id: `approval-${requestId}`, task_id: "task", tool_call_id: "call" };
+    const pending = harness.runtimes.at(-1).permissionBroker.request({ ...identity, permission_id: `permission-${requestId}`, operation: "workspace.write" });
+    const requested = harness.events.find((event) => event.type === "permission_requested" && event.request_id === identity.request_id);
+    assert.ok(requested);
+    harness.send({ type: "permission_response", request_id: identity.request_id, permission_id: requested.permission_id, decision: "deny", identity });
+    assert.equal((await pending).decision, "deny");
+  }
+  harness.sinks[0]({ type: "session_warning", message: "late old event" });
+  assert.equal(harness.events.some((event) => event.message === "late old event"), false);
+});
+
+test("failed switch candidates cannot leak startup or late events and the queue recovers", async (context) => {
+  let rejectCandidate = true;
+  let failedSink;
+  const harness = await reliabilityFixture(context, { beforeBuild: (options) => {
+    if (!options.sessionTarget || !rejectCandidate) return;
+    failedSink = options.emit;
+    options.emit?.({ type: "session_warning", message: "candidate-only" });
+    throw new Error("Candidate failed");
+  } });
+  harness.send({ type: "switch_session", request_id: "bad", create: true });
+  await harness.wait((event) => event.type === "session_failed" && event.request_id === "bad");
+  assert.equal(typeof failedSink, "function");
+  failedSink({ type: "session_warning", message: "candidate-late" });
+  assert.equal(harness.events.some((event) => event.message?.startsWith("candidate-")), false);
+  harness.send({ type: "prompt", request_id: "retained", text: "Still usable" });
+  await harness.wait((event) => event.type === "completed" && event.request_id === "retained");
+  rejectCandidate = false;
+  harness.send({ type: "switch_session", request_id: "good", create: true });
+  await harness.wait((event) => event.type === "session_switched" && event.request_id === "good");
+});
 
 function protocolFixture(factory) {
   const input = new PassThrough();
