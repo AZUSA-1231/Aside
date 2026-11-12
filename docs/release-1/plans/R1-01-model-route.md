@@ -1,6 +1,6 @@
 # R1-01：模型接入闭环
 
-日期：2026-11-09。里程碑 1 / M01、M06；对应验收 B1–B9（B7 为扩展观察）、H1 / H5。状态：**plan 已写，未开始实现**。本次不自动开发其他任务或创建提交，当前 WIP 只在 [RECOVERY-PLAN](../../RECOVERY-PLAN.md#2026-11-09-release-1-当前执行表)维护。
+日期：2026-11-09，实现记录 2026-11-10。里程碑 1 / M01、M06；对应验收 B1–B9（B7 为扩展观察）、H1 / H5。状态：**开发完成，自动门禁通过，未提交；真实厂商与实机未执行**。本次未开发其他任务，未创建提交，当前 WIP 只在 [RECOVERY-PLAN](../../RECOVERY-PLAN.md#2026-11-09-release-1-当前执行表)维护。
 
 ## 1. 用户结果与停止线
 
@@ -65,3 +65,35 @@
 Windows 凭据管理器实机、至少一家真实厂商完整聊天 / 工具 / thinking 路径、安装包及干净机器运行统一在发布收口执行；开发中可留定向实测证据，但不强制每点跑全套。两类本地协议夹具通过不等于所有第三方 API 可用。
 
 任务结束时写清：改动文件、自动门禁、未执行项、已知限制、对应 issue；不自动 commit / push，不开始 07a。后续功能另写短 plan 后执行。
+
+## 8. 实现记录（2026-11-10）
+
+**改动文件**
+
+- 新增 `agent-runtime/src/custom-route.mjs`：路由声明校验、Pi provider / model 构造、能力过滤与 catalog 投影。
+- `agent-runtime/src/settings-schema.mjs`：`provider` 接受 `custom`；新增 `custom_protocol` / `custom_model_name` / `custom_context_window` / `custom_max_output` / `custom_reasoning` / `custom_images` / `custom_tools`；`custom` 成为独立凭据槽位。
+- `agent-runtime/src/config.mjs`：custom 字段参与同一套 env > settings > legacy > default 来源解析与 effective revision。
+- `agent-runtime/src/provider-settings.mjs`：`selectConfiguredProvider` / `getProviderCatalog` 对 custom route 走同一解析路径。
+- `agent-runtime/src/settings-service.mjs`：catalog 与 get / save 投影 `custom_route`（成功或具体失败码）。
+- `src-tauri/src/credentials.rs`：凭据槽位增加 `custom`。
+- `src/lib/settings.ts`、`src/SettingsPanel.tsx`：provider 下拉增加 Custom API；协议、model id、容量、能力控件；无 catalog 时不再强制选择 catalog 模型。
+- `package.json`：`runtime:test` 纳入新测试文件。
+
+**设计取舍**（plan 允许实现时一次定义的部分）
+
+- 路由复用 `provider` / `model` / `api_url` 三个既有字段，只新增协议与声明字段；没有另造第二套设置形状。
+- 未声明的能力一律不发：`custom_reasoning=false` 时 `reasoning: false`，Pi 不发送 reasoning 字段；`custom_images=false` 时 `input: ["text"]`；`custom_tools=false` 时在 adapter 层剥离工具定义。
+- `custom_tools` 缺省为 `true`，因为产品是工具型文件 agent，缺省关闭会让首个任务失败；`custom_reasoning` / `custom_images` 缺省为 `false`。
+- 任意 OpenAI 兼容端点采用保守 compat（无 `store`、无 `developer` 角色、`max_tokens`、无 strict schema），不开启任何厂商扩展。
+- 容量由用户显式给出，`max_output` 不得超过 `context_window`，未知端点不假设无限窗口。
+- 未修改 `vendor/pi`，通过 `@earendil-works/pi-ai/api/*.lazy` 子路径复用两组 vendored adapter。
+
+**自动门禁**：`runtime:test` 525/525（新增 14 项，含 Chat Completions 与 Responses 两类本地 HTTP/SSE 真实 adapter、工具往返、取消语义、错误流、环境覆盖与凭据隔离）、`frontend:test` 66/66（新增 3 项）、`cargo test` 57/57、`typecheck`、`build` 通过。
+
+**已知限制**
+
+- 仅本地夹具与本地 HTTP 服务器证据；没有任何真实厂商端点被调用，B1–B9 / H1 / H5 仍未执行。
+- Windows 凭据管理器实机未验证；Rust 测试只覆盖 `validate_provider` 白名单，实际读写仍是既有实现。
+- 未提供鉴权头自定义（如某些网关的 `api-key` 头）；需要预置 Bearer 之外的方案时另立任务。
+- 声明 `custom_reasoning=true` 时向端点发送 `reasoning_effort`，与既有四家一样，是否被真实端点接受未验证。
+- 能力声明是配置约束，不是厂商质量保证；连接测试成功只证明一次探测。

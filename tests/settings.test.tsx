@@ -30,7 +30,7 @@ beforeEach(() => {
     document: { schema_version: 1, provider: "openai", model: null, api_url: null, workspace_root: "D:/retained", thinking_level: "off", mcp_config_path: "D:/retained/mcp.json" },
     effective: { provider: "openai", model: null, api_url: null, thinking_level: "off", workspace_root: "D:/retained", mcp_config_path: "D:/retained/mcp.json" },
     sources: { provider: { kind: "settings" }, model: { kind: "settings" }, api_url: { kind: "settings" }, thinking_level: { kind: "default" }, workspace_root: { kind: "settings" }, mcp_config_path: { kind: "settings" } },
-    credentials: { openai: { configured: true, stored: true, source: "credential_store" }, anthropic: { configured: false, stored: false, source: "none" }, deepseek: { configured: false, source: "none" }, google: { configured: false, source: "none" } },
+    credentials: { openai: { configured: true, stored: true, source: "credential_store" }, anthropic: { configured: false, stored: false, source: "none" }, deepseek: { configured: false, source: "none" }, google: { configured: false, source: "none" }, custom: { configured: false, source: "none" } },
     legacy_source: null, diagnostics: [], runtime_fields: ["provider", "model", "api_url", "mcp_config_path"],
     application: { state: "loaded", loaded_revision: "effective-revision", mode: "idle_rebuild" },
   };
@@ -302,4 +302,57 @@ it("names the level the runtime will use when the saved one is unavailable", asy
   expect(select.value).toBe("");
   expect(container.textContent).toContain("Saved: medium · not available on this model");
   expect(container.textContent).toContain("This model will use “high” instead");
+});
+
+it("edits the custom route's protocol, capacity and declared capabilities", async () => {
+  snapshot = {
+    ...snapshot,
+    document: { ...snapshot.document, provider: "custom", model: "route-model", api_url: "https://route.example/v1", custom_protocol: "openai-completions", custom_context_window: "32000", custom_max_output: "4096", custom_reasoning: "true", custom_tools: "false" },
+    effective: { ...snapshot.effective, provider: "custom", model: "route-model", api_url: "https://route.example/v1" },
+    sources: { ...snapshot.sources, provider: { kind: "settings" }, model: { kind: "settings" }, api_url: { kind: "settings" } },
+    credentials: { ...snapshot.credentials, custom: { configured: true, stored: true, source: "credential_store" } },
+    custom_route: { ok: true, route: { provider: "custom", default_model: "route-model", custom: true, protocol: "openai-completions", tools: false, models: [{ id: "route-model", name: "route-model", api: "openai-completions", base_url: "https://route.example/v1", reasoning: true, input: ["text"], context_window: 32000, max_tokens: 4096, thinking_levels: ["off", "low", "medium", "high"] }] } },
+  };
+  await render();
+  // The free-text model field replaces the catalog select for a custom route.
+  expect(container.querySelector<HTMLInputElement>("#settings-model")!.value).toBe("route-model");
+  expect(container.querySelector<HTMLSelectElement>("#settings-protocol")!.value).toBe("openai-completions");
+  expect(container.querySelector<HTMLInputElement>("#settings-context")!.value).toBe("32000");
+  // The declared "no tools" choice is reflected rather than assumed on.
+  const checkboxes = [...container.querySelectorAll<HTMLInputElement>(".settings-capabilities input")];
+  expect(checkboxes.map((entry) => entry.checked)).toEqual([false, true, false]);
+  expect(container.textContent).toContain("Custom API");
+});
+
+it("saves only the custom route fields it changed and keeps the declared flags as strings", async () => {
+  snapshot = {
+    ...snapshot,
+    document: { ...snapshot.document, provider: "custom", model: "route-model", api_url: "https://route.example/v1", custom_protocol: "openai-completions", custom_context_window: "32000", custom_max_output: "4096" },
+    effective: { ...snapshot.effective, provider: "custom", model: "route-model", api_url: "https://route.example/v1" },
+    custom_route: { ok: true, route: { provider: "custom", default_model: "route-model", custom: true, protocol: "openai-completions", tools: true, models: [{ id: "route-model", name: "route-model", api: "openai-completions", base_url: "https://route.example/v1", reasoning: false, input: ["text"], context_window: 32000, max_tokens: 4096, thinking_levels: ["off"] }] } },
+  };
+  await render();
+  await act(async () => {
+    const element = container.querySelector<HTMLSelectElement>("#settings-protocol")!;
+    element.value = "openai-responses";
+    element.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await click("Save settings");
+  expect(nativeClient.saveSettings).toHaveBeenCalledWith(expect.objectContaining({
+    provider: "custom", model: "route-model", api_url: "https://route.example/v1",
+    custom_protocol: "openai-responses", custom_context_window: "32000", custom_max_output: "4096",
+    custom_tools: "true", custom_reasoning: "false", custom_images: "false",
+  }), "saved-revision");
+});
+
+it("shows the route error instead of a locked save when the declaration is unusable", async () => {
+  snapshot = {
+    ...snapshot,
+    document: { ...snapshot.document, provider: "custom" },
+    effective: { ...snapshot.effective, provider: "custom" },
+    custom_route: { ok: false, code: "custom_route_invalid_context_window", message: "The context window must be a whole number of tokens." },
+  };
+  await render();
+  expect(container.textContent).toContain("The context window must be a whole number of tokens.");
+  expect(container.querySelector<HTMLInputElement>("#settings-model")!.value).toBe("");
 });

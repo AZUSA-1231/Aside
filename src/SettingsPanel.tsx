@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, LoaderCircle } from "lucide-react";
 import { nativeClient, toNativeError } from "./lib/ipc";
-import type { ConnectionTestResult, ProviderCatalog, ResolvedThinkingLevel, SettingsDocument, SettingsProvider, SettingsSnapshot, ThinkingLevel } from "./lib/settings";
+import type { ConnectionTestResult, CustomProtocol, ProviderCatalog, ResolvedThinkingLevel, SettingsDocument, SettingsProvider, SettingsSnapshot, ThinkingLevel } from "./lib/settings";
 import McpSettingsCard from "./McpSettingsCard";
 import "./settings.css";
 
-const providers: SettingsProvider[] = ["openai", "anthropic", "deepseek", "google"];
+const providers: SettingsProvider[] = ["openai", "anthropic", "deepseek", "google", "custom"];
 const isProvider = (value: string): value is SettingsProvider => providers.includes(value as SettingsProvider);
-const providerName = (value: string) => ({ openai: "OpenAI", anthropic: "Anthropic", deepseek: "DeepSeek", google: "Google" })[value] ?? value;
+const providerName = (value: string) => ({ openai: "OpenAI", anthropic: "Anthropic", deepseek: "DeepSeek", google: "Google", custom: "Custom API" })[value] ?? value;
+const protocols: CustomProtocol[] = ["openai-completions", "openai-responses"];
+const protocolName = (value: CustomProtocol) => value === "openai-completions" ? "Chat Completions" : "Responses";
 const sourceName = (value: string) => ({ environment: "Process environment", settings: "User settings", legacy: "Legacy env file", default: "Default", credential_store: "Windows Credential Manager", none: "Not configured" })[value] ?? value;
 const applicationName = (value: SettingsSnapshot["application"]["state"]) => ({
   not_started: "Runtime not started", starting: "Runtime starting", loaded: "Configuration loaded",
@@ -26,6 +28,12 @@ export default function SettingsPanel({ onClose, taskRunning }: { onClose: () =>
   const [workspaceDirty, setWorkspaceDirty] = useState(false);
   const [thinkingLevel, setThinkingLevel] = useState("");
   const [thinkingDirty, setThinkingDirty] = useState(false);
+  const [protocol, setProtocol] = useState<CustomProtocol>("openai-completions");
+  const [contextWindow, setContextWindow] = useState("");
+  const [maxOutput, setMaxOutput] = useState("");
+  const [reasoning, setReasoning] = useState(false);
+  const [images, setImages] = useState(false);
+  const [tools, setTools] = useState(true);
   const [dirty, setDirty] = useState(false);
   const [catalogs, setCatalogs] = useState<Partial<Record<SettingsProvider, ProviderCatalog>>>({});
   const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -51,6 +59,15 @@ export default function SettingsPanel({ onClose, taskRunning }: { onClose: () =>
       setWorkspaceDirty(false);
       setThinkingLevel(Object.prototype.hasOwnProperty.call(next.document, "thinking_level") ? next.document.thinking_level ?? "" : "");
       setThinkingDirty(false);
+      const document = next.document;
+      setProtocol(protocols.includes(document.custom_protocol as CustomProtocol) ? document.custom_protocol as CustomProtocol : "openai-completions");
+      setContextWindow(document.custom_context_window ?? "");
+      setMaxOutput(document.custom_max_output ?? "");
+      setReasoning(document.custom_reasoning === "true");
+      setImages(document.custom_images === "true");
+      // Absent means "not declared", and an undeclared capability falls back to
+      // the route's default, which is tool support on.
+      setTools(document.custom_tools !== "false");
       setDirty(false);
       if (clearKey) setApiKey("");
       setTestResult(null);
@@ -93,15 +110,27 @@ export default function SettingsPanel({ onClose, taskRunning }: { onClose: () =>
   useEffect(() => {
     let cancelled = false;
     setCatalogError(null);
-    const requested = [...new Set([provider, effectiveProvider, savedProvider].filter((value): value is SettingsProvider => Boolean(value && isProvider(value))))];
+    // The custom route has no vendor catalog: its single model is projected
+    // from the saved declaration (`snapshot.custom_route`). Asking for a
+    // catalog here would only produce an error while the route is still being
+    // filled in, and would leave that error on screen after it becomes valid.
+    const requested = [...new Set([provider, effectiveProvider, savedProvider]
+      .filter((value): value is SettingsProvider => Boolean(value && isProvider(value) && value !== "custom")))];
+    if (requested.length === 0) return () => { cancelled = true; };
     void Promise.all(requested.map((selected) => nativeClient.getProviderCatalog(selected))).then((results) => {
       if (!cancelled) setCatalogs((current) => ({ ...current, ...Object.fromEntries(results.map((catalog) => [catalog.provider, catalog])) }));
     }).catch((failure) => { if (!cancelled) setCatalogError(toNativeError(failure, "settings").message); });
     return () => { cancelled = true; };
   }, [provider, effectiveProvider, savedProvider]);
 
+  const custom = provider === "custom";
   const catalog = catalogs[provider];
-  const selectedModel = catalog?.models.find((entry) => entry.id === (model || catalog.default_model));
+  // A custom route advertises exactly the model the user declared, so the
+  // "selected model" concept only resolves once the route is valid. The
+  // declared model id is the route's single entry.
+  const selectedModel = custom
+    ? (snapshot?.custom_route?.ok ? snapshot.custom_route.route?.models[0] : undefined)
+    : catalog?.models.find((entry) => entry.id === (model || catalog.default_model));
   const effectiveCatalog = effectiveProvider && isProvider(effectiveProvider) ? catalogs[effectiveProvider] : undefined;
   const effectiveModel = effectiveCatalog?.models.find((entry) => entry.id === (snapshot?.effective.model || effectiveCatalog.default_model));
   const savedCatalog = savedProvider && isProvider(savedProvider) ? catalogs[savedProvider] : undefined;
@@ -122,6 +151,16 @@ export default function SettingsPanel({ onClose, taskRunning }: { onClose: () =>
   const savedLevelUnavailable = Boolean(thinkingLevel) && !previewLevel;
   const busy = operation !== null;
   const unsaved = dirty || workspaceDirty || thinkingDirty || apiKey.length > 0;
+  // Every custom-route field travels as a string in the document; empty means
+  // "not declared" and is omitted rather than written as an empty string.
+  const customDocument = () => ({
+    custom_protocol: protocol,
+    custom_context_window: contextWindow.trim() || null,
+    custom_max_output: maxOutput.trim() || null,
+    custom_reasoning: reasoning ? "true" as const : "false" as const,
+    custom_images: images ? "true" as const : "false" as const,
+    custom_tools: tools ? "true" as const : "false" as const,
+  });
   const changed = () => { setDirty(true); setNotice(null); setTestResult(null); };
 
   return <section className="settings-panel" aria-label="Model and API settings" aria-busy={busy}>
@@ -133,9 +172,15 @@ export default function SettingsPanel({ onClose, taskRunning }: { onClose: () =>
     {notice && <p className="settings-note" role="status">{notice}</p>}
     <form className="settings-card" onSubmit={(event) => {
       event.preventDefault();
-      if (!snapshot || busy || !selectedModel) return;
+      if (!snapshot || busy || (!selectedModel && !custom)) return;
       void perform("Saving settings", async () => {
-        const next = await nativeClient.saveSettings({ ...baseDocument, provider, model: model || null, api_url: apiUrl.trim() || null }, revision);
+        const next = await nativeClient.saveSettings({
+          ...baseDocument,
+          ...(custom ? customDocument() : {}),
+          provider,
+          model: custom ? (model.trim() || null) : (model || null),
+          api_url: apiUrl.trim() || null,
+        }, revision);
         accept(next);
         setBaseDocument(next.document); setRevision(next.revision); setDirty(false); setTestResult(null);
         setNotice(apiKey ? "Settings saved. Save the API key separately before applying." : "Settings saved. Apply when idle to update the runtime.");
@@ -144,29 +189,59 @@ export default function SettingsPanel({ onClose, taskRunning }: { onClose: () =>
       <h2>Provider and model</h2>
       <label htmlFor="settings-provider">Provider</label>
       <select id="settings-provider" value={provider} disabled={busy} onChange={(event) => {
-        setProvider(event.currentTarget.value as SettingsProvider); setModel(""); setApiUrl(""); setApiKey(""); changed();
+        const next = event.currentTarget.value as SettingsProvider;
+        setProvider(next);
+        // Switching to the custom route keeps the free-text model field; the
+        // built-in catalogs start from their default again.
+        if (next !== "custom") setModel("");
+        setApiUrl(""); setApiKey(""); changed();
       }}>{providers.map((value) => <option key={value} value={value}>{providerName(value)}</option>)}</select>
-      <label htmlFor="settings-model">Model</label>
-      <select id="settings-model" value={model} disabled={busy || !catalog} onChange={(event) => { setModel(event.currentTarget.value); changed(); }}>
-        <option value="">Provider default{catalog?.default_model ? ` · ${catalog.default_model}` : ""}</option>
-        {model && !catalog?.models.some((entry) => entry.id === model) && <option value={model}>{model} · unsupported</option>}
-        {catalog?.models.map((entry) => <option key={entry.id} value={entry.id}>{entry.name} · {entry.id}</option>)}
-      </select>
+      {custom ? <>
+        <label htmlFor="settings-model">Model ID</label>
+        <input id="settings-model" type="text" value={model} maxLength={200} disabled={busy} placeholder="The model id this endpoint expects"
+          onChange={(event) => { setModel(event.currentTarget.value); changed(); }} />
+        <label htmlFor="settings-protocol">Protocol</label>
+        <select id="settings-protocol" value={protocol} disabled={busy} onChange={(event) => { setProtocol(event.currentTarget.value as CustomProtocol); changed(); }}>
+          {protocols.map((value) => <option key={value} value={value}>{protocolName(value)}</option>)}
+        </select>
+        <label htmlFor="settings-context">Context window <span>(tokens)</span></label>
+        <input id="settings-context" type="text" inputMode="numeric" value={contextWindow} maxLength={9} disabled={busy} placeholder="Required · the model's context window"
+          onChange={(event) => { setContextWindow(event.currentTarget.value.replace(/[^0-9]/g, "")); changed(); }} />
+        <label htmlFor="settings-output">Maximum output <span>(tokens)</span></label>
+        <input id="settings-output" type="text" inputMode="numeric" value={maxOutput} maxLength={9} disabled={busy} placeholder="Required · at most the context window"
+          onChange={(event) => { setMaxOutput(event.currentTarget.value.replace(/[^0-9]/g, "")); changed(); }} />
+        <fieldset className="settings-capabilities">
+          <legend>Declared capabilities</legend>
+          <label><input type="checkbox" checked={tools} disabled={busy} onChange={(event) => { setTools(event.currentTarget.checked); changed(); }} /> Accepts tool calls</label>
+          <label><input type="checkbox" checked={reasoning} disabled={busy} onChange={(event) => { setReasoning(event.currentTarget.checked); changed(); }} /> Supports reasoning levels</label>
+          <label><input type="checkbox" checked={images} disabled={busy} onChange={(event) => { setImages(event.currentTarget.checked); changed(); }} /> Accepts image input</label>
+        </fieldset>
+        <p className="settings-note">Only what you declare is sent: an unsupported capability is never guessed. Capacity must be entered because an unknown endpoint cannot be assumed to accept unlimited context.</p>
+        {snapshot?.custom_route && !snapshot.custom_route.ok && <p className="settings-error" role="alert">{snapshot.custom_route.message}</p>}
+      </> : <>
+        <label htmlFor="settings-model">Model</label>
+        <select id="settings-model" value={model} disabled={busy || !catalog} onChange={(event) => { setModel(event.currentTarget.value); changed(); }}>
+          <option value="">Provider default{catalog?.default_model ? ` · ${catalog.default_model}` : ""}</option>
+          {model && !catalog?.models.some((entry) => entry.id === model) && <option value={model}>{model} · unsupported</option>}
+          {catalog?.models.map((entry) => <option key={entry.id} value={entry.id}>{entry.name} · {entry.id}</option>)}
+        </select>
+      </>}
       {catalogError && <p className="settings-error" role="alert">{catalogError}</p>}
-      {catalog && !selectedModel && <p className="settings-error">Choose a model from the supported catalog.</p>}
+      {!custom && catalog && !selectedModel && <p className="settings-error">Choose a model from the supported catalog.</p>}
       {selectedModel && <p className="settings-note">{selectedModel.context_window.toLocaleString()} context · {selectedModel.max_tokens.toLocaleString()} output · {selectedModel.reasoning ? "Reasoning capable" : "Standard model"} · {selectedModel.api}</p>}
-      <label htmlFor="settings-url">Base URL <span>(optional)</span></label>
-      <input id="settings-url" type="url" value={apiUrl} maxLength={4096} placeholder={selectedModel?.base_url ?? "Provider default endpoint"} disabled={busy}
+      <label htmlFor="settings-url">Base URL {custom ? "" : <span>(optional)</span>}</label>
+      <input id="settings-url" type="url" value={apiUrl} maxLength={4096} placeholder={custom ? "Required · https://endpoint.example/v1" : selectedModel?.base_url ?? "Provider default endpoint"} disabled={busy}
         onChange={(event) => { setApiUrl(event.currentTarget.value); changed(); }} />
-      <p className="settings-note">Use an endpoint compatible with the selected model protocol. Blank uses the provider default.</p>
+      <p className="settings-note">{custom ? "The API root the endpoint serves. Aside appends the protocol's path; credentials, query and fragment are refused." : "Use an endpoint compatible with the selected model protocol. Blank uses the provider default."}</p>
       {snapshot && <div className="settings-effective">
         <strong>Effective configuration</strong>
-        <span>{providerName(snapshot.effective.provider)} · {snapshot.effective.model || effectiveCatalog?.default_model || "Provider default"}</span>
+        <span>{providerName(snapshot.effective.provider)} · {snapshot.effective.model || effectiveCatalog?.default_model || (custom ? "No model declared" : "Provider default")}</span>
         <span className="settings-path">{endpoint || "Default endpoint unavailable"}</span>
         {(["provider", "model", "api_url"] as const).map((field) => <span key={field}>{field === "api_url" ? "Base URL" : field}: {sourceName(snapshot.sources[field].kind)}{snapshot.sources[field].kind === "environment" ? " · overrides saved settings" : ""}</span>)}
+        {custom && <span>protocol: {snapshot.custom_route?.ok ? protocolName(snapshot.custom_route.route!.protocol) : sourceName(snapshot.sources.custom_protocol?.kind ?? "default")}</span>}
       </div>}
       <div className="settings-actions">
-        <button type="submit" disabled={busy || !snapshot || !selectedModel || !dirty}>Save settings</button>
+        <button type="submit" disabled={busy || !snapshot || (!selectedModel && !custom) || !dirty}>Save settings</button>
         <button type="button" disabled={busy} onClick={() => void perform("Reloading settings", async () => accept(await nativeClient.getSettings(), true))}>Reload saved settings</button>
       </div>
     </form>

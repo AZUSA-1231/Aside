@@ -23,11 +23,11 @@
 
 ## 3. 第一版逐项清单
 
-“补齐”的有限范围以 2026-11-09 的 V1-SCOPE 为准，逐功能先 plan 再执行，当前均不得视为已实现。R1/R2/R3 在本文表示发布阶段，和历史恢复计划的 R1–R4 不是同一套编号。
+“补齐”的有限范围以 2026-11-09 的 V1-SCOPE 为准，逐功能先 plan 再执行。M01 的 R1-01 已完成开发并通过自动门禁，其余模块仍未实现；单模块完成不代表里程碑或发布完成。R1/R2/R3 在本文表示发布阶段，和历史恢复计划的 R1–R4 不是同一套编号。
 
 | ID / 模块 | Aside 当前实际状态 | DSH 对照 | Release-1 的建议终点 | 明确不做 |
 | --- | --- | --- | --- | --- |
-| M01 Provider / Model | 已有四家 provider、catalog、Base URL、原生凭据、连接测试、thinking 和安全重建；模型必须在内建 catalog，不能新增自定义协议 / model id。 | `llm-pi-ai` + Models 设置支持 catalog 及手工 API 路由。 | 保留四家；补一个可配置的 custom route，至少 OpenAI Chat Completions / Responses，显式协议、URL、model id、窗口 / 输出容量、能力约束；测试真实请求形状。不是只增加自由文本输入。 | 多账户 / 多 profile、登录订阅适配、所有网关兼容矩阵。 |
+| M01 Provider / Model | 四家 provider、catalog、Base URL、原生凭据、连接测试、thinking 和安全重建；另有 R1-01 已实现的单个 custom route：`provider: custom`，显式 Chat Completions / Responses、model id、Base URL、上下文 / 输出容量与 tools / reasoning / image 声明，凭据为独立原生槽位。测试与实际任务共用同一解析路径；本地两类协议夹具通过，真实厂商未测。 | `llm-pi-ai` + Models 设置支持 catalog 及手工 API 路由。 | 保留四家；custom route 已按显式协议、URL、model id、容量、能力约束实现，并有真实请求形状证据。不是只增加自由文本输入。 | 多账户 / 多 profile、登录订阅适配、所有网关兼容矩阵。 |
 | M02 默认 Agent 设置（不含创建） | runtime 内部会创建默认 Agent；没有用户级 Agent 定义、instructions 或命名 Agent 管理。新建会话不等于创建 Agent。 | `agent-loop`、`agent-preset` 和 preset UI。 | 保留默认实例，模型 / 工具 / skill 由各模块配置；指令编辑仍是待确认建议，不列为已确认必补。 | 用户侧 Agent 创建、角色 / 模板管理、动态插件树、重写 agent loop。 |
 | M03 Tools | 已有 registry、来源分类、参数校验、逐次权限和八项文件 / 文档工具；MCP 工具按任务注册。没有用户侧内建工具开关。 | `core/tools` 注册、策略与 executor 分离。 | 工具清单、来源 / 风险 / 可用性和启停入口；停用在执行器生效，不只是隐藏 UI。配置在下次任务生效。 | 用户上传任意 JS 工具、shell / 代码执行、任意“始终允许”。 |
 | M04 Skills | 有发现 / frontmatter / 冲突诊断 / manifest / 激活；生产默认只连内建根。user/project resourcePolicy helper 存在，但未由设置接通；无安装 / 管理入口。 | `skill-filesystem` + `tool-skill` + skill UI。 | 接通用户本地 skill 目录；本地目录导入、查看来源、启停、刷新、加载错误。显式采用 / 自动激活沿用标准技能材料；不执行安装脚本。 | 在线 marketplace、git/npm 一键运行依赖、任意项目目录自动信任。 |

@@ -1,6 +1,11 @@
 use serde_json::{Map, Value};
 
-pub const PROVIDERS: [&str; 4] = ["openai", "anthropic", "deepseek", "google"];
+/// Credential slots.
+///
+/// `custom` is the user-declared API route. It is not a built-in provider with
+/// a model catalog, but its key lives in the same native store under its own
+/// target name, so a custom Base URL can never be sent a built-in vendor's key.
+pub const PROVIDERS: [&str; 5] = ["openai", "anthropic", "deepseek", "google", "custom"];
 
 pub fn validate_provider(provider: &str) -> Result<(), &'static str> {
     if PROVIDERS.contains(&provider) {

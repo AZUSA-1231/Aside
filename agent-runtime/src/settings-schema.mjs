@@ -3,7 +3,23 @@ import { isAbsolute, join } from "node:path";
 
 export const SETTINGS_SCHEMA_VERSION = 1;
 export const SETTINGS_MAX_BYTES = 64 * 1024;
+/**
+ * Providers with a built-in model catalog.
+ *
+ * `custom` is deliberately absent: it has no catalog, its model id is
+ * user-declared, and treating it as a catalog provider would let a custom
+ * model id be looked up as if the vendor shipped it.
+ */
 export const SETTINGS_PROVIDERS = Object.freeze(["openai", "anthropic", "deepseek", "google"]);
+export const CUSTOM_PROVIDER_ID = "custom";
+/** Every accepted `provider` setting value. */
+export const SETTINGS_PROVIDER_VALUES = Object.freeze([...SETTINGS_PROVIDERS, CUSTOM_PROVIDER_ID]);
+/**
+ * Credential slots. The custom route keeps its key separate from every
+ * built-in vendor's, both in the native store and in this list, so a custom
+ * Base URL can never inherit an OpenAI key.
+ */
+export const SETTINGS_CREDENTIAL_PROVIDERS = SETTINGS_PROVIDER_VALUES;
 export const SETTINGS_THINKING_LEVELS = Object.freeze(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
 export const SETTINGS_FIELDS = Object.freeze({
   provider: "ASIDE_PROVIDER",
@@ -18,7 +34,40 @@ export const PROVIDER_CREDENTIAL_NAMES = Object.freeze({
   anthropic: ["ANTHROPIC_API_KEY"],
   deepseek: ["DEEPSEEK_API_KEY"],
   google: ["GEMINI_API_KEY"],
+  custom: ["ASIDE_CUSTOM_API_KEY"],
 });
+
+/**
+ * Custom-route settings fields.
+ *
+ * The route reuses `provider` (`custom`), `model`, and `api_url`. These fields
+ * add what those three cannot express: which wire protocol to speak and the
+ * capacity / capabilities the user declares. Keeping them in the same document
+ * means one save path, one revision and one effective-source report.
+ */
+export const SETTINGS_CUSTOM_FIELDS = Object.freeze({
+  custom_protocol: "ASIDE_CUSTOM_PROTOCOL",
+  custom_model_name: "ASIDE_CUSTOM_MODEL_NAME",
+  custom_context_window: "ASIDE_CUSTOM_CONTEXT_WINDOW",
+  custom_max_output: "ASIDE_CUSTOM_MAX_OUTPUT",
+  custom_reasoning: "ASIDE_CUSTOM_REASONING",
+  custom_images: "ASIDE_CUSTOM_IMAGES",
+  custom_tools: "ASIDE_CUSTOM_TOOLS",
+});
+
+/**
+ * The wire protocols a custom route may declare.
+ *
+ * These are the two adapters the vendored Pi package ships for OpenAI-compatible
+ * endpoints. A protocol outside this list is refused rather than routed to a
+ * best guess.
+ */
+export const CUSTOM_PROTOCOLS = Object.freeze(["openai-completions", "openai-responses"]);
+/** The environment variable the custom route's key is resolved from. */
+export const CUSTOM_CREDENTIAL_NAME = PROVIDER_CREDENTIAL_NAMES.custom[0];
+
+const CUSTOM_BOOLEAN_FIELDS = new Set(["custom_reasoning", "custom_images", "custom_tools"]);
+const CUSTOM_CAPACITY_FIELDS = new Set(["custom_context_window", "custom_max_output"]);
 
 export class SettingsError extends Error {
   constructor(code, message) {
@@ -30,7 +79,7 @@ export class SettingsError extends Error {
 
 export function validateCredentialValues(value = {}) {
   if (!value || typeof value !== "object" || Array.isArray(value)
-    || Object.entries(value).some(([provider, key]) => !SETTINGS_PROVIDERS.includes(provider)
+    || Object.entries(value).some(([provider, key]) => !SETTINGS_CREDENTIAL_PROVIDERS.includes(provider)
       || typeof key !== "string" || !/^[\x21-\x7e]{1,2048}$/.test(key))) {
     throw new SettingsError("credential_invalid", "The API key must contain 1–2048 printable characters without spaces.");
   }
@@ -84,7 +133,7 @@ export function validateSettingsDocument(value) {
   const document = { schema_version: SETTINGS_SCHEMA_VERSION };
   for (const [field, entry] of Object.entries(value)) {
     if (field === "schema_version") continue;
-    if (!Object.hasOwn(SETTINGS_FIELDS, field)) {
+    if (!Object.hasOwn(SETTINGS_FIELDS, field) && !Object.hasOwn(SETTINGS_CUSTOM_FIELDS, field)) {
       throw new SettingsError("settings_unknown_field", "Aside settings contain an unsupported field. Credentials must not be stored in settings.json.");
     }
     if (entry === null && field !== "provider" && field !== "thinking_level") {
@@ -95,8 +144,17 @@ export function validateSettingsDocument(value) {
       throw new SettingsError("settings_invalid_value", `The ${field} setting must be a non-empty string.`);
     }
     const normalized = entry.trim();
-    if (field === "provider" && !SETTINGS_PROVIDERS.includes(normalized)) {
+    if (field === "provider" && !SETTINGS_PROVIDER_VALUES.includes(normalized)) {
       throw new SettingsError("settings_invalid_provider", "Choose a supported Aside provider.");
+    }
+    if (CUSTOM_BOOLEAN_FIELDS.has(field) && normalized !== "true" && normalized !== "false") {
+      throw new SettingsError("settings_invalid_value", `The ${field} setting must be true or false.`);
+    }
+    if (CUSTOM_CAPACITY_FIELDS.has(field) && (!/^[0-9]{1,9}$/u.test(normalized) || Number(normalized) < 1)) {
+      throw new SettingsError("settings_invalid_value", `The ${field} setting must be a whole number of tokens.`);
+    }
+    if (field === "custom_protocol" && !CUSTOM_PROTOCOLS.includes(normalized)) {
+      throw new SettingsError("settings_invalid_custom_protocol", "Choose Chat Completions or Responses for the custom route.");
     }
     if (field === "thinking_level" && !SETTINGS_THINKING_LEVELS.includes(normalized)) {
       throw new SettingsError("settings_invalid_thinking_level", "Choose a supported thinking level.");

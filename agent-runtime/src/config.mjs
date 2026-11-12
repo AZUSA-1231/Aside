@@ -7,6 +7,7 @@ import {
   getAsideConfigRoot,
   normalizeAsideApiUrl,
   PROVIDER_CREDENTIAL_NAMES,
+  SETTINGS_CUSTOM_FIELDS,
   SETTINGS_FIELDS,
   validateCredentialValues,
 } from "./settings-schema.mjs";
@@ -112,7 +113,10 @@ export async function loadAsideConfig({
   const settingsValues = {};
   const fieldSources = {};
   const environmentValues = copyEnvironment(environment);
-  for (const [field, variable] of Object.entries(SETTINGS_FIELDS)) {
+  // Custom-route fields share the same document and source priority as the
+  // provider fields; they are read through `values` so one resolve pass feeds
+  // both the settings surface and the runtime.
+  for (const [field, variable] of Object.entries({ ...SETTINGS_FIELDS, ...SETTINGS_CUSTOM_FIELDS })) {
     if (Object.hasOwn(settings.document, field)) settingsValues[variable] = settings.document[field] ?? "";
     fieldSources[field] = Object.freeze(Object.hasOwn(environmentValues, variable)
       ? { kind: "environment" }
@@ -145,7 +149,7 @@ export async function loadAsideConfig({
       ? join(dirname(settings.path), "mcp.json")
       : defaultMcpConfigPath);
   const publicValues = {};
-  for (const [field, variable] of Object.entries(SETTINGS_FIELDS)) {
+  for (const [field, variable] of Object.entries({ ...SETTINGS_FIELDS, ...SETTINGS_CUSTOM_FIELDS })) {
     publicValues[field] = getAsideConfigValue(values, variable) ?? null;
   }
   publicValues.provider ??= "openai";

@@ -1,4 +1,6 @@
-export type SettingsProvider = "openai" | "anthropic" | "deepseek" | "google";
+export type BuiltInProvider = "openai" | "anthropic" | "deepseek" | "google";
+export type SettingsProvider = BuiltInProvider | "custom";
+export type CustomProtocol = "openai-completions" | "openai-responses";
 export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
 export interface SettingsDocument {
@@ -9,6 +11,13 @@ export interface SettingsDocument {
   thinking_level?: ThinkingLevel | null;
   workspace_root?: string | null;
   mcp_config_path?: string | null;
+  custom_protocol?: CustomProtocol | null;
+  custom_model_name?: string | null;
+  custom_context_window?: string | null;
+  custom_max_output?: string | null;
+  custom_reasoning?: "true" | "false" | null;
+  custom_images?: "true" | "false" | null;
+  custom_tools?: "true" | "false" | null;
 }
 
 export interface SettingsSnapshot {
@@ -38,6 +47,7 @@ export interface SettingsSnapshot {
   legacy_source: string | null;
   default_workspace_root?: string | null;
   thinking?: ResolvedThinkingLevel | null;
+  custom_route?: CustomRouteStatus | null;
   diagnostics: Array<{ code: string; field: string; message: string }>;
   runtime_fields: string[];
   application: {
@@ -48,9 +58,23 @@ export interface SettingsSnapshot {
   };
 }
 
+export interface CustomRouteStatus {
+  ok: boolean;
+  route?: ProviderCatalog & {
+    custom: true;
+    protocol: CustomProtocol;
+    tools: boolean;
+  };
+  code?: string;
+  message?: string;
+}
+
 export interface ProviderCatalog {
   provider: SettingsProvider;
   default_model: string | null;
+  custom?: true;
+  protocol?: CustomProtocol;
+  tools?: boolean;
   models: Array<{
     id: string;
     name: string;

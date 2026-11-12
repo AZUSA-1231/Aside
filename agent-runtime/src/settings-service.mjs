@@ -1,5 +1,10 @@
 import { describeAsideSettings, loadAsideConfig } from "./config.mjs";
-import { SETTINGS_FIELDS, SettingsError, validateSettingsDocument } from "./settings-schema.mjs";
+import {
+  SETTINGS_CUSTOM_FIELDS,
+  SETTINGS_FIELDS,
+  SettingsError,
+  validateSettingsDocument,
+} from "./settings-schema.mjs";
 import { saveUserSettings } from "./settings-store.mjs";
 
 /**
@@ -20,6 +25,25 @@ async function describeThinking(configuration) {
   } catch {
     // An unselectable model already surfaces through the existing diagnostics.
     return null;
+  }
+}
+
+/**
+ * The declared custom route, or the reason it cannot be used.
+ *
+ * This is reported separately from `describeThinking` because the two answer
+ * different questions: one is "what will run", the other is "is what you
+ * declared usable at all". A route that fails validation appears here with a
+ * code so the surface can point at the field, instead of showing a silently
+ * empty model list.
+ */
+async function describeCustomRouteDiagnostics(configuration) {
+  if (configuration.publicValues.provider !== "custom") return null;
+  const { describeCustomRoute, resolveCustomRoute } = await import("./custom-route.mjs");
+  try {
+    return { ok: true, route: describeCustomRoute(resolveCustomRoute(configuration.values)) };
+  } catch (error) {
+    return { ok: false, code: error?.code ?? "custom_route_invalid", message: error?.message ?? "The custom route is invalid." };
   }
 }
 
@@ -95,7 +119,20 @@ export async function handleSettingsRequest(request, { environment = process.env
     throw new SettingsError("settings_invalid_request", "The settings request contains unsupported fields.");
   }
   if (request.operation === "catalog") {
-    const { getProviderCatalog } = await import("./provider-settings.mjs");
+    const { getProviderCatalog, isCustomProvider } = await import("./provider-settings.mjs");
+    // A built-in catalog is static, so it stays available even with a corrupt
+    // settings file. The custom route has no catalog: it can only be described
+    // from the saved document, and an unreadable document is reported rather
+    // than silently replaced with defaults.
+    if (isCustomProvider(request.provider)) {
+      let configuration;
+      try {
+        configuration = await loadAsideConfig({ environment, cwd, credentialValues });
+      } catch {
+        throw new SettingsError("settings_invalid_json", "Aside settings are unreadable, so the custom route cannot be described. Fix the settings file first.");
+      }
+      return getProviderCatalog(request.provider, configuration.values);
+    }
     return getProviderCatalog(request.provider);
   }
   const configuration = await loadAsideConfig({ environment, cwd, credentialValues });
@@ -128,13 +165,17 @@ export async function handleSettingsRequest(request, { environment = process.env
     return { ...result, effective_revision: configuration.effectiveRevision };
   }
   if (request.operation === "get") {
-    return { ...describeAsideSettings(configuration), thinking: await describeThinking(configuration) };
+    return {
+      ...describeAsideSettings(configuration),
+      custom_route: await describeCustomRouteDiagnostics(configuration),
+      thinking: await describeThinking(configuration),
+    };
   }
   const document = request.operation === "save"
     ? { ...validateSettingsDocument(request.document) }
     : { ...configuration.settings.document };
   if (request.operation === "import_legacy") {
-    for (const [field, variable] of Object.entries(SETTINGS_FIELDS)) {
+    for (const [field, variable] of Object.entries({ ...SETTINGS_FIELDS, ...SETTINGS_CUSTOM_FIELDS })) {
       if (Object.hasOwn(configuration.legacyValues, variable) && !Object.hasOwn(document, field)) {
         document[field] = configuration.legacyValues[variable].trim() || null;
       }
@@ -148,5 +189,9 @@ export async function handleSettingsRequest(request, { environment = process.env
   }
   await saveUserSettings({ document, expectedRevision: request.expected_revision, environment });
   const saved = await loadAsideConfig({ environment, cwd, credentialValues });
-  return { ...describeAsideSettings(saved), thinking: await describeThinking(saved) };
+  return {
+    ...describeAsideSettings(saved),
+    custom_route: await describeCustomRouteDiagnostics(saved),
+    thinking: await describeThinking(saved),
+  };
 }

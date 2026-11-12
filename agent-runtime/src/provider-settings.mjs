@@ -1,6 +1,7 @@
 import { createModels, defaultProviderAuthContext, getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import { getAsideConfigValue, normalizeAsideApiUrl } from "./config.mjs";
-import { SETTINGS_PROVIDERS, SettingsError } from "./settings-schema.mjs";
+import { buildCustomRoute, describeCustomRoute, resolveCustomRoute } from "./custom-route.mjs";
+import { CUSTOM_PROVIDER_ID, SETTINGS_PROVIDERS, SettingsError } from "./settings-schema.mjs";
 
 const providerFactories = {
   anthropic: async () => (await import("@earendil-works/pi-ai/providers/anthropic")).anthropicProvider(),
@@ -9,9 +10,13 @@ const providerFactories = {
   openai: async () => (await import("@earendil-works/pi-ai/providers/openai")).openaiProvider(),
 };
 
+export function isCustomProvider(providerId) {
+  return typeof providerId === "string" && providerId.toLowerCase() === CUSTOM_PROVIDER_ID;
+}
+
 async function providerModels(providerId, values = {}) {
   if (!SETTINGS_PROVIDERS.includes(providerId)) {
-    throw new SettingsError("settings_invalid_provider", "Select openai, anthropic, deepseek, or google.");
+    throw new SettingsError("settings_invalid_provider", "Select openai, anthropic, deepseek, google, or the custom route.");
   }
   const provider = await providerFactories[providerId]();
   const base = defaultProviderAuthContext();
@@ -23,7 +28,16 @@ async function providerModels(providerId, values = {}) {
   return { provider, models };
 }
 
-export async function getProviderCatalog(providerId) {
+/**
+ * The custom route is a single model, not a catalog. Its projection keeps the
+ * catalog shape so the settings surface and connection test share one path,
+ * but `custom: true` and the declared protocol make it clear nothing was
+ * resolved from a vendor catalog.
+ */
+export async function getProviderCatalog(providerId, values = {}) {
+  if (isCustomProvider(providerId)) {
+    return describeCustomRoute(resolveCustomRoute(values));
+  }
   const { provider, models } = await providerModels(providerId);
   const available = models.getModels(providerId);
   return {
@@ -41,6 +55,11 @@ export async function getProviderCatalog(providerId) {
 export async function selectConfiguredProvider(configuration) {
   const values = configuration.values;
   const providerId = (getAsideConfigValue(values, "ASIDE_PROVIDER") ?? "openai").toLowerCase();
+  if (isCustomProvider(providerId)) {
+    const route = resolveCustomRoute(values);
+    const { models, model } = await buildCustomRoute(route, values);
+    return { models, providerId: CUSTOM_PROVIDER_ID, model, route };
+  }
   const { models } = await providerModels(providerId, values);
   const requested = getAsideConfigValue(values, "ASIDE_MODEL");
   const selected = requested ? models.getModel(providerId, requested) : models.getModels(providerId)[0];
