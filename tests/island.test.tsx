@@ -428,3 +428,25 @@ it('shows the resolved workspace root and its captured target separately', async
   expect(container.querySelector('.workspace-chip')!.textContent).toContain('Captured root & target');
   expect(container.querySelector('.workspace-chip')!.textContent).toContain('Target · D:/reports/input.pdf');
 });
+
+it('R1-07a / C8-I038: switching conversations clears the previous document status', async () => {
+  await expand();
+  await act(async () => emit({ type: 'history_restored', messages: [] }));
+  const requestId = await send();
+  await act(async () => {
+    emit({ type: 'tool_result', request_id: requestId, task_id: 'task', tool_call_id: 'read', tool: 'workspace.read', status: 'succeeded', text: 'Text', truncated: false, details: { status: 'succeeded', format: 'docx', block_count: 3, warnings: [] } });
+    emit({ type: 'tool_result', request_id: requestId, task_id: 'task', tool_call_id: 'write', tool: 'workspace.write_docx', status: 'succeeded', text: 'Created', truncated: false, details: { status: 'succeeded', operation: 'create', output_path: 'D:\reports\old.docx' } });
+    emit({ type: 'completed', request_id: requestId });
+  });
+  expect(container.querySelector('.document-chip')).toBeTruthy();
+  expect(container.textContent).toContain('old.docx');
+
+  await act(async () => {
+    emit({ type: 'history_restored', replaced: true, messages: [] });
+  });
+
+  // Both cards describe work done in the conversation being left. Showing them
+  // in an empty new conversation claims files that are not part of it.
+  expect(container.querySelector('.document-chip')).toBeNull();
+  expect(container.textContent).not.toContain('old.docx');
+});

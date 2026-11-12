@@ -245,3 +245,82 @@ test("an untouched MCP file keeps the revision stable", async (context) => {
   const second = await handleSettingsRequest({ operation: "get" }, { environment, cwd });
   assert.equal(first.effective_revision, second.effective_revision);
 });
+
+test("R1-07a / C8-I035: saving another server preserves entries the editor could not parse", async (context) => {
+  const { configPath, environment, cwd } = await fixture(context);
+  await mkdir(join(configPath, ".."), { recursive: true });
+  const broken = { id: "broken", command: 42 };
+  await writeFile(configPath, JSON.stringify({ servers: [server({ id: "kept" }), broken, server({ id: "edited" })] }, null, 2));
+  const before = await handleSettingsRequest({ operation: "get_mcp" }, { environment, cwd });
+  assert.equal(before.servers.length, 2);
+  assert.equal(before.unreadable_servers.length, 1);
+  // The editor only touched the readable entry, but saving rewrites the entire
+  // file. The unreadable entry must survive byte-for-byte, in its original
+  // position, or an unrelated edit silently deletes the user's configuration.
+  const servers = before.servers.map((view) => (view.id === "edited" ? { ...view.raw, enabled: true } : view.raw));
+  await handleSettingsRequest({ operation: "save_mcp", servers, expected_revision: before.revision, unreadable_servers: before.unreadable_servers.map(({ index }) => ({ index })) }, { environment, cwd });
+  const after = JSON.parse(await readFile(configPath, "utf8"));
+  assert.deepEqual(after.servers.map((entry) => entry.id), ["kept", "broken", "edited"]);
+  assert.deepEqual(after.servers[1], broken);
+});
+
+test("R1-07a / C8-I035: unreadable entries still count toward the server limit", async (context) => {
+  const { configPath } = await fixture(context);
+  const broken = { id: "broken", command: 42 };
+  await mkdir(join(configPath, ".."), { recursive: true });
+  // At the limit already: one unreadable entry must not become a free slot.
+  const entries = [
+    ...Array.from({ length: 7 }, (_, index) => server({ id: `server-${index}`, display_name: `Server ${index}` })),
+    broken,
+  ];
+  await writeFile(configPath, JSON.stringify({ servers: entries }, null, 2));
+  const file = await readMcpConfigFile({ path: configPath });
+  assert.equal(file.servers.length, 7);
+  assert.equal(file.unreadableServers.length, 1);
+  await assert.rejects(
+    writeMcpConfigFile({
+      path: configPath,
+      servers: [...file.servers.map(({ raw }) => raw), server({ id: "one-more", display_name: "One more" })],
+      unreadableServers: file.unreadableServers.map(({ index }) => ({ index })),
+      expectedRevision: file.revision,
+    }),
+    (error) => error.code === "mcp_config_too_many_servers",
+  );
+});
+
+test("R1-07a / C8-I035: the preservation path cannot be used to write unvalidated content", async (context) => {
+  const { configPath, environment, cwd } = await fixture(context);
+  await mkdir(join(configPath, ".."), { recursive: true });
+  await writeFile(configPath, JSON.stringify({ servers: [server({ id: "kept" }), { id: "broken", command: 42 }] }, null, 2));
+  const before = await handleSettingsRequest({ operation: "get_mcp" }, { environment, cwd });
+  // A caller cannot smuggle a different entry in by naming it "unreadable".
+  await assert.rejects(
+    handleSettingsRequest({
+      operation: "save_mcp",
+      servers: before.servers.map(({ raw }) => raw),
+      unreadable_servers: [{ index: 1, raw: { id: "smuggled", command: "node.exe", enabled: true, trust_acknowledged: true } }],
+      expected_revision: before.revision,
+    }, { environment, cwd }),
+    (error) => error.code === "mcp_config_invalid",
+  );
+  const onDisk = JSON.parse(await readFile(configPath, "utf8"));
+  assert.equal(onDisk.servers[1].id, "broken");
+});
+
+test("R1-07a / C8-I035: an invalid entry the editor authored is still refused outright", async (context) => {
+  const { configPath, environment, cwd } = await fixture(context);
+  await mkdir(join(configPath, ".."), { recursive: true });
+  await writeFile(configPath, JSON.stringify({ servers: [server({ id: "kept" })] }, null, 2));
+  const before = await handleSettingsRequest({ operation: "get_mcp" }, { environment, cwd });
+  await assert.rejects(
+    handleSettingsRequest({
+      operation: "save_mcp",
+      servers: [...before.servers.map(({ raw }) => raw), { id: "Bad ID", command: "node.exe" }],
+      unreadable_servers: [],
+      expected_revision: before.revision,
+    }, { environment, cwd }),
+    (error) => error.code.includes("mcp_config"),
+  );
+  const onDisk = JSON.parse(await readFile(configPath, "utf8"));
+  assert.deepEqual(onDisk.servers.map((entry) => entry.id), ["kept"]);
+});

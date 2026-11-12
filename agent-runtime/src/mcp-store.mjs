@@ -150,6 +150,7 @@ export async function readMcpConfigFile({ path, readTextFile = readBoundedText }
         revision: MISSING_MCP_REVISION,
         exists: false,
         servers: Object.freeze([]),
+        unreadableServers: Object.freeze([]),
         diagnostics: Object.freeze([]),
       });
     }
@@ -165,36 +166,49 @@ export async function readMcpConfigFile({ path, readTextFile = readBoundedText }
   if (entries === undefined) {
     refuse("mcp_config_invalid_shape", 'The MCP configuration must be an array or an object with a "servers" array.');
   }
+  if (entries.length > MCP_CONFIG_LIMITS.maxServers) {
+    refuse("mcp_config_too_many_servers", `The MCP configuration defines ${entries.length} servers; at most ${MCP_CONFIG_LIMITS.maxServers} are supported.`);
+  }
   const diagnostics = [];
   const servers = [];
+  // Entries the editor cannot parse are still the user's configuration. They
+  // are kept by original index so a save can put them back unchanged: the
+  // editor must not own an entry it cannot display.
+  const unreadableServers = [];
   const seen = new Set();
   entries.forEach((entry, index) => {
     try {
       const validated = validateServerConfig(entry, MCP_CONFIG_LIMITS);
       if (seen.has(validated.id)) {
-        diagnostics.push(Object.freeze({ index, id: validated.id, code: "duplicate_mcp_server", message: `The MCP server id "${validated.id}" appears more than once.` }));
+        // A duplicate id is also unreadable in the editor's sense: neither copy
+        // can be presented as "the" server under that id.
+        const code = "duplicate_mcp_server";
+        const message = `The MCP server id "${validated.id}" appears more than once.`;
+        diagnostics.push(Object.freeze({ index, id: validated.id, code, message }));
+        unreadableServers.push(Object.freeze({ index, raw: entry, code, message }));
         return;
       }
       seen.add(validated.id);
       // Keep the file's own fields, drop nothing the user wrote.
       servers.push(Object.freeze({ index, raw: entry, config: validated }));
     } catch (error) {
+      const code = typeof error?.code === "string" ? error.code : "mcp_config_invalid";
+      const message = error instanceof Error ? error.message : String(error);
       diagnostics.push(Object.freeze({
         index,
         id: typeof entry?.id === "string" ? entry.id : undefined,
-        code: typeof error?.code === "string" ? error.code : "mcp_config_invalid",
-        message: error instanceof Error ? error.message : String(error),
+        code,
+        message,
       }));
+      unreadableServers.push(Object.freeze({ index, raw: entry, code, message }));
     }
   });
-  if (entries.length > MCP_CONFIG_LIMITS.maxServers) {
-    refuse("mcp_config_too_many_servers", `The MCP configuration defines ${entries.length} servers; at most ${MCP_CONFIG_LIMITS.maxServers} are supported.`);
-  }
   return Object.freeze({
     path,
     revision: revisionOf(text),
     exists: true,
     servers: Object.freeze(servers),
+    unreadableServers: Object.freeze(unreadableServers),
     diagnostics: Object.freeze(diagnostics),
   });
 }
@@ -206,9 +220,26 @@ export async function readMcpConfigFile({ path, readTextFile = readBoundedText }
  * invalid one. A partial save would leave the file describing a set of servers
  * the user never assembled.
  */
+/**
+ * Reinsert the entries the editor could not parse.
+ *
+ * They are not part of the readable list, so without this every save deletes
+ * them — including a save the user made to a completely different server. Each
+ * goes back at its original index when that position still exists, and at the
+ * end otherwise; none is ever dropped.
+ */
+function mergeServerEntries(raw, unreadableServers) {
+  const merged = [...raw];
+  for (const { index, raw: entry } of unreadableServers) {
+    merged.splice(Math.min(index, merged.length), 0, entry);
+  }
+  return merged;
+}
+
 export async function writeMcpConfigFile({
   path,
   servers,
+  unreadableServers = [],
   expectedRevision,
   replaceFile = rename,
 } = {}) {
@@ -218,7 +249,16 @@ export async function writeMcpConfigFile({
   if (!Array.isArray(servers)) {
     refuse("mcp_config_invalid", "The MCP server list must be an array.");
   }
-  if (servers.length > MCP_CONFIG_LIMITS.maxServers) {
+  // The request may name unreadable entries by position only. It must not
+  // carry their content: the editor never received it, so a request that does
+  // is either a bug or an attempt to write unvalidated configuration through
+  // the preservation path.
+  if (!Array.isArray(unreadableServers)
+    || unreadableServers.some((entry) => !Number.isSafeInteger(entry?.index) || entry.index < 0
+      || Object.keys(entry ?? {}).some((key) => key !== "index" && key !== "code" && key !== "message"))) {
+    refuse("mcp_config_invalid", "The unreadable MCP server list is malformed.");
+  }
+  if (servers.length + unreadableServers.length > MCP_CONFIG_LIMITS.maxServers) {
     refuse("mcp_config_too_many_servers", `At most ${MCP_CONFIG_LIMITS.maxServers} MCP servers may be configured.`);
   }
   if (expectedRevision !== MISSING_MCP_REVISION && !/^[a-f0-9]{64}$/u.test(expectedRevision ?? "")) {
@@ -243,10 +283,6 @@ export async function writeMcpConfigFile({
     seen.add(validated.id);
     return entry;
   });
-  const text = `${JSON.stringify({ servers: raw }, null, 2)}\n`;
-  if (Buffer.byteLength(text) > MCP_CONFIG_MAX_BYTES) {
-    refuse("mcp_config_too_large", "The MCP configuration exceeds the supported size.");
-  }
 
   let releaseLock;
   let temporaryPath;
@@ -257,6 +293,21 @@ export async function writeMcpConfigFile({
     const current = await readMcpConfigFile({ path });
     if (current.revision !== expectedRevision) {
       refuse("mcp_config_conflict", "The MCP configuration changed outside this editor. Reload before saving.");
+    }
+    // The entries written back unchanged come from the file just read, not from
+    // the request. Trusting the request would let a caller write arbitrary
+    // unvalidated content under the label "unreadable", turning this
+    // preservation path into a validation bypass. The request only has to
+    // agree with the file it claims to be editing.
+    const preserved = current.unreadableServers;
+    const requestedKeys = JSON.stringify(unreadableServers.map(({ index }) => index).sort((left, right) => left - right));
+    const actualKeys = JSON.stringify(preserved.map(({ index }) => index));
+    if (requestedKeys !== actualKeys) {
+      refuse("mcp_config_unreadable_changed", "The unreadable MCP entries differ from the ones on disk. Reload before saving.");
+    }
+    const text = `${JSON.stringify({ servers: mergeServerEntries(raw, preserved) }, null, 2)}\n`;
+    if (Buffer.byteLength(text) > MCP_CONFIG_MAX_BYTES) {
+      refuse("mcp_config_too_large", "The MCP configuration exceeds the supported size.");
     }
     temporaryPath = join(dirname(path), `.${basename(path)}.${randomUUID()}.tmp`);
     const handle = await open(temporaryPath, "wx", 0o600);
@@ -275,7 +326,12 @@ export async function writeMcpConfigFile({
     }
     await replaceFile(temporaryPath, path);
     temporaryPath = undefined;
-    return Object.freeze({ path, revision: revisionOf(text), servers: Object.freeze(raw) });
+    return Object.freeze({
+      path,
+      revision: revisionOf(text),
+      servers: Object.freeze(raw),
+      unreadableServers: Object.freeze([...unreadableServers]),
+    });
   } catch (error) {
     if (error instanceof McpStoreError) throw error;
     throw new McpStoreError("mcp_config_write_failed", "Aside could not save the MCP configuration. The previous file has been preserved.");

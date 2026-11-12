@@ -54,7 +54,7 @@ const view = (overrides: Partial<McpServerView> = {}): McpServerView => ({
 
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-  snapshot = { path: "D:/Aside/mcp.json", revision: "rev-1", exists: true, servers: [view()], diagnostics: [], effective_revision: "e1" };
+  snapshot = { path: "D:/Aside/mcp.json", revision: "rev-1", exists: true, servers: [view()], unreadable_servers: [], diagnostics: [], effective_revision: "e1" };
   vi.spyOn(nativeClient, "getMcpSettings").mockImplementation(async () => snapshot);
   vi.spyOn(nativeClient, "saveMcpSettings").mockImplementation(async (servers) => ({
     ...snapshot,
@@ -92,6 +92,7 @@ it("enables and trusts independently", async () => {
   expect(nativeClient.saveMcpSettings).toHaveBeenLastCalledWith(
     [expect.objectContaining({ id: "notes", enabled: true, trust_acknowledged: false })],
     "rev-1",
+    [],
   );
   expect(container.textContent).toContain("Enabled but not trusted");
 });
@@ -107,6 +108,7 @@ it("a new server is saved disabled and untrusted", async () => {
   expect(nativeClient.saveMcpSettings).toHaveBeenCalledWith(
     [expect.objectContaining({ id: "search", enabled: false, trust_acknowledged: false })],
     "rev-1",
+    [],
   );
 });
 
@@ -149,7 +151,7 @@ it("removes a server without claiming the program was deleted", async () => {
   await render();
   await clickAria("Expand Notes");
   await clickAria("Delete Notes");
-  expect(nativeClient.saveMcpSettings).toHaveBeenCalledWith([], "rev-1");
+  expect(nativeClient.saveMcpSettings).toHaveBeenCalledWith([], "rev-1", []);
   expect(container.textContent).toContain("The program on disk is not touched");
 });
 
@@ -158,4 +160,56 @@ it("shows file diagnostics for entries that failed to load", async () => {
   await render();
   expect(container.textContent).toContain("Server 2 (broken)");
   expect(container.textContent).toContain("not a directly executable file");
+});
+
+it("R1-07a / C8-I039: a new server with an existing id requires explicit confirmation", async () => {
+  await render();
+  await click("Add server");
+  await setValue("mcp-id", "notes");
+  await setValue("mcp-command", "node.exe");
+  // The id collides, so saving is blocked and the form says what would be lost.
+  expect(container.textContent).toContain("This id already exists. Saving replaces that server");
+  const save = button("Save server").disabled;
+  expect(save).toBe(true);
+  await click("Save server");
+  expect(nativeClient.saveMcpSettings).not.toHaveBeenCalled();
+  await act(async () => container.querySelector<HTMLInputElement>(".mcp-check input")!.click());
+  await click("Save server");
+  expect(nativeClient.saveMcpSettings).toHaveBeenCalledWith(
+    [expect.objectContaining({ id: "notes", command: "node.exe" })],
+    "rev-1",
+    [],
+  );
+});
+
+it("R1-07a / C8-I039: changing a server's id replaces its entry instead of appending a copy", async () => {
+  await render();
+  await clickAria("Expand Notes");
+  await click("Edit");
+  await setValue("mcp-id", "notes-v2");
+  expect(container.textContent).toContain("Changing the id moves this server");
+  await click("Save server");
+  const [[servers]] = vi.mocked(nativeClient.saveMcpSettings).mock.calls;
+  // One entry, under the new id: the old id must not survive with its
+  // enabled / trusted flags intact.
+  expect(servers.map((entry) => entry.id)).toEqual(["notes-v2"]);
+  expect(servers[0]).toMatchObject({ enabled: false, trust_acknowledged: false });
+});
+
+it("R1-07a / C8-I035: saving carries the unreadable entry positions back", async () => {
+  snapshot = {
+    ...snapshot,
+    servers: [view()],
+    unreadable_servers: [{ index: 1, code: "mcp_config_invalid", message: "The command is invalid." }],
+  };
+  await render();
+  // The surface states that the entries exist without showing their content.
+  expect(container.textContent).toContain("could not be read");
+  await clickAria("Expand Notes");
+  await act(async () => [...container.querySelectorAll<HTMLInputElement>(".mcp-check input")][0].click());
+  expect(nativeClient.saveMcpSettings).toHaveBeenLastCalledWith(
+    expect.any(Array),
+    "rev-1",
+    [{ index: 1 }],
+  );
 });

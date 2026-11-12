@@ -85,6 +85,10 @@ function describeMcpFile(file) {
           && classification.server_fingerprint !== config.fingerprint,
       })),
     })),
+    // Entries the editor cannot parse. Only their positions and error codes
+    // travel: the content stays in the file, because the editor must not own
+    // what it cannot display, and the surface only needs to say they exist.
+    unreadable_servers: (file.unreadableServers ?? []).map(({ index, code, message }) => ({ index, code, message })),
     diagnostics: file.diagnostics,
   };
 }
@@ -112,7 +116,7 @@ export async function handleSettingsRequest(request, { environment = process.env
     : request.operation === "import_legacy"
       ? ["operation", "expected_revision"]
       : request.operation === "save_mcp"
-        ? ["operation", "servers", "expected_revision"]
+        ? ["operation", "servers", "unreadable_servers", "expected_revision"]
         : request.operation === "test_mcp" ? ["operation", "server"]
           : request.operation === "catalog" ? ["operation", "provider"] : ["operation"];
   if (Object.keys(request).some((field) => !allowed.includes(field))) {
@@ -146,6 +150,7 @@ export async function handleSettingsRequest(request, { environment = process.env
     await writeMcpConfigFile({
       path: configuration.mcpConfigPath,
       servers: request.servers,
+      unreadableServers: request.unreadable_servers ?? [],
       expectedRevision: request.expected_revision,
     });
     const saved = await readMcpConfigFile({ path: configuration.mcpConfigPath });

@@ -362,10 +362,18 @@ pub async fn save_mcp_settings(
     app: AppHandle,
     servers: Value,
     expected_revision: String,
+    unreadable_servers: Option<Value>,
 ) -> Result<Value, SettingsCommandError> {
+    // The entries the editor could not parse travel as positions only; their
+    // content is re-read from the file by the runtime when writing.
     execute(
         app,
-        json!({ "operation": "save_mcp", "servers": servers, "expected_revision": expected_revision }),
+        json!({
+            "operation": "save_mcp",
+            "servers": servers,
+            "expected_revision": expected_revision,
+            "unreadable_servers": unreadable_servers.unwrap_or_else(|| json!([])),
+        }),
     )
     .await
 }

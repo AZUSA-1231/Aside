@@ -1,6 +1,6 @@
 # R1-07a：继承缺陷的数据与编辑正确性
 
-日期：2026-11-10。里程碑 1；对应验收 H6、H7 / F9。状态：**plan 已写，未开始实现**。只修 [C8-I035 / I038 / I039](../../cycle-8/ISSUES.md) 三项，不扩展其余 P2；当前 WIP 只在 [RECOVERY-PLAN](../../RECOVERY-PLAN.md#2026-11-09-release-1-当前执行表)维护。
+日期：2026-11-10。里程碑 1；对应验收 H6、H7 / F9。状态：**开发完成，自动门禁通过，未提交；H6 / H7 实机未执行**。只修 [C8-I035 / I038 / I039](../../cycle-8/ISSUES.md) 三项，不扩展其余 P2；当前 WIP 只在 [RECOVERY-PLAN](../../RECOVERY-PLAN.md#2026-11-09-release-1-当前执行表)维护。
 
 ## 1. 用户结果与停止线
 
@@ -66,3 +66,35 @@
 ## 7. 不在本任务完成的验收
 
 H6 / H7 的实机步骤（真实 MCP 服务进程、真实桌面切换与可读性）仍归发布收口；I036 / I037 / I040 维持带限制延期，本任务不改其严重度或去向。任务结束时写清改动文件、自动门禁、未执行项、已知限制与对应 issue；不自动 commit / push，不开始 04a。
+
+## 8. 实现记录（2026-11-10）
+
+**改动文件**
+
+- `agent-runtime/src/mcp-store.mjs`：`readMcpConfigFile` 新增 `unreadableServers`（按原始索引保留）；`writeMcpConfigFile` 接受只含索引的声明、在锁定后的读取中比对位置、用磁盘内容回填。新增 `mcp_config_unreadable_changed` 拒绝。
+- `agent-runtime/src/settings-service.mjs`：`get_mcp` 投影 `unreadable_servers`（仅 index / code / message）；`save_mcp` 转发声明并纳入允许字段。
+- `src-tauri/src/settings.rs`：`save_mcp_settings` 增加可选 `unreadable_servers` 参数并转发。
+- `src/lib/mcp.ts`、`src/lib/ipc.ts`：类型与 IPC 参数。
+- `src/McpSettingsCard.tsx`：不可读条目提示；新增 / 原位编辑 / 改 id 三条保存路径；同 id 覆盖确认；改名提示；`enabled` / `trust` / 删除保存时一并回传位置。
+- `src/App.tsx`：`resetConversationSurface` 补清两个文档状态。
+
+**实现时确认的边界**（比 plan 更严，方向与 plan 一致）
+
+- 请求里的 `unreadable_servers` **只能含 `index`**；带 `raw` 或任何其他字段直接拒绝。plan 写的是「按原始字节比较」，实现改为「请求根本不允许携带内容，内容一律从锁定后读取的文件取」。前者仍需要信任一次传输，后者不需要。
+- 位置不合（文件在读写之间被改过，或调用方凭猜测传了别的位置）→ `mcp_config_unreadable_changed`，不静默补齐。
+- 不可读条目与可读条目**共同计入** `maxServers`（实际值为 8）。
+- 重复 id 的两条都归入不可读：编辑器无法把其中任一条呈现为「那个」服务。因此重复 id 不会再让整次读取失败，而是可在文件里修正。
+
+**验证方式**
+
+- I038 的回归在临时移除修复后确实失败（`document-chip` 仍在），随后恢复修复通过。这一步是确认测试能抓到缺陷，不是只确认修复后变绿。
+- I035 的复现测试在修复前失败于「异常条目被删除」，修复后通过。
+
+**门禁**：`runtime:test` 529/529（新增 4 项）、`frontend:test` 70/70（新增 4 项）、`cargo test` 57/57、`typecheck`、`build` 通过。
+
+**已知限制**
+
+- 不可读条目只能在文件里修正，GUI 不提供编辑器；界面只报告数量，不展示内容（按已确认决策）。
+- H6 / H7 的真实 MCP 服务进程、真实桌面切换与可读性仍未执行；本任务只成立自动可验证部分。
+- I036 / I037 / I040 未触碰，严重度与去向不变。
+- 另有一个与本任务无关的现象：`documentRead` / `documentWrite` 在**同一会话内**跨 run 保留（`run_started` 会清），本任务只修会话切换这条路径，不改同会话语义。

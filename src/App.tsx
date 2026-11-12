@@ -410,6 +410,11 @@ function App() {
     updatePendingPermission(null);
     setToolActivity(null);
     setVerification(null);
+    // Read / written document status is per-conversation, not per-run-only:
+    // leaving it here showed the previous conversation's product cards after a
+    // switch, until the next run started and cleared them.
+    setDocumentRead(null);
+    setDocumentWrite(null);
     setWorkspaceOverride(null);
     setRunWaiting(null);
     setNativeError((current) => current?.operation === "conversation" ? null : current);

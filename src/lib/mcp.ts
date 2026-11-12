@@ -58,6 +58,14 @@ export interface McpSettingsSnapshot {
   revision: string;
   exists: boolean;
   servers: McpServerView[];
+  /**
+   * Entries in the file that the editor could not parse.
+   *
+   * They are not editable here: the editor never received their content, and
+   * saving a different server writes them back unchanged. Only their position
+   * and error travel, which is enough to tell the user they exist.
+   */
+  unreadable_servers: Array<{ index: number; code: string; message: string }>;
   diagnostics: Array<{ index: number; id?: string; code: string; message: string }>;
   effective_revision: string;
 }

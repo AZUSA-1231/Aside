@@ -48,6 +48,11 @@ export default function McpSettingsCard({
 }) {
   const [snapshot, setSnapshot] = useState<McpSettingsSnapshot | null>(null);
   const [draft, setDraft] = useState<McpServerEntry | null>(null);
+  // The id the draft was opened from. `null` means this is a new server. It is
+  // what distinguishes "edit in place", "rename" and "add", which the id alone
+  // cannot: renaming used to look identical to adding a second server.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [overwriteAcknowledged, setOverwriteAcknowledged] = useState(false);
   const [env, setEnv] = useState<EnvRow[]>([]);
   const [args, setArgs] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -81,6 +86,8 @@ export default function McpSettingsCard({
 
   function beginAdd() {
     setDraft(emptyServer());
+    setEditingId(null);
+    setOverwriteAcknowledged(false);
     setEnv([]);
     setArgs("");
     setExpanded(null);
@@ -90,6 +97,8 @@ export default function McpSettingsCard({
 
   function beginEdit(view: McpServerView) {
     setDraft({ ...view.raw, env: view.raw.env ?? {}, args: view.raw.args ?? [] });
+    setEditingId(view.id);
+    setOverwriteAcknowledged(false);
     setEnv(envRows(view.raw));
     setArgs(argsText(view.raw));
     setExpanded(view.id);
@@ -108,23 +117,49 @@ export default function McpSettingsCard({
     };
   }
 
-  /** Saves the draft as the new server list, leaving every other entry untouched. */
+  /**
+   * Saves the draft as the new server list, leaving every other entry untouched.
+   *
+   * Three paths, and the id alone cannot tell them apart: editing a server and
+   * changing its id looks exactly like adding a server with that id. Treating
+   * both as "append or replace by id" left the old entry — with its enabled
+   * and trust flags — in the file under the id it no longer claimed.
+   */
   async function saveDraft() {
     if (!snapshot) return;
     const entry = draftEntry();
     const existing = snapshot.servers.map((view) => view.raw);
-    const index = existing.findIndex((server) => server.id === entry.id);
-    // Replacing by id is what makes "edit" and "add" the same operation; a new
-    // id appends, an existing one replaces in place so the list does not reorder
-    // under the user.
-    const servers = index >= 0
-      ? existing.map((server, position) => (position === index ? entry : server))
-      : [...existing, entry];
-    const next = await nativeClient.saveMcpSettings(servers, snapshot.revision);
+    const unreadable = (snapshot.unreadable_servers ?? []).map(({ index }) => ({ index }));
+    let servers;
+    if (editingId !== null) {
+      const position = snapshot.servers.findIndex((view) => view.id === editingId);
+      if (position < 0) {
+        // The entry being edited disappeared from the snapshot underneath us;
+        // appending would silently resurrect it under a new id.
+        setError("The server being edited is no longer in the list. Reload before saving.");
+        return;
+      }
+      servers = existing.map((server, index) => (index === position ? entry : server));
+    } else if (existing.some((server) => server.id === entry.id)) {
+      // Overwriting an existing id is never implicit.
+      if (!overwriteAcknowledged) {
+        setError("This id already exists. Confirm the replacement before saving.");
+        return;
+      }
+      servers = existing.map((server) => (server.id === entry.id ? entry : server));
+    } else {
+      servers = [...existing, entry];
+    }
+    const next = await nativeClient.saveMcpSettings(servers, snapshot.revision, unreadable);
     accept(next);
+    const renamed = editingId !== null && editingId !== entry.id;
     setDraft(null);
+    setEditingId(null);
+    setOverwriteAcknowledged(false);
     setExpanded(null);
-    setNotice("Server saved. Apply when idle to use it; a running task keeps its current connections.");
+    setNotice(renamed
+      ? `Renamed to “${entry.id}”. The previous entry and its enabled / trusted state were replaced; turn both on again for the new id.`
+      : "Server saved. Apply when idle to use it; a running task keeps its current connections.");
   }
 
   /** The conservative default: a new server is configured but neither enabled nor trusted. */
@@ -133,7 +168,7 @@ export default function McpSettingsCard({
     const servers = snapshot.servers.map((server) => (server.id === view.id
       ? { ...server.raw, [field]: !server.raw[field] }
       : server.raw));
-    accept(await nativeClient.saveMcpSettings(servers, snapshot.revision));
+    accept(await nativeClient.saveMcpSettings(servers, snapshot.revision, (snapshot.unreadable_servers ?? []).map(({ index }) => ({ index }))));
     setNotice(field === "enabled"
       ? "Enabled state saved. A server starts only when it is both enabled and trusted."
       : "Trust state saved. Trusting a server means you accept that it runs external code on this computer.");
@@ -142,7 +177,7 @@ export default function McpSettingsCard({
   async function remove(view: McpServerView) {
     if (!snapshot) return;
     const servers = snapshot.servers.filter((server) => server.id !== view.id).map((server) => server.raw);
-    accept(await nativeClient.saveMcpSettings(servers, snapshot.revision));
+    accept(await nativeClient.saveMcpSettings(servers, snapshot.revision, (snapshot.unreadable_servers ?? []).map(({ index }) => ({ index }))));
     setNotice(`Removed “${view.display_name}”. The program on disk is not touched.`);
   }
 
@@ -173,6 +208,12 @@ export default function McpSettingsCard({
     {snapshot?.diagnostics.map((diagnostic) => <p className="settings-error" role="alert" key={`${diagnostic.index}-${diagnostic.code}`}>
       Server {diagnostic.index + 1}{diagnostic.id ? ` (${diagnostic.id})` : ""}: {diagnostic.message}
     </p>)}
+
+    {snapshot && (snapshot.unreadable_servers ?? []).length > 0 && <p className="settings-note" role="status">
+      {(snapshot.unreadable_servers ?? []).length === 1 ? "One entry" : `${(snapshot.unreadable_servers ?? []).length} entries`} in this file
+      could not be read and {(snapshot.unreadable_servers ?? []).length === 1 ? "is" : "are"} kept exactly as written. They are not
+      shown or edited here, and saving anything else leaves them untouched. Correct them in the file directly.
+    </p>}
 
     {snapshot && snapshot.servers.length === 0 && !draft && <p className="settings-note">No MCP servers configured.</p>}
 
@@ -235,7 +276,7 @@ export default function McpSettingsCard({
     })}
 
     {draft ? <form className="mcp-form" onSubmit={(event) => { event.preventDefault(); void perform("Saving server", saveDraft); }}>
-      <h3>{snapshot?.servers.some((view) => view.id === draft.id) ? "Edit server" : "New server"}</h3>
+      <h3>{editingId !== null ? `Edit ${editingId}` : "New server"}</h3>
       <label htmlFor="mcp-id">Id <span>(lowercase letters, digits, - and _)</span></label>
       <input id="mcp-id" value={draft.id} maxLength={64} disabled={busy}
         onChange={(event) => setDraft({ ...draft, id: event.currentTarget.value })} />
@@ -265,12 +306,23 @@ export default function McpSettingsCard({
         <button type="button" disabled={busy} onClick={() => setEnv([...env, { name: "", from_config: "" }])}><Plus size={13} /> Add environment name</button>
       </div>
 
+      {editingId === null && snapshot?.servers.some((view) => view.id === draft.id.trim()) && <>
+        {/* Overwriting is never implicit: the user is told which server loses
+            its configuration and has to confirm it in the form. */}
+        <p className="settings-error" role="alert">This id already exists. Saving replaces that server, including its enabled and trusted state.</p>
+        <label className="mcp-check"><input type="checkbox" checked={overwriteAcknowledged} disabled={busy}
+          onChange={(event) => { setOverwriteAcknowledged(event.currentTarget.checked); setError(null); }} /> Replace the existing server</label>
+      </>}
+      {editingId !== null && editingId !== draft.id.trim() && <p className="settings-note">
+        Changing the id moves this server: the entry under “{editingId}” is replaced, and it is not enabled or trusted under the new id until you turn both on again.
+      </p>}
       <p className="settings-note">New servers are saved disabled and untrusted. Turn both on when you are ready for it to run.</p>
       {test && <p className="settings-note" role="status">{testSummary(test.result)}</p>}
       <div className="settings-actions">
-        <button type="submit" disabled={busy || !draft.id.trim() || !draft.command.trim()}>Save server</button>
+        <button type="submit" disabled={busy || !draft.id.trim() || !draft.command.trim()
+          || (editingId === null && Boolean(snapshot?.servers.some((view) => view.id === draft.id.trim())) && !overwriteAcknowledged)}>Save server</button>
         <button type="button" disabled={busy} onClick={() => void perform("Testing server", () => runTest(draftEntry(), draft.id))}>Test connection</button>
-        <button type="button" disabled={busy} onClick={() => { setDraft(null); setEnv([]); setArgs(""); setTest(null); }}>Cancel</button>
+        <button type="button" disabled={busy} onClick={() => { setDraft(null); setEditingId(null); setOverwriteAcknowledged(false); setEnv([]); setArgs(""); setTest(null); }}>Cancel</button>
       </div>
     </form> : <div className="settings-actions">
       <button type="button" disabled={busy || disabled} onClick={beginAdd}><Plus size={14} /> Add server</button>

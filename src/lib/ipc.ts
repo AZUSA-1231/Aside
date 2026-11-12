@@ -109,9 +109,9 @@ export const nativeClient = {
     return command<McpSettingsSnapshot>("get_mcp_settings");
   },
 
-  saveMcpSettings: async (servers: McpServerEntry[], expectedRevision: string): Promise<McpSettingsSnapshot> => {
+  saveMcpSettings: async (servers: McpServerEntry[], expectedRevision: string, unreadableServers: Array<{ index: number }> = []): Promise<McpSettingsSnapshot> => {
     if (!isDesktopRuntime()) throw new Error("MCP configuration is available in the desktop app.");
-    return command<McpSettingsSnapshot>("save_mcp_settings", { servers, expectedRevision });
+    return command<McpSettingsSnapshot>("save_mcp_settings", { servers, expectedRevision, unreadableServers });
   },
 
   testMcpServer: async (server: McpServerEntry): Promise<McpTestResult> => {
