@@ -20,7 +20,8 @@
 | [RELEASE-CAPABILITIES.md](./RELEASE-CAPABILITIES.md) | Aside / 本地 DSH / 官方产品文档的能力事实、模块现状、R1 增量与 R2/R3 候选、既有 P2 去向建议。 | 研究与决策依据，不是另一份执行排期。 |
 | [V1-ACCEPTANCE.md](./V1-ACCEPTANCE.md) | 分层证明与集中实机步骤；F9 基础交付、F15–F24 最小项目记忆。 | 全部实机未执行；历史 F 项不作为现行门槛。 |
 | [release-1/ISSUES.md](./release-1/ISSUES.md) | 本轮缺陷、继承 C8 去向和待定设计关口。 | 不重复旧 issue，不把待验证风险伪装成已复现缺陷。 |
-| [R1-01 plan](./release-1/plans/R1-01-model-route.md) | 第一个功能的契约、实施边界、失败语义、自动门禁与实现记录。 | 开发完成、自动门禁通过、未提交；真实厂商 / 实机未执行。其他任务临近执行再写 plan。 |
+| [R1-01 plan](./release-1/plans/R1-01-model-route.md) | 第一个功能的契约、实施边界、失败语义、自动门禁与实现记录。 | 已提交（`1b59071`）；真实厂商 / 实机未执行。 |
+| [R1-07a plan](./release-1/plans/R1-07a-inherited-defects.md) | C8-I035 / I038 / I039 三项继承缺陷的复现、修复语义与门禁。 | 已写、未实现。 |
 | [PROJECT-BASELINE.md](./PROJECT-BASELINE.md) | 2026-09 的项目状态、旧文档关系与范围决定。 | 历史基线，帮助追溯；不再负责当前排期。 |
 | [design/README.md](./design/README.md) | 区分当前侧栏规范与旧 mockup。 | 设计目录导航。 |
 
@@ -39,7 +40,7 @@
 | 已执行：R3 | 动态焦点 Capture、现有 capture→文件 workspace→工具→权限→结果的集成核对。 | [集成记录](./cycle-6/R3-INTEGRATION.md) 和 [Windows 合成测量](./cycle-6/R3-BENCHMARK.json)；388 项 runtime、45 项 Rust、23 项前端与构建通过，真实桌面待复测。 |
 | 已执行：R4 | 定义 RT-01–11，补齐 POLICY-01，明确 LIMIT-01 与设置 / 会话 / skill 等候选功能处置。 | [开发证据](./cycle-6/R4-RUNTIME.md)；394 项 runtime、24 项前端和构建通过。有限开发清单完成，产品级验收未成立。 |
 | 已执行：Cycle 8 开发 | 设置、默认目录、会话、思考强度与 stdio MCP GUI，另含 P6 可靠性修复。 | P0–P6 开发与自动回归已有证据；P6 已提交，六组 P2 仍未修复，统一实机未执行。 |
-| 当前：里程碑 1 进行中 | R1-01 custom model route 开发完成；07a / 04a / 06a 未开始。 | R1-01 自动门禁通过、未提交；具体 WIP 只看总计划当前表。 |
+| 当前：里程碑 1 进行中 | R1-01 已提交；07a plan 已写；04a / 06a 未开始。 | 具体 WIP 只看总计划当前表。 |
 
 历史恢复 R1–R4 与 Cycle 8 的已授权开发已收口；本次不用 Cycle 9，按里程碑 / 功能任务推进，逐点 plan / 执行 / 记 issue。外部 agent、Mac 与窗口渲染研究不回流。实机默认延期到统一收口，不重复阻塞逐功能开发；公开发布前仍须具备实机与分发证据。
 
