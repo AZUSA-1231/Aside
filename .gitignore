@@ -35,6 +35,13 @@ src-tauri/resources/
 vendor/Office-Word-MCP-Server/
 vendor/docx-mcp/
 
+# DeepSeek Harness reference snapshot. Read-only design reference for the
+# provider seam, tool/skill declaration split, ask-user/approval separation and
+# compaction structure (see docs/RELEASE-CAPABILITIES.md §6). It is a large
+# third-party tree that is neither built nor shipped, so its absence from a
+# commit must not depend on remembering not to `git add -A` it.
+vendor/deepseek-harness/
+
 # Read for adversarial MCP fixture shapes (Cycle 6 P6). A fixture source, never
 # a runtime dependency: not bundled, not default-configured, not built.
 vendor/web-search-mcp/
