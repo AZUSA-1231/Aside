@@ -61,3 +61,5 @@ R1-01 实现期间发现并当次修正的本地缺陷（不记为发布缺陷�
 - 2026-11-10：R1-01 完成开发（custom route 核心、设置保存与原生凭据、GUI 投影）。新增 `agent-runtime/src/custom-route.mjs` 与 14 项 runtime 回归（含两类本地 HTTP/SSE 真实 adapter 夹具）和 3 项前端回归；正式门禁为 runtime 525/525、前端 66/66、Rust 57/57、`typecheck` 与 `build` 通过。真实厂商连通、Windows 凭据管理器实机与安装包仍未执行，里程碑 1 不因单项完成而收口。
 
 - 2026-11-10：R1-07a 三项继承缺陷完成开发。I035 改为按原始索引保留无法解析的条目并在保存时写回（请求只能按位置声明，携带内容即拒绝），同时不放松编辑器自造条目的校验；I038 在 `resetConversationSurface` 补清 `documentRead` / `documentWrite`，并验证过临时回退修复后该项测试确实失败；I039 区分新增 / 原位编辑 / 改 id 三条路径，同 id 覆盖需表单内确认。门禁：runtime 529/529（新增 4 项）、前端 70/70（新增 4 项）、Rust 57/57、`typecheck` 与 `build` 通过。H6 / H7 的真实 MCP 进程与桌面切换仍未执行。
+
+- 2026-11-17：DSH 参考树到位（`vendor/deepseek-harness-master`，`0.2.2-rc.3`，无 `.git`），按暂停清单复核 R1-01 的四处自行判断。结论：保守 compat、`tools=false` 剥离、thinking 档位映射三处成立（其中 `tools` 声明经确认是参考未提供的能力，Aside 做法更严格）；自定义鉴权头确认是参考有、Aside 无的能力，属 V1-SCOPE 明确不做范围，已在能力对照 M01 写明，不是遗漏。另记一条待观察：对「默认即思考」的端点，`off` 省略字段可能无效，需 `thinkingFormat: deepseek` 语义；当前未复现、未承诺支持，留待 04c 诊断或首次真实端点测试判定。本轮为设计依据复核，无产品代码改动。

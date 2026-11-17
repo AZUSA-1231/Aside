@@ -7,8 +7,9 @@
 ## 1. 证据范围
 
 - 已阅读当前 Aside 源码、Cycle 8 计划及问题记录。下文“已有”指产品路径已接通并有开发证据，**不表示统一实机验收通过**；仅 helper / 类型 / 注入测试具备的能力标为“底层有，产品未接通”。
-- DeepSeek Harness 使用用户放入的本地快照：`vendor/deepseek-harness`，HEAD `fcc0ad462172522aaf5c93a7b2e01f6b9f0b0159`，提交日期 2026-11-04，包版本 `0.2.2-rc.1`。只读，未安装、运行或修改它，也没有把它加入本次提交。该路径自 2026-11-13 起写入 `.gitignore`，防止误提交。
-- 2026-11-13：参考树当前不在本机，以上事实是当时某个快照的记录，尚未在现环境复核。R1-01 期间有若干设计因缺少该参考而自行判断，清单与复核顺序见 [RECOVERY-PLAN 暂停与恢复清单](./RECOVERY-PLAN.md#2026-11-13-暂停与恢复清单)。
+- DeepSeek Harness 使用用户放入的本地快照，只读，未安装、运行或修改它，也没有把它加入任何提交。路径写入 `.gitignore`（`vendor/deepseek-harness*/`，按前缀匹配，因为解压目录名会变）。
+- **2026-11-17 快照更新**：现机快照为 `vendor/deepseek-harness-master/`，包版本 `0.2.2-rc.3`，无 `.git` 目录（下载归档解压，非 clone），因此**没有可比对的 HEAD**。此前记录的 HEAD `fcc0ad46` / 版本 `0.2.2-rc.1` 属 2026-11-08 的另一次快照，保留为历史，不再代表当前参考来源。版本差异由用户判定为不影响参考用途。
+- 2026-11-17 已用新快照核对 R1-01 的四处设计点，结论见 [RECOVERY-PLAN 暂停与恢复清单](./RECOVERY-PLAN.md#2026-11-13-暂停与恢复清单)下的「复核结果」；三处获参考支持，一处为参考未提供对应能力。
 - 该仓库 README / SAFETY 明确声明 developer preview、未安全审计；它是工程参考，不是“成熟产品全部功能都必须复制”的标准。下表的 DSH 能力有些是可选组合，不把存在 package 当成默认启用或稳定交付。
 - 另查 Codex、Claude Code、OpenCode 官方文档，使用文末链接；只比较具体能力，不比较模型效果、价格、账户权益或宣称完全功能等价。
 - 统一实机验收依用户最新决定默认延期；保留未执行状态。延期不等于通过，也不等于已经可以公开发布。
@@ -28,7 +29,7 @@
 
 | ID / 模块 | Aside 当前实际状态 | DSH 对照 | Release-1 的建议终点 | 明确不做 |
 | --- | --- | --- | --- | --- |
-| M01 Provider / Model | 四家 provider、catalog、Base URL、原生凭据、连接测试、thinking 和安全重建；另有 R1-01 已实现的单个 custom route：`provider: custom`，显式 Chat Completions / Responses、model id、Base URL、上下文 / 输出容量与 tools / reasoning / image 声明，凭据为独立原生槽位。测试与实际任务共用同一解析路径；本地两类协议夹具通过，真实厂商未测。 | `llm-pi-ai` + Models 设置支持 catalog 及手工 API 路由。 | 保留四家；custom route 已按显式协议、URL、model id、容量、能力约束实现，并有真实请求形状证据。不是只增加自由文本输入。 | 多账户 / 多 profile、登录订阅适配、所有网关兼容矩阵。 |
+| M01 Provider / Model | 四家 provider、catalog、Base URL、原生凭据、连接测试、thinking 和安全重建；另有 R1-01 已实现的单个 custom route：`provider: custom`，显式 Chat Completions / Responses、model id、Base URL、上下文 / 输出容量与 tools / reasoning / image 声明，凭据为独立原生槽位。测试与实际任务共用同一解析路径；本地两类协议夹具通过，真实厂商未测。**不支持路由级自定义请求头。** | `llm-pi-ai` + Models 设置支持 catalog 及手工 API 路由；其路由 profile 另有 `headers` 字段供网关附加请求头，`compat` 可按路由 / 按模型切换。 | 保留四家；custom route 已按显式协议、URL、model id、容量、能力约束实现，并有真实请求形状证据。不是只增加自由文本输入。参考产品的自定义头与逐模型 compat 不在首版承诺内。 | 多账户 / 多 profile、登录订阅适配、所有网关兼容矩阵、自定义鉴权头。 |
 | M02 默认 Agent 设置（不含创建） | runtime 内部会创建默认 Agent；没有用户级 Agent 定义、instructions 或命名 Agent 管理。新建会话不等于创建 Agent。 | `agent-loop`、`agent-preset` 和 preset UI。 | 保留默认实例，模型 / 工具 / skill 由各模块配置；指令编辑仍是待确认建议，不列为已确认必补。 | 用户侧 Agent 创建、角色 / 模板管理、动态插件树、重写 agent loop。 |
 | M03 Tools | 已有 registry、来源分类、参数校验、逐次权限和八项文件 / 文档工具；MCP 工具按任务注册。没有用户侧内建工具开关。 | `core/tools` 注册、策略与 executor 分离。 | 工具清单、来源 / 风险 / 可用性和启停入口；停用在执行器生效，不只是隐藏 UI。配置在下次任务生效。 | 用户上传任意 JS 工具、shell / 代码执行、任意“始终允许”。 |
 | M04 Skills | 有发现 / frontmatter / 冲突诊断 / manifest / 激活；生产默认只连内建根。user/project resourcePolicy helper 存在，但未由设置接通；无安装 / 管理入口。 | `skill-filesystem` + `tool-skill` + skill UI。 | 接通用户本地 skill 目录；本地目录导入、查看来源、启停、刷新、加载错误。显式采用 / 自动激活沿用标准技能材料；不执行安装脚本。 | 在线 marketplace、git/npm 一键运行依赖、任意项目目录自动信任。 |

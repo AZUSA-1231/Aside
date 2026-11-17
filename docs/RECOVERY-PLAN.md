@@ -11,7 +11,7 @@
 本节是当前进度唯一入口；[V1-SCOPE 第 5 节](./V1-SCOPE.md#5-五个里程碑与任务依赖)维护范围 / 依赖，[V1-ACCEPTANCE](./V1-ACCEPTANCE.md)维护证据要求。保留 R1-01–07 编号，不开 Cycle 9，不再叠加总路线。
 
 - **当前 WIP：无。R1-07a 已提交为 `a2e0a8b`；下一项为 R1-04a（需先写 plan）。** R1-01 已提交为 `1b59071`。07a 修完 C8-I035 / I038 / I039，证据见 [继承缺陷实现记录](./release-1/plans/R1-07a-inherited-defects.md#8-实现记录2026-11-10)。真实厂商、H6 / H7 实机、安装包均未执行。
-- **2026-11-13 暂停：本机暂停开发，等待 DSH 参考树拷入。** 恢复后先做「补缺查漏」再继续 R1-04a，顺序见下节。`vendor/deepseek-harness/` 已写入 `.gitignore`；其缺失在本轮两个任务中未造成阻塞，但有若干设计只能自行判断，见下表。
+- **2026-11-17 恢复：DSH 参考树已到位，设计点复核完成，无代码改动。** 结论见下节「复核结果」：三处成立，自定义鉴权头确认为参考有、Aside 首版不做（已在能力对照 M01 写明）。下一步直接进入 R1-04a 的 plan，不再需要暂停等参考。
 - 已确认：基础能力 + 最小项目记忆两条验收线；记忆在底座后优先验证，不排到全部通用功能之后。复杂归并 / 拆分、后台整理、个人画像、外部 CLI、Mac 与视觉重做不进入本轮。
 - 每功能短 plan → 实现 → 定向 / 必要全量回归 → issue / 证据 / 状态更新 → 关闭后进入下一项。默认一个 WIP，提交与推送按用户授权，不因前次换机提交授权而自动提交本轮。
 - 新问题记 [Release-1 ISSUES](./release-1/ISSUES.md)，旧 C8 问题保留原号。I035 / I038 / I039 纳入 07a；I036 / I037 / I040 带明确限制延期，严重度不变，当前均未修。
@@ -24,13 +24,13 @@
 | 4 长任务与诊断 | 未开始 | 04b → 04c → 05；工具时间线、usage / 压力、脱敏诊断、安全 compaction。 |
 | 5 发布收口 | 未开始；统一实机仍延期 | 07b；门禁、staging、干净机器安装与至少一家真实厂商完整链路，现行必过场景无阻断失败。 |
 
-盘点结论：已有四家设置 / thinking / 默认目录、Session 生命周期、文件 / 文档工具、Approval、stdio MCP、显式 capture / 分屏、单工具 / 产物卡与定位。JSONL 已保存 assistant 工具调用与 toolResult，但恢复 UI 只投影文本。缺的是 custom route、多工具 / 产物的产品关联与恢复展现、最小项目记忆、Tool / 用户 Skills 管理、Ask User、compaction 及完整观测。04a 先复用已存数据，不新建日志库；未做实机不写成开发缺失，历史测试通过不写成当前重验通过。
+盘点结论（2026-11-17 更新）：已有四家设置 / thinking / 默认目录、Session 生命周期、文件 / 文档工具、Approval、stdio MCP、显式 capture / 分屏、单工具 / 产物卡与定位；custom route 与三项继承缺陷已由 R1-01 / 07a 补齐。JSONL 已保存 assistant 工具调用与 toolResult，但恢复 UI 只投影文本。仍缺多工具 / 产物的产品关联与恢复展现、最小项目记忆、Tool / 用户 Skills 管理、Ask User、compaction 及完整观测。04a 先复用已存数据，不新建日志库；未做实机不写成开发缺失，历史测试通过不写成当前重验通过。
 
 06b–06d 的开关默认值、最薄历史读取接口、README 更新规则、固定用例与成本预算在各自 plan 前确定，详见 Q003–Q006；这些不阻塞 01，不提前搭复杂机制。如果技术选择必须增加范围、全库访问或额外常驻模型调用，先停在该关口问用户。
 
 ### 2026-11-13 暂停与恢复清单
 
-本机暂停开发，等 DSH 参考树拷入后再继续。恢复时按此顺序做，不要直接跳回 R1-04a：
+**2026-11-17 已恢复并完成复核，本节保留为当时的顺序与依据。** 恢复时按此顺序做，不要直接跳回 R1-04a：
 
 1. **放入参考树**：把 `vendor/deepseek-harness/` 拷回本机。该路径已在 `.gitignore`，不需要也不应该提交。核对根 `README.md` 中的版本，与 [RELEASE-CAPABILITIES §6](./RELEASE-CAPABILITIES.md) 记录的 HEAD `fcc0ad46` / `0.2.2-rc.1` 是否一致；不一致就更新该节，不沿用旧数字。
 2. **补缺查漏**：拿参考树复核下面「本轮只能自行判断的设计」。逐项判定：参考支持现实现 / 参考支持另一种做法 / 参考无对应。第二种才考虑改，改动同样走 plan 与门禁，不借复核之名偷跑功能。
@@ -51,6 +51,19 @@ DSH 参考树在本机缺席时完成的任务、当时缺的是哪份材料、�
 | R1-07a | MCP 存储的读写契约、会话切换清理、编辑语义 | Aside 自身实现，无 DSH 依赖 | 无对应材料，不需要复核 |
 
 R1-01 的三处复核若不成立，属于设计方案调整而非缺陷修复；H1 / B1–B9 的实机验收不受影响，仍按发布收口统一执行。
+
+#### 复核结果（2026-11-17）
+
+参考快照 `vendor/deepseek-harness-master/`，版本 `0.2.2-rc.3`（比记录中的 `rc.1` 新，用户判定不影响参考用途）。逐项对照后：**三处获参考支持，一处确认为参考未提供对应能力，一处补充了新发现。**
+
+| 设计点 | 参考材料 | 结论 |
+| --- | --- | --- |
+| 保守 compat（无 `store`、无 `developer` 角色、`max_tokens`、关闭 strict） | `docs/user/guide/providers.md` §Request compatibility；`docs/config-catalog.md` 的 `PiAiCompatProfile` | **支持，且比我们的做法更明确。** 文档把 `supportsDeveloperRole: false` + `maxTokensField: max_tokens` 列为「网关拒绝一切请求」时的首选修正，正是我们为任意端点选的保守组合。`supportsStrictMode: false` 也在同一份 compat 表内。**无需改动。** |
+| 不支持自定义鉴权头（仅 Bearer） | `providers.md` §Request compatibility 导言；`llm-pi-ai/src/config.ts:165` | **参考确实提供能力，我们没有。** DSH 的路由 profile 有 `headers?: Record<string, string>`，用于给网关加请求头（如 `api-key`）。我们的 GUI 没有对应字段。这是**已知限制而非设计错误**：首版只承诺 Bearer，属于 V1-SCOPE 的「明确不做」边界内。**保持现状**，但应在 M01 的现状列里写明「参考产品支持路由级自定义头，Aside 首版不支持」，避免日后被读成遗漏。 |
+| `tools=false` 时在 adapter 层剥离工具定义 | `llm-pi-ai/src/config.ts` 全量字段表；`src/adapter.ts:420-430` | **参考无对应能力。** profile 没有任何声明「本路由不支持工具」的字段；适配器无条件转发 `options.tools`，只在 Anthropic 的 deferred-tool 场景插入占位工具。也就是说 DSH 的选择是「不声明、由端点拒绝」，我们选择了「显式声明并在出站前剥离」。**我们的做法更严格，保留。** 这也说明该设计点是请求级测试证据（`custom-route.test.mjs` 的 `declared capabilities govern the wire request`）而非参考结论。 |
+| thinking 档位只在能发送时暴露 | `providers.md` §Reasoning effort；`config-catalog.md` 的 `reasoningEfforts` | **支持，并有可借鉴的细节。** 参考用 `reasoningEfforts` 映射「菜单档位 → 线上拼写」，`off` 可为空（表示不发字段）。这正是我们 `thinkingLevelMap` + `off` 不发字段的语义。另外它支持 `reasoningEfforts: false` 显式声明非推理模型，与我们 `reasoning: false` 等价。**无需改动**；其「`off` 为空只停得住按需思考的模型」的警告值得在后续 04c 诊断里引用。 |
+
+**额外发现（不影响本轮，记为后续参考）**：参考的 `compat.thinkingFormat: deepseek` 用于「默认就思考」的端点——`off` 需要发 `thinking: {type: disabled}` 而不是省略字段。我们目前对 custom route 一律走 `openai` 格式，即 `off` 省略字段。对手动声明 reasoning 且默认会思考的端点，这可能让 `off` 失效。**这不是登记中的缺陷**（未复现、也未承诺支持该类端点），在 R1-04c 做诊断或首次真实端点测试时再判定；现在不改，避免无证据地扩大范围。
 
 ### 2026-11-08 执行规则（历史，当前顺序以上节为准）
 
