@@ -40,7 +40,13 @@ vendor/docx-mcp/
 # compaction structure (see docs/RELEASE-CAPABILITIES.md §6). It is a large
 # third-party tree that is neither built nor shipped, so its absence from a
 # commit must not depend on remembering not to `git add -A` it.
-vendor/deepseek-harness/
+#
+# Matched as a prefix rather than one exact name: the snapshot arrives as a
+# downloaded archive, so the directory name varies (`deepseek-harness-master`
+# here versus the `deepseek-harness` this file used to assume). An exact-name
+# rule silently stopped applying when the folder was extracted under a
+# different name, which is worse than no rule because it looks protected.
+vendor/deepseek-harness*/
 
 # Read for adversarial MCP fixture shapes (Cycle 6 P6). A fixture source, never
 # a runtime dependency: not bundled, not default-configured, not built.
