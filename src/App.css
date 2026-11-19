@@ -706,3 +706,53 @@ h1 {
 }
 
 }
+
+/* Restored tool calls: work recovered from a saved conversation.
+   Kept visually quieter than the live tool card so a reopened session reads
+   as history rather than as something still running. */
+.restored-tools {
+  list-style:none;
+  margin:0 0 6px;
+  padding:0;
+  display:flex;
+  flex-direction:column;
+  gap:4px
+}
+.restored-tool {
+  display:flex;
+  align-items:baseline;
+  flex-wrap:wrap;
+  gap:6px;
+  font-size:11px;
+  line-height:1.5;
+  color:var(--muted);
+  overflow-wrap:anywhere
+}
+.restored-tool-name {
+  font-weight:600;
+  color:var(--ink)
+}
+.restored-tool.failed .restored-tool-status,
+.restored-tool.denied .restored-tool-status,
+.restored-tool.expired .restored-tool-status,
+.restored-tool.timed_out .restored-tool-status,
+.restored-tool.unknown .restored-tool-status {
+  color:#8c3b3b
+}
+.restored-tool-source {
+  opacity:.75
+}
+.restored-tool-text {
+  flex-basis:100%;
+  margin:0;
+  max-height:120px;
+  overflow:auto;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+  user-select:text
+}
+.restored-tools-limit {
+  margin:0 0 10px;
+  font-size:11px;
+  color:#785622
+}

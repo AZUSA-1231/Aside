@@ -36,6 +36,7 @@ import type {
   RuntimeDocumentWriteStatus,
   RuntimeEvent,
   RuntimeHistoryMessage,
+  RuntimeHistoryToolCall,
   RuntimeMcpServerConfig,
   RuntimePermissionRequest,
   RuntimeSkillEvent,
@@ -72,6 +73,8 @@ interface ChatMessage {
   error?: string;
   retryable?: boolean;
   truncated?: boolean;
+  /** Tool calls restored from the saved conversation, in execution order. */
+  tools?: RuntimeHistoryToolCall[];
 }
 
 interface ActiveRun {
@@ -171,6 +174,7 @@ function toChatMessage(message: RuntimeHistoryMessage): ChatMessage {
     role: message.role,
     text: message.text,
     status: "complete",
+    ...(message.tools && message.tools.length > 0 ? { tools: message.tools } : {}),
   };
 }
 
@@ -298,6 +302,9 @@ function App() {
   } | null>(null);
   // Set while a run is parked on a user decision, cleared when it settles.
   const [runWaiting, setRunWaiting] = useState<string | null>(null);
+  // Older restored tool calls the bounded projection left out. Shown so a
+  // trimmed list does not read as the complete history of the session.
+  const [hiddenToolCalls, setHiddenToolCalls] = useState(0);
   // The document status of the most recent tool result, if it was a structured
   // read or a generated document. Both are `null` for ordinary text and JSON
   // work, which is the common case and must stay quiet.
@@ -410,6 +417,7 @@ function App() {
     updatePendingPermission(null);
     setToolActivity(null);
     setVerification(null);
+    setHiddenToolCalls(0);
     // Read / written document status is per-conversation, not per-run-only:
     // leaving it here showed the previous conversation's product cards after a
     // switch, until the next run started and cleared them.
@@ -626,11 +634,13 @@ function App() {
           if (event.replaced) {
             historyHydratedRef.current = true;
             resetConversationSurface();
+            setHiddenToolCalls(event.hidden_tool_calls ?? 0);
             hydrateHistory(event.messages);
             return;
           }
           if (historyHydratedRef.current) return;
           historyHydratedRef.current = true;
+          setHiddenToolCalls(event.hidden_tool_calls ?? 0);
           hydrateHistory(event.messages);
           return;
         }
@@ -1371,6 +1381,25 @@ function App() {
         }}>
           {messages.map((message) => (
             <article className={`message-row ${message.role}`} key={message.id}>
+              {message.tools && message.tools.length > 0 && (
+                // Restored work, not a new run: these come from the saved
+                // conversation and carry their recorded status. A failed call
+                // keeps its failure label rather than being flattened to a
+                // generic "done".
+                <ul className="restored-tools" aria-label="Tool calls in this conversation">
+                  {message.tools.map((call) => (
+                    <li className={`restored-tool ${call.status}`} key={call.call_id}>
+                      <span className="restored-tool-name" title={call.tool}>{shortToolName(call.tool)}</span>
+                      <span className="restored-tool-status">{toolStatusLabel(call.status)}</span>
+                      <span className="restored-tool-source">
+                        {call.source === "user_mcp" ? "MCP server" : "Built-in"}
+                      </span>
+                      {call.text && <pre className="restored-tool-text">{call.text}</pre>}
+                      {call.truncated && <span className="message-limit">Output shortened by runtime limits</span>}
+                    </li>
+                  ))}
+                </ul>
+              )}
               <div className={`message-bubble ${message.status}`}>
                 {message.text && <p>{message.text}</p>}
                 {message.truncated && <span className="message-limit">Response shortened by runtime limits</span>}
@@ -1404,6 +1433,13 @@ function App() {
               </div>
             </article>
           ))}
+          {hiddenToolCalls > 0 && (
+            // Say the list is incomplete instead of letting a trimmed set read
+            // as the whole history of the session.
+            <p className="restored-tools-limit" role="status">
+              {hiddenToolCalls} older tool call{hiddenToolCalls === 1 ? "" : "s"} not shown.
+            </p>
+          )}
           {activeRun && activeRun.cancelRequested && (
             <div className="cancel-state">
               <LoaderCircle size={13} className="spin" />

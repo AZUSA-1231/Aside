@@ -1,6 +1,6 @@
 # R1-04a：工具调用关联与有界恢复投影
 
-日期：2026-11-17。里程碑 1 / M08；对应验收 I3 的记录底座（完整展现归 04b）、F9 恢复完整性。状态：**plan 已写，未开始实现**。当前 WIP 只在 [RECOVERY-PLAN](../../RECOVERY-PLAN.md#2026-11-09-release-1-当前执行表)维护。
+日期：2026-11-17。里程碑 1 / M08；对应验收 I3 的记录底座（完整展现归 04b）、F9 恢复完整性。状态：**开发完成，自动门禁通过，未提交；实机未执行**。当前 WIP 只在 [RECOVERY-PLAN](../../RECOVERY-PLAN.md#2026-11-09-release-1-当前执行表)维护。
 
 ## 1. 用户结果与停止线
 
@@ -75,3 +75,29 @@
 ## 7. 不在本任务完成的验收
 
 I3 的完整交互（逐次展开、来源与参数预览的完整呈现）归 04b；产物路径与打开入口归 06a；真实桌面与安装包验收归发布收口。任务结束时写清改动文件、门禁、未执行项、限制与对应 issue；不自动 commit / push，不开始 06a。
+
+## 8. 实现记录（2026-11-19）
+
+**改动文件**
+
+- `agent-runtime/src/session.mjs`：新增 `restoreToolCalls`，按 `toolCallId` 配对并做有界投影；`restoreAsideSession` 返回 `hiddenToolCalls`；导出 `MAX_RESTORED_TOOL_CALLS`（50）与 `MAX_RESTORED_TOOL_BYTES`（16 KiB）。
+- `agent-runtime/src/protocol.mjs`：三处 `history_restored` 事件带 `hidden_tool_calls`。
+- `src/lib/contracts.ts`：新增 `RuntimeHistoryToolCall`，`RuntimeHistoryMessage.tools?`，事件上的 `hidden_tool_calls?`。
+- `src/App.tsx`：`ChatMessage.tools`，`toChatMessage` 保留调用，渲染恢复调用列表与「更早调用未显示」计数，切换会话时清零。
+- `src/App.css`：恢复调用列表样式，独立于运行期工具卡。
+- 测试：新增 `agent-runtime/test/session-tool-restore.test.mjs`（9 项）与 3 项前端回归；`session.test.mjs` 的隐私用例更新为新的投影结果。
+
+**实现时确认的行为**
+
+- 纯工具调用的 assistant 帧**现在进入**历史投影（文本为空，由调用列表承载）。之前它被整体跳过，这正是「重开只剩对话文字」的直接原因。该帧不是气泡，不会出现空消息。
+- `unknown` 状态用于「调用有记录、结果没有」，与既有状态词汇共存，不新增落盘字段。
+- 单条文本按 `MAX_TOOL_PREVIEW_BYTES`（2 KB）截断；总量按条数与字节双上限约束，从最新往回保留。
+- 来源由 `toolNamespace` 取首个命名空间段判定，而不是 `includes("mcp.")`；测试覆盖了「后段看起来像命名空间」的反例。
+
+**门禁**：`runtime:test` 538/538（新增 9 项）、`frontend:test` 73/73（新增 3 项）、`cargo test` 57/57、`typecheck`、`build` 通过。
+
+**已知限制**
+
+- 未做真实桌面重开与长会话耗时测量；I3 的完整体验（逐次展开、完整参数预览）归 04b。
+- 恢复按消息顺序与 `toolCallId` 配对，不按运行分组（`request_id` 未持久化）；跨轮同名调用的分组差异在 04b 需要时再议。
+- 旧会话没有工具记录，按现状恢复，不提示「数据缺失」。

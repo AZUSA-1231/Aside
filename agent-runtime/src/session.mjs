@@ -13,6 +13,9 @@ import {
 } from "./runtime.mjs";
 import { createNodeSessionFileSystem } from "./session-fs.mjs";
 import { loadAsideConfig } from "./config.mjs";
+import { byteLength, MAX_TOOL_PREVIEW_BYTES, sanitizeRuntimeText, toolResultText } from "./agent-contracts.mjs";
+import { normalizeToolResultStatus } from "./capability-result.mjs";
+import { toolNamespace } from "./capability-contract.mjs";
 
 export const ASIDE_SESSION_APPLICATION = "aside";
 export const ASIDE_SESSION_SCHEMA_VERSION = 1;
@@ -453,6 +456,91 @@ function displayRole(message) {
   return message?.role === "user" ? "user" : "assistant";
 }
 
+/**
+ * Bounds for the restored tool-call projection.
+ *
+ * Each entry's text already has a per-result cap (`MAX_TOOL_PREVIEW_BYTES`,
+ * applied when the result was recorded). What is not otherwise bounded is how
+ * many calls a session accumulates, so a long conversation would restore into
+ * one wall of cards and a slower first paint. Both limits are constants, not
+ * functions of session length, so the cost of reopening does not grow with it.
+ */
+export const MAX_RESTORED_TOOL_CALLS = 50;
+export const MAX_RESTORED_TOOL_BYTES = 16 * 1024;
+
+/**
+ * Projects the tool calls already recorded in the session onto the restored
+ * history.
+ *
+ * Calls and results are paired by `toolCallId`, which is the only durable
+ * correlation: the runtime's `request_id` is never written to disk, so calls
+ * cannot be regrouped into runs here and are not pretended to be. A call whose
+ * result never reached the file restores as `unknown` rather than as a success
+ * nothing in the record supports.
+ *
+ * Source comes from the tool name's namespace, which the contract enforces as
+ * mutually exclusive: only user-connected MCP tools may use `mcp.`, and
+ * built-in tools may not. That makes it a determination, not a guess.
+ *
+ * When the limits drop older calls, the most recent are kept and the count of
+ * the rest is returned so the surface can say they exist. A silent trim would
+ * read as "this session only called a few tools", which is a claim about the
+ * past that the file does not support.
+ */
+function restoreToolCalls(entries) {
+  const results = new Map();
+  for (const entry of entries) {
+    const message = entry.type === "message" ? entry.message : undefined;
+    if (message?.role !== "toolResult" || typeof message.toolCallId !== "string") continue;
+    if (!results.has(message.toolCallId)) results.set(message.toolCallId, message);
+  }
+
+  const calls = [];
+  for (const entry of entries) {
+    const message = entry.type === "message" ? entry.message : undefined;
+    if (message?.role !== "assistant" || !Array.isArray(message.content)) continue;
+    for (const block of message.content) {
+      if (block?.type !== "toolCall") continue;
+      const result = results.get(block.id);
+      const preview = result ? sanitizeRuntimeText(toolResultText(result), MAX_TOOL_PREVIEW_BYTES) : { text: "", truncated: false };
+      calls.push({
+        entryId: entry.id,
+        call: {
+          call_id: typeof block.id === "string" ? block.id : "",
+          tool: typeof block.name === "string" ? block.name : "",
+          status: result ? normalizeToolResultStatus(result.details, result.isError === true) : "unknown",
+          source: toolNamespace(block.name) === "mcp" ? "user_mcp" : "builtin",
+          text: preview.text,
+          truncated: preview.truncated,
+        },
+      });
+    }
+  }
+
+  let budget = MAX_RESTORED_TOOL_BYTES;
+  const kept = new Set();
+  for (let index = calls.length - 1; index >= 0; index -= 1) {
+    if (kept.size >= MAX_RESTORED_TOOL_CALLS) break;
+    const size = byteLength(calls[index].call.text);
+    // Always keep the newest call, even when it alone exceeds the budget: a
+    // projection that shows nothing is less useful than one honest oversized
+    // entry.
+    if (kept.size > 0 && size > budget) break;
+    budget -= size;
+    kept.add(index);
+  }
+
+  const byEntry = new Map();
+  for (let index = 0; index < calls.length; index += 1) {
+    if (!kept.has(index)) continue;
+    const { entryId, call } = calls[index];
+    const list = byEntry.get(entryId) ?? [];
+    list.push(call);
+    byEntry.set(entryId, list);
+  }
+  return { byEntry, hidden: calls.length - kept.size };
+}
+
 export async function restoreAsideSession(session) {
   let entries;
   try {
@@ -461,6 +549,7 @@ export async function restoreAsideSession(session) {
     throw genericStoreFailure(error);
   }
 
+  const { byEntry, hidden } = restoreToolCalls(entries);
   const messages = [];
   const history = [];
   for (const entry of entries) {
@@ -469,20 +558,23 @@ export async function restoreAsideSession(session) {
     messages.push(message);
     if (message.role === "user" || message.role === "assistant") {
       const text = messageText(message);
-      // Assistant tool-call frames carry no user-visible text and would only
-      // render as empty bubbles in the restored UI history. The full message
-      // still restores the agent transcript; only the projection skips it.
-      if (message.role === "assistant" && text.trim().length === 0) continue;
+      const tools = byEntry.get(entry.id);
+      // A tool-call frame with no text used to be dropped outright, which is
+      // why restored conversations showed the prose and none of the work. It
+      // is still not a message bubble — the surface renders its tool list
+      // instead — but it has to reach the projection to be shown at all.
+      if (message.role === "assistant" && text.trim().length === 0 && !tools) continue;
       history.push({
         id: entry.id,
         role: displayRole(message),
         text,
         status: "complete",
         timestamp: entry.timestamp,
+        ...(tools ? { tools } : {}),
       });
     }
   }
-  return { messages, history };
+  return { messages, history, hiddenToolCalls: hidden };
 }
 
 function persistenceWarning() {
@@ -567,7 +659,7 @@ export async function createAsideConversationRuntime({
         fileSystem,
       });
   const restored = previousRuntime && !sessionTarget
-    ? { messages: previousRuntime.agent.state.messages.slice(), history: [] }
+    ? { messages: previousRuntime.agent.state.messages.slice(), history: [], hiddenToolCalls: 0 }
     : await restoreAsideSession(opened.session);
   for (const warning of opened.warnings) send({ type: "session_warning", message: warning });
 
@@ -649,6 +741,9 @@ export async function createAsideConversationRuntime({
   });
   return Object.assign(runtime, {
     history: restored.history,
+    // How many older calls the restore projection left out. Reported rather
+    // than dropped so the surface can say the list is incomplete.
+    hiddenToolCalls: restored.hiddenToolCalls ?? 0,
     session: opened.session,
     sessionRepository: opened.repository,
     // Built from what the session was actually opened with, not from the raw

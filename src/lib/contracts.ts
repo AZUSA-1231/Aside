@@ -166,12 +166,30 @@ export interface RuntimeSessionSummary {
   modified_at: number;
 }
 
+/**
+ * One tool call restored from a saved conversation.
+ *
+ * The status comes from the recorded result, not from inference: a call whose
+ * result never reached the file reports `unknown` rather than assuming success.
+ * `source` is determined by the tool name's enforced namespace — only
+ * user-connected MCP tools may use `mcp.` — so it is not a heuristic.
+ */
+export interface RuntimeHistoryToolCall {
+  call_id: string;
+  tool: string;
+  status: string;
+  source: "builtin" | "user_mcp";
+  text: string;
+  truncated: boolean;
+}
+
 export interface RuntimeHistoryMessage {
   id: string;
   role: "user" | "assistant";
   text: string;
   status: "complete";
   timestamp: number;
+  tools?: RuntimeHistoryToolCall[];
 }
 
 export interface RuntimeWorkspaceState {
@@ -518,7 +536,13 @@ export type RuntimeEvent =
    * `replaced` marks a switch: the surface must drop what it showed rather than
    * append, because the messages belong to a different conversation.
    */
-  | { type: "history_restored"; messages: RuntimeHistoryMessage[]; replaced?: boolean }
+  | {
+      type: "history_restored";
+      messages: RuntimeHistoryMessage[];
+      /** Older calls the bounded projection left out. Zero when the list is complete. */
+      hidden_tool_calls?: number;
+      replaced?: boolean;
+    }
   | { type: "sessions_listed"; request_id: string; active_session_id: string | null; sessions: RuntimeSessionSummary[]; warnings: Array<{ id: string; message: string }> }
   | { type: "session_switched"; request_id: string; session_id: string | null }
   | { type: "session_renamed"; request_id: string; id: string; name: string | null }

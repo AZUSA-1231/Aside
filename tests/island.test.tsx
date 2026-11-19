@@ -450,3 +450,66 @@ it('R1-07a / C8-I038: switching conversations clears the previous document statu
   expect(container.querySelector('.document-chip')).toBeNull();
   expect(container.textContent).not.toContain('old.docx');
 });
+
+it('R1-04a: restored tool calls are shown with status and source', async () => {
+  await expand();
+  await act(async () => {
+    emit({
+      type: 'history_restored',
+      messages: [
+        { id: 'u1', role: 'user', text: 'Read the file', status: 'complete', timestamp: 1 },
+        {
+          id: 'a1', role: 'assistant', text: '', status: 'complete', timestamp: 2,
+          tools: [
+            { call_id: 'c1', tool: 'workspace.read', status: 'succeeded', source: 'builtin', text: 'alpha', truncated: false },
+            { call_id: 'c2', tool: 'mcp.notes.read_note', status: 'failed', source: 'user_mcp', text: 'denied', truncated: true },
+            { call_id: 'c3', tool: 'workspace.write', status: 'unknown', source: 'builtin', text: '', truncated: false },
+          ],
+        },
+        { id: 'a2', role: 'assistant', text: 'Done', status: 'complete', timestamp: 3 },
+      ],
+    });
+  });
+
+  const items = [...container.querySelectorAll('.restored-tool')];
+  expect(items).toHaveLength(3);
+  expect(items[0].textContent).toContain('read');
+  expect(items[0].textContent).toContain('Succeeded');
+  expect(items[0].textContent).toContain('Built-in');
+  // A failed external call keeps both facts: it failed, and it ran external code.
+  expect(items[1].textContent).toContain('Failed');
+  expect(items[1].textContent).toContain('MCP server');
+  expect(items[1].textContent).toContain('Output shortened');
+  // "Unknown" is not flattened into success.
+  expect(items[2].textContent).toContain('Unknown');
+  expect(container.textContent).toContain('Done');
+});
+
+it('R1-04a: a trimmed restore says how many older calls are not shown', async () => {
+  await expand();
+  await act(async () => {
+    emit({
+      type: 'history_restored',
+      hidden_tool_calls: 4,
+      messages: [
+        {
+          id: 'a1', role: 'assistant', text: 'Recent work', status: 'complete', timestamp: 1,
+          tools: [{ call_id: 'c1', tool: 'workspace.read', status: 'succeeded', source: 'builtin', text: 'x', truncated: false }],
+        },
+      ],
+    });
+  });
+  expect(container.textContent).toContain('4 older tool calls not shown');
+});
+
+it('R1-04a: the hidden-call notice is cleared when switching conversations', async () => {
+  await expand();
+  await act(async () => {
+    emit({ type: 'history_restored', hidden_tool_calls: 2, messages: [] });
+  });
+  expect(container.textContent).toContain('2 older tool calls not shown');
+  await act(async () => {
+    emit({ type: 'history_restored', replaced: true, messages: [] });
+  });
+  expect(container.textContent).not.toContain('older tool calls not shown');
+});

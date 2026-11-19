@@ -7,10 +7,13 @@ import { Agent } from "@earendil-works/pi-agent-core/aside";
 import { createModels } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 import {
+  MAX_RESTORED_TOOL_BYTES,
+  MAX_RESTORED_TOOL_CALLS,
   createAsideConversationRuntime,
   createInMemoryAsideSessionRepository,
   createSessionPersistence,
   resolveSessionRoot,
+  restoreAsideSession,
 } from "../src/session.mjs";
 import { loadSkills } from "../src/skill-loader.mjs";
 
@@ -405,8 +408,17 @@ test("persists only bounded messages and restores no workspace, permission, or s
     restoredRuntime.history.map((message) => [message.role, message.text]),
     [
       ["user", "revise notes"],
+      // The tool-call frame now reaches the projection: its text is empty by
+      // design and the surface renders the call list instead.
+      ["assistant", ""],
       ["assistant", "saved with an approved decision"],
     ],
+  );
+  // The restored call keeps what the record supports and nothing more: a
+  // status, a source, and no permission or workspace state.
+  assert.deepEqual(
+    restoredRuntime.history[1].tools.map((call) => [call.tool, call.status, call.source]),
+    [["workspace.write", "succeeded", "builtin"]],
   );
   assert.equal(restoredRuntime.activeSkill, undefined);
   assert.deepEqual(restoredRuntime.pendingPermissions, []);

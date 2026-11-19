@@ -281,6 +281,7 @@ export async function runProtocol({
     emit({
       type: "history_restored",
       messages: Array.isArray(runtime.history) ? runtime.history : [],
+      hidden_tool_calls: Number.isSafeInteger(runtime.hiddenToolCalls) ? runtime.hiddenToolCalls : 0,
     });
     for (const event of startupEvents) emit(event);
     startupComplete = true;
@@ -342,7 +343,7 @@ export async function runProtocol({
     setupError = undefined;
     startupComplete = true;
     emit({ type: "runtime_reconfigured" });
-    if (!hadRuntime) emit({ type: "history_restored", messages: Array.isArray(candidate.history) ? candidate.history : [] });
+    if (!hadRuntime) emit({ type: "history_restored", messages: Array.isArray(candidate.history) ? candidate.history : [], hidden_tool_calls: Number.isSafeInteger(candidate.hiddenToolCalls) ? candidate.hiddenToolCalls : 0 });
     sink.forwarding = true;
     for (const event of buffered) emitRuntimeEvent(event);
     emit({ type: "configuration_status", state: "applied" });
@@ -452,7 +453,12 @@ export async function runProtocol({
       setupError = undefined;
       startupComplete = true;
       const history = Array.isArray(candidate.history) ? candidate.history : [];
-      emit({ type: "history_restored", messages: history, replaced: true });
+      emit({
+        type: "history_restored",
+        messages: history,
+        hidden_tool_calls: Number.isSafeInteger(candidate.hiddenToolCalls) ? candidate.hiddenToolCalls : 0,
+        replaced: true,
+      });
       emit({ type: "session_switched", request_id: requestId, session_id: candidate.agent?.sessionId ?? null });
       sink.forwarding = true;
       for (const event of buffered) emitRuntimeEvent(event);
