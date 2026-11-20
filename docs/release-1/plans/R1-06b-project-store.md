@@ -1,6 +1,6 @@
 # R1-06b：项目存储底座
 
-日期：2026-11-20。里程碑 2 / M11；对应验收 F15–F24 的存储与引用部分。状态：**plan 已写，未开始实现**。当前 WIP 只在 [RECOVERY-PLAN](../../RECOVERY-PLAN.md#2026-11-09-release-1-当前执行表)维护。
+日期：2026-11-20。里程碑 2 / M11；对应验收 F15–F24 的存储与引用部分。状态：**开发完成，自动门禁通过，未提交；应用未接线、实机未执行**。当前 WIP 只在 [RECOVERY-PLAN](../../RECOVERY-PLAN.md#2026-11-09-release-1-当前执行表)维护。
 
 ## 1. 用户结果与停止线
 
@@ -36,7 +36,7 @@
         <timestamp>_<id>.jsonl
 ```
 
-- `<projectsRoot>` 默认 `join(ASIDE_DEFAULT_WORKSPACE_ROOT, "projects")`，可由 `ASIDE_PROJECTS_ROOT` 覆盖；必须是绝对路径，且加入 `protectedWorkspacePaths`。
+- `<projectsRoot>` 由原生以 `ASIDE_PROJECTS_ROOT` 提供，默认 `Documents/AsideProjects`（默认产物目录的**兄弟**）；必须是绝对路径，且加入 `protectedWorkspacePaths`。
 - 项目 id 即目录名，slug 规则 `^[a-z0-9][a-z0-9-]{0,63}$`；`inbox` 为保留 id。
 - 每个项目只用两个普通文件 + 一个会话目录，不建二级索引。
 
@@ -65,7 +65,7 @@
 - `createProject({ id, name, description })`
 - `writeProjectReadme({ id, text })`
 - `moveSession({ sessionId, from, to })`：原子 rename；源必须存在、目标不得有同 id；**内容字节不变**；失败保留原位
-- `openProjectSessionStore(id)`：复用 `createAsideSessionStore`，`root = <project>/sessions`，`cwd` 保持 `aside-session`
+- `openProjectSessionStore(id)`：复用 `createAsideSessionStore`，`root = <project>/sessions`，`cwd` 为与项目无关的库根常量
 
 **旧会话**：`%LOCALAPPDATA%\Aside\sessions` 原样保留、不列出、不迁移。开发阶段接受"升级后看不到旧会话"，但公开发布前必须另定处置；此条不得被当成永久产品决定。
 
@@ -106,3 +106,33 @@
 ## 7. 不在本任务完成的验收
 
 会话列表按项目、整理命令、归属判断、按需历史读取与目录路由归 06c；排除 / 纠错 / 关闭生命周期 / 固定用例成本归 06d；旧库迁移与发布处置、真实桌面与安装包归发布收口。任务结束时写清改动文件、门禁、未执行项、限制与对应 issue；不自动 commit / push，不开始 06c。
+
+## 8. 实现记录（2026-11-20）
+
+**改动文件**
+
+- 新增 `agent-runtime/src/project-store.mjs`：项目根解析、inbox、`project.json` 读写与校验、README、项目列表、创建、移动、会话仓库。
+- `agent-runtime/src/settings-schema.mjs`、`config.mjs`：`memory_enabled` 字段（默认 `true`）、项目根进入受保护路径、配置对象暴露 `projectsRoot` / `memoryEnabled`。
+- `src-tauri/src/settings.rs`：原生提供 `ASIDE_PROJECTS_ROOT`（`Documents/AsideProjects`），与 `ASIDE_DEFAULT_WORKSPACE_ROOT` 一同注入。
+- 新增 `agent-runtime/test/project-store.test.mjs`（12 项），并加入正式 `runtime:test`。
+
+**实现时修正的两处计划假设**
+
+1. **项目根必须是默认输出目录的兄弟，不能是子目录。** 默认输出规则（`output-workspace.mjs`）会拒绝「包含受保护子目录」的根；原计划的 `Documents/Aside/projects` 会让每个使用默认目录的任务以 `private_workspace` 失败。改为 `Documents/AsideProjects`，由原生提供。这是安全规则与布局的冲突，选择保留安全规则。
+2. **`cwd` 不是字面量 `aside-session`。** Pi 用 `cwd` 派生磁盘分组目录名与会话 header；若硬编码分组名，`findSessionFile` 会找不到文件。实现改为：`cwd` = 库根常量（所有项目相同），分组名从实际目录读取而非硬编码。这样移动仍是 rename，header 不变。
+
+**行为**
+
+- 会话文件移动后内容逐字节不变；目标同名、源缺失、同项目移动均被拒绝且保留原位置。
+- 元数据损坏的项目仍出现在列表并带诊断，不静默消失。
+- 开关关闭时读取返回 `memory_disabled`，磁盘内容不变。
+- 项目根加入受保护路径；普通文件工具无法读写。
+- 本任务**未接线**：应用仍使用原平铺会话库，行为与之前一致；会话列表按项目、整理命令、按需读取在 06c。
+
+**门禁**：`runtime:test` 555/555（新增 12 项）、`frontend:test` 75/75、`cargo test` 57/57、`typecheck`、`build` 通过。
+
+**已知限制**
+
+- 未接线、无用户可见变化；真实桌面与安装包未执行。
+- 旧平铺会话库不列出、不迁移；公开发布前需另定处置。
+- 项目根依赖原生文档目录；不可用时项目层报不可用，会话基础功能不受影响。

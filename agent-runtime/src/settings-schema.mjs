@@ -28,6 +28,7 @@ export const SETTINGS_FIELDS = Object.freeze({
   thinking_level: "ASIDE_THINKING_LEVEL",
   workspace_root: "ASIDE_WORKSPACE_ROOT",
   mcp_config_path: "ASIDE_MCP_CONFIG_PATH",
+  memory_enabled: "ASIDE_MEMORY_ENABLED",
 });
 export const PROVIDER_CREDENTIAL_NAMES = Object.freeze({
   openai: ["OPENAI_API_KEY"],
@@ -66,7 +67,7 @@ export const CUSTOM_PROTOCOLS = Object.freeze(["openai-completions", "openai-res
 /** The environment variable the custom route's key is resolved from. */
 export const CUSTOM_CREDENTIAL_NAME = PROVIDER_CREDENTIAL_NAMES.custom[0];
 
-const CUSTOM_BOOLEAN_FIELDS = new Set(["custom_reasoning", "custom_images", "custom_tools"]);
+const CUSTOM_BOOLEAN_FIELDS = new Set(["custom_reasoning", "custom_images", "custom_tools", "memory_enabled"]);
 const CUSTOM_CAPACITY_FIELDS = new Set(["custom_context_window", "custom_max_output"]);
 
 export class SettingsError extends Error {

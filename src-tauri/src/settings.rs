@@ -99,10 +99,24 @@ pub fn default_workspace(app: &AppHandle) -> Option<PathBuf> {
         .map(|directory| directory.join("Aside"))
 }
 
+/// The projects directory defaults beside the default output directory, not
+/// inside it: a task whose output root contains protected storage is refused,
+/// so nesting projects under `Documents/Aside` would break every default task.
+pub fn default_projects(app: &AppHandle) -> Option<PathBuf> {
+    app.path()
+        .document_dir()
+        .ok()
+        .map(|directory| directory.join("AsideProjects"))
+}
+
 pub fn configure_workspace(command: &mut Command, directory: Option<&Path>) {
     command.env_remove("ASIDE_DEFAULT_WORKSPACE_ROOT");
+    command.env_remove("ASIDE_PROJECTS_ROOT");
     if let Some(directory) = directory {
         command.env("ASIDE_DEFAULT_WORKSPACE_ROOT", directory);
+        if let Some(parent) = directory.parent() {
+            command.env("ASIDE_PROJECTS_ROOT", parent.join("AsideProjects"));
+        }
     }
 }
 

@@ -12,6 +12,7 @@ import {
   validateCredentialValues,
 } from "./settings-schema.mjs";
 import { readUserSettings } from "./settings-store.mjs";
+import { memoryEnabled, resolveProjectsRoot } from "./project-store.mjs";
 
 export { normalizeAsideApiUrl } from "./settings-schema.mjs";
 
@@ -153,7 +154,14 @@ export async function loadAsideConfig({
     publicValues[field] = getAsideConfigValue(values, variable) ?? null;
   }
   publicValues.provider ??= "openai";
+  // Project memory is on by default; organizing is user-triggered, so this
+  // only governs whether a task reads across sessions.
+  publicValues.memory_enabled ??= "true";
   const defaultWorkspaceRoot = getAsideConfigValue(environmentValues, "ASIDE_DEFAULT_WORKSPACE_ROOT") ?? null;
+  // The projects root is derived from the system default output directory, not
+  // the user's chosen output, so changing where artifacts go does not orphan
+  // existing projects.
+  const projectsRoot = resolveProjectsRoot({ environment });
   publicValues.workspace_root ??= defaultWorkspaceRoot;
   publicValues.thinking_level ??= "off";
   publicValues.mcp_config_path = mcpConfigPath;
@@ -201,7 +209,9 @@ export async function loadAsideConfig({
     defaultMcpConfigPath,
     defaultWorkspaceRoot,
     protectedWorkspacePaths: [getAsideConfigRoot(values), settings.path, source, mcpConfigPath,
-      getAsideConfigValue(values, "ASIDE_SESSION_ROOT")].filter(Boolean).map((path) => resolve(path)),
+      getAsideConfigValue(values, "ASIDE_SESSION_ROOT"), projectsRoot].filter(Boolean).map((path) => resolve(path)),
+    projectsRoot,
+    memoryEnabled: memoryEnabled(publicValues),
     effectiveRevision,
   });
 }
@@ -239,6 +249,6 @@ export function describeAsideSettings(configuration) {
     legacy_source: configuration.source ?? null,
     default_workspace_root: configuration.defaultWorkspaceRoot,
     diagnostics,
-    runtime_fields: ["provider", "model", "api_url", "thinking_level", "workspace_root", "mcp_config_path"],
+    runtime_fields: ["provider", "model", "api_url", "thinking_level", "workspace_root", "mcp_config_path", "memory_enabled"],
   };
 }
