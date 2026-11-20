@@ -1387,17 +1387,41 @@ function App() {
                 // keeps its failure label rather than being flattened to a
                 // generic "done".
                 <ul className="restored-tools" aria-label="Tool calls in this conversation">
-                  {message.tools.map((call) => (
-                    <li className={`restored-tool ${call.status}`} key={call.call_id}>
-                      <span className="restored-tool-name" title={call.tool}>{shortToolName(call.tool)}</span>
-                      <span className="restored-tool-status">{toolStatusLabel(call.status)}</span>
-                      <span className="restored-tool-source">
-                        {call.source === "user_mcp" ? "MCP server" : "Built-in"}
-                      </span>
-                      {call.text && <pre className="restored-tool-text">{call.text}</pre>}
-                      {call.truncated && <span className="message-limit">Output shortened by runtime limits</span>}
-                    </li>
-                  ))}
+                  {message.tools.map((call) => {
+                    // Same projection the live card uses, with the relative-path
+                    // fallback disabled: a restored record has no persisted
+                    // workspace to resolve a relative path against.
+                    const artifact = writeDocumentStatus(call.artifact, { requireAbsolutePath: true });
+                    return (
+                      <li className={`restored-tool ${call.status}`} key={call.call_id}>
+                        <span className="restored-tool-name" title={call.tool}>{shortToolName(call.tool)}</span>
+                        <span className="restored-tool-status">{toolStatusLabel(call.status)}</span>
+                        <span className="restored-tool-source">
+                          {call.source === "user_mcp" ? "MCP server" : "Built-in"}
+                        </span>
+                        {artifact && (
+                          <span className="restored-tool-artifact">
+                            <span>{({ transform: "Transformed", create: "Created", write: "Written", edit: "Edited" } as const)[artifact.operation]} · {fileName(artifact.outputPath)}</span>
+                            <code className="document-path">{artifact.outputPath}</code>
+                            <span>
+                              {describeStructure(artifact.structure)}
+                              {artifact.verification ? ` · reopened: ${artifact.verification}` : " · not reopened"}
+                              {artifact.sourceWarnings.length > 0
+                                ? ` · source may have lost: ${artifact.sourceWarnings.join(", ")}`
+                                : ""}
+                            </span>
+                            <button className="runtime-chip-action" type="button"
+                              aria-label={`Show ${fileName(artifact.outputPath)} in folder`} title="Show output in folder"
+                              onClick={() => void revealFilePath(artifact.outputPath)}>
+                              <FolderOpen size={13} />
+                            </button>
+                          </span>
+                        )}
+                        {call.text && <pre className="restored-tool-text">{call.text}</pre>}
+                        {call.truncated && <span className="message-limit">Output shortened by runtime limits</span>}
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
               <div className={`message-bubble ${message.status}`}>

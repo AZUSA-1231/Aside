@@ -154,13 +154,26 @@ export function describeReadScope({
  * `verification` is the runtime's reopen check, not ours. When it is absent the
  * surface says nothing about verification rather than implying it passed: a
  * write that was not reopened is not a verified one.
+ *
+ * This is the only definition of "what counts as an artifact and what it
+ * knows". Both the live tool result and a restored conversation call it, so the
+ * same record cannot yield different facts depending on whether it arrived
+ * during a run or was read back from disk.
+ *
+ * `requireAbsolutePath` exists for the restore path. A relative `output_path`
+ * resolves against a run-time workspace that is not persisted, so after a
+ * reopen it can only be wrong — pointing at the process working directory. The
+ * fallback is therefore disabled there rather than producing a confident
+ * button to the wrong place.
  */
 export function writeDocumentStatus(
   details: RuntimeToolResultDetails | undefined,
+  { requireAbsolutePath = false }: { requireAbsolutePath?: boolean } = {},
 ): RuntimeDocumentWriteStatus | null {
   const record = asRecord(details);
   if (!record) return null;
-  const outputPath = asString(record.output_absolute_path) ?? asString(record.output_path);
+  const absolute = asString(record.output_absolute_path);
+  const outputPath = requireAbsolutePath ? absolute : absolute ?? asString(record.output_path);
   if (!outputPath) return null;
   const operation = asString(record.operation);
 

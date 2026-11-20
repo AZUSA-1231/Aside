@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import {
   InMemorySessionStorage,
   JsonlSessionRepo,
@@ -487,6 +487,53 @@ export const MAX_RESTORED_TOOL_BYTES = 16 * 1024;
  * read as "this session only called a few tools", which is a claim about the
  * past that the file does not support.
  */
+/**
+ * The `details` keys that describe an artifact, in one place.
+ *
+ * This is a whitelist, not a pass-through: a tool's `details` can carry
+ * content that does not belong in a restored event. The cost of the whitelist
+ * is that a new artifact field must be added here too, or the restored view
+ * will quietly lack it — the plan records that on purpose.
+ */
+const ARTIFACT_DETAIL_FIELDS = Object.freeze([
+  "output_absolute_path",
+  "operation",
+  "bytes",
+  "structure",
+  "verification",
+  "source_path",
+  "source_fidelity_warnings",
+]);
+
+const MAX_RESTORED_ARTIFACT_PATH_BYTES = 4 * 1024;
+
+/**
+ * Extracts the artifact a successful call produced, if the record can prove it.
+ *
+ * Only `output_absolute_path` is accepted. `output_path` is relative to the
+ * run-time workspace, which is not persisted, so after a reopen it does not
+ * resolve to anything the user would expect. A failure status is not an
+ * artifact whatever path it carries: offering a button there would assert
+ * output that never happened.
+ */
+function restoredArtifact(details, status) {
+  if (status !== "succeeded" && status !== "partial") return undefined;
+  if (!details || typeof details !== "object" || Array.isArray(details)) return undefined;
+  const artifactPath = details.output_absolute_path;
+  if (typeof artifactPath !== "string"
+    || artifactPath.length === 0
+    || byteLength(artifactPath) > MAX_RESTORED_ARTIFACT_PATH_BYTES
+    || /[\u0000-\u001f\u007f]/u.test(artifactPath)
+    || !isAbsolute(artifactPath)) {
+    return undefined;
+  }
+  const artifact = {};
+  for (const field of ARTIFACT_DETAIL_FIELDS) {
+    if (details[field] !== undefined) artifact[field] = details[field];
+  }
+  return artifact;
+}
+
 function restoreToolCalls(entries) {
   const results = new Map();
   for (const entry of entries) {
@@ -503,15 +550,18 @@ function restoreToolCalls(entries) {
       if (block?.type !== "toolCall") continue;
       const result = results.get(block.id);
       const preview = result ? sanitizeRuntimeText(toolResultText(result), MAX_TOOL_PREVIEW_BYTES) : { text: "", truncated: false };
+      const status = result ? normalizeToolResultStatus(result.details, result.isError === true) : "unknown";
+      const artifact = result ? restoredArtifact(result.details, status) : undefined;
       calls.push({
         entryId: entry.id,
         call: {
           call_id: typeof block.id === "string" ? block.id : "",
           tool: typeof block.name === "string" ? block.name : "",
-          status: result ? normalizeToolResultStatus(result.details, result.isError === true) : "unknown",
+          status,
           source: toolNamespace(block.name) === "mcp" ? "user_mcp" : "builtin",
           text: preview.text,
           truncated: preview.truncated,
+          ...(artifact ? { artifact } : {}),
         },
       });
     }

@@ -1,6 +1,6 @@
 # R1-06a：产物关联与重开定位
 
-日期：2026-11-20。里程碑 1 / M08；对应验收 F9、I3 的产物部分。状态：**plan 已写，未开始实现**。当前 WIP 只在 [RECOVERY-PLAN](../../RECOVERY-PLAN.md#2026-11-09-release-1-当前执行表)维护。
+日期：2026-11-20。里程碑 1 / M08；对应验收 F9、I3 的产物部分。状态：**开发完成，自动门禁通过，未提交；实机未执行**。当前 WIP 只在 [RECOVERY-PLAN](../../RECOVERY-PLAN.md#2026-11-09-release-1-当前执行表)维护。
 
 ## 1. 用户结果与停止线
 
@@ -81,3 +81,29 @@
 ## 7. 不在本任务完成的验收
 
 F9 的真实桌面部分（真实双击打开、资源管理器定位观感）归发布收口；产物内容预览、版本与批量整理不在首版。任务结束时写清改动文件、门禁、未执行项、限制与对应 issue；不自动 commit / push，不开始 06b。
+
+## 8. 实现记录（2026-11-20）
+
+**改动文件**
+
+- `src/lib/document-status.ts`：`writeDocumentStatus` 增加 `requireAbsolutePath` 选项；这是产物事实的唯一投影，实时与恢复共用。
+- `agent-runtime/src/session.mjs`：新增 `ARTIFACT_DETAIL_FIELDS` 白名单与 `restoredArtifact`；状态为 `succeeded` / `partial` 且 `output_absolute_path` 为合规绝对路径时才携带产物；路径上限 4 KiB、拒绝控制字符与非绝对路径。
+- `src/lib/contracts.ts`：`RuntimeHistoryToolCall.artifact?`。
+- `src/App.tsx`：恢复调用用同一函数渲染产物事实（操作、文件名、路径、结构、重新打开结果、源保真警告）并提供定位按钮；`requireAbsolutePath: true`。
+- `src/App.css`：恢复产物行样式。
+- 测试：`session-tool-restore.test.mjs` 新增 5 项；`island.test.tsx` 新增 2 项。
+
+**实现时确认的行为**
+
+- 实时路径行为未变：它仍允许 `output_path` 作为后备，因为运行期确实有工作区可解析。只有恢复路径关闭该后备。
+- 白名单字段：`output_absolute_path`、`operation`、`bytes`、`structure`、`verification`、`source_path`、`source_fidelity_warnings`。其他 `details` 字段不进入恢复事件（测试用 `private_note` 验证不会透传）。
+- 失败状态即使带绝对路径也不产出产物。
+- 界面同时保留该次调用的结果文本（04a 的投影），产物信息作为附加行；两者不是重复事实，文本是工具原始输出，产物是结构化结论。
+
+**门禁**：`runtime:test` 543/543（新增 5 项）、`frontend:test` 75/75（新增 2 项）、`cargo test` 57/57、`typecheck`、`build` 通过。
+
+**已知限制**
+
+- 未做真实桌面双击 / 资源管理器观感验证；F9 实机仍未执行。
+- 新增产物字段必须同步白名单，否则恢复视图会静默少一项（已写入门禁表）。
+- 恢复列表与实时卡的**样式**仍不同；按用户决定，样式统一留到后续一次性处理。

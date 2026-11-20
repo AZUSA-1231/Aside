@@ -181,6 +181,15 @@ export interface RuntimeHistoryToolCall {
   source: "builtin" | "user_mcp";
   text: string;
   truncated: boolean;
+  /**
+   * The artifact this call produced, if the record can prove one.
+   *
+   * Whitelisted from the recorded `details`; interpreted by the same
+   * `writeDocumentStatus` the live card uses, so a reopened conversation and a
+   * live run describe the same output the same way. Absent means "not
+   * recorded or not provable", never "no artifact exists".
+   */
+  artifact?: RuntimeToolResultDetails;
 }
 
 export interface RuntimeHistoryMessage {

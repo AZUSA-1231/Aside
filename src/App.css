@@ -756,3 +756,18 @@ h1 {
   font-size:11px;
   color:#785622
 }
+/* A restored artifact, projected by the same function as the live product
+   card. Kept inline with its call so the path belongs to a specific step. */
+.restored-tool-artifact {
+  flex-basis:100%;
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:6px;
+  padding:6px 8px;
+  border-radius:10px;
+  background:#ffffff8c
+}
+.restored-tool-artifact code {
+  overflow-wrap:anywhere
+}

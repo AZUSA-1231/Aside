@@ -69,3 +69,5 @@ R1-01 实现期间发现并当次修正的本地缺陷（不记为发布缺陷�
 - 2026-11-19：R1-04a 完成开发。`restoreAsideSession` 现在把已存的 `ToolCall` 与 `toolResult` 按 `toolCallId` 配对并投影，纯工具帧不再是空白历史；来源取 `toolNamespace` 首段（`mcp.` 为 `user_mcp`），结果缺失时为 `unknown` 而非成功；条数 50、总量 16 KiB 双上限，超出保留最近的并在事件里报 `hidden_tool_calls`。门禁：runtime 538/538（新增 9 项）、前端 73/73（新增 3 项）、Rust 57/57、`typecheck`、`build` 通过。真实桌面重开与长会话耗时未测；I3 的完整体验归 04b。
 
 - 2026-11-20：写 [R1-06a plan](./plans/R1-06a-artifact-link.md)。核对确认运行期闭环已经存在：写 / DOCX 工具在 `details` 里记录 `output_absolute_path`，前端 `writeDocumentStatus` 已能投影产物卡，`reveal_existing_path` 在路径失效时返回 `path_unavailable`。缺口在恢复侧——04a 的投影只保留文本 / 状态 / 来源，丢弃 `details`，重开后产物路径丢失。另确认一个此前未写明的约束：工作区不随会话持久化，因此 `output_path`（相对路径）在重开后无法解析，plan 只采用绝对路径并把它作为硬性门槛，而不是把相对路径当绝对路径用。
+
+- 2026-11-20：R1-06a 完成开发。产物投影统一到 `writeDocumentStatus`，恢复路径要求绝对路径；`restoreToolCalls` 按白名单提取产物字段（绝对路径、操作、字节、结构、重新打开结果、来源路径与保真警告），失败状态或无合规绝对路径时不产出产物。门禁：runtime 543/543（新增 5 项）、前端 75/75（新增 2 项）、Rust 57/57、`typecheck`、`build` 通过。里程碑 1 的四个开发任务至此全部完成，统一实机（B/C/D、H1、H5–H7、F9）仍未执行。

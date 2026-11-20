@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import {
   MAX_RESTORED_TOOL_BYTES,
@@ -173,4 +175,118 @@ test("R1-04a: restoring is read-only and does not rewrite the record", async () 
   const before = JSON.stringify(entries);
   await restore(entries);
   assert.equal(JSON.stringify(entries), before);
+});
+
+/* ---------------------------------------------------------------------------
+ * R1-06a: the artifact a restored call produced.
+ * ------------------------------------------------------------------------- */
+
+const absolute = (name) => join(tmpdir(), "aside-artifacts", name);
+
+test("R1-06a: a successful write restores its artifact through the whitelist", async () => {
+  sequence = 0;
+  const output = absolute("report.docx");
+  const restored = await restore([
+    entry(userMessage("make a report")),
+    entry(toolCallFrame([{ id: "write-1", name: "workspace.write_docx" }])),
+    entry({
+      role: "toolResult", toolCallId: "write-1", toolName: "workspace.write_docx",
+      content: [{ type: "text", text: "created" }],
+      details: {
+        status: "succeeded",
+        output_absolute_path: output,
+        output_path: "report.docx",
+        operation: "transform",
+        bytes: 2048,
+        structure: { paragraphs: 3, tables: 1 },
+        verification: { status: "verified" },
+        source_path: "D:/src/report.docx",
+        source_fidelity_warnings: ["list_type_lost"],
+        // Not an artifact field: must not travel into the restored event.
+        private_note: "do not carry this",
+      },
+      isError: false, timestamp: 4,
+    }),
+  ]);
+  const [call] = toolsOf(restored);
+  assert.equal(call.artifact.output_absolute_path, output);
+  assert.equal(call.artifact.operation, "transform");
+  assert.equal(call.artifact.verification.status, "verified");
+  assert.deepEqual(call.artifact.source_fidelity_warnings, ["list_type_lost"]);
+  assert.equal(call.artifact.private_note, undefined);
+});
+
+test("R1-06a: a relative-only result restores without an artifact", async () => {
+  sequence = 0;
+  const restored = await restore([
+    entry(userMessage("write")),
+    entry(toolCallFrame([{ id: "write-1", name: "workspace.write" }])),
+    entry({
+      role: "toolResult", toolCallId: "write-1", toolName: "workspace.write",
+      content: [{ type: "text", text: "written" }],
+      details: { status: "succeeded", output_path: "notes.md", operation: "write" },
+      isError: false, timestamp: 4,
+    }),
+  ]);
+  assert.equal(toolsOf(restored)[0].artifact, undefined);
+});
+
+test("R1-06a: a failed call never restores an artifact, whatever path it carries", async () => {
+  sequence = 0;
+  const restored = await restore([
+    entry(userMessage("write")),
+    entry(toolCallFrame([{ id: "write-1", name: "workspace.write" }])),
+    entry({
+      role: "toolResult", toolCallId: "write-1", toolName: "workspace.write",
+      content: [{ type: "text", text: "failed" }],
+      details: { status: "failed", output_absolute_path: absolute("partial.md"), operation: "write" },
+      isError: true, timestamp: 4,
+    }),
+  ]);
+  const [call] = toolsOf(restored);
+  assert.equal(call.status, "failed");
+  assert.equal(call.artifact, undefined);
+});
+
+test("R1-06a: an invalid absolute path is treated as not recorded", async () => {
+  sequence = 0;
+  for (const bad of ["relative/path.md", `${absolute("x")}\n`, `C:${"x".repeat(8 * 1024)}`]) {
+    const restored = await restore([
+      entry(userMessage("write")),
+      entry(toolCallFrame([{ id: "write-1", name: "workspace.write" }])),
+      entry({
+        role: "toolResult", toolCallId: "write-1", toolName: "workspace.write",
+        content: [{ type: "text", text: "written" }],
+        details: { status: "succeeded", output_absolute_path: bad, operation: "write" },
+        isError: false, timestamp: 4,
+      }),
+    ]);
+    assert.equal(toolsOf(restored)[0].artifact, undefined, `accepted ${JSON.stringify(bad.slice(0, 40))}`);
+  }
+});
+
+test("R1-06a: two writes in one session keep their own artifacts", async () => {
+  sequence = 0;
+  const first = absolute("one.docx");
+  const second = absolute("two.md");
+  const restored = await restore([
+    entry(userMessage("first")),
+    entry(toolCallFrame([{ id: "write-1", name: "workspace.write_docx" }])),
+    entry({
+      role: "toolResult", toolCallId: "write-1", toolName: "workspace.write_docx",
+      content: [{ type: "text", text: "created" }],
+      details: { status: "succeeded", output_absolute_path: first, operation: "create" },
+      isError: false, timestamp: 4,
+    }),
+    entry(assistantText("done one")),
+    entry(userMessage("second")),
+    entry(toolCallFrame([{ id: "write-2", name: "workspace.write" }])),
+    entry({
+      role: "toolResult", toolCallId: "write-2", toolName: "workspace.write",
+      content: [{ type: "text", text: "written" }],
+      details: { status: "succeeded", output_absolute_path: second, operation: "write" },
+      isError: false, timestamp: 4,
+    }),
+  ]);
+  assert.deepEqual(toolsOf(restored).map((call) => call.artifact.output_absolute_path), [first, second]);
 });

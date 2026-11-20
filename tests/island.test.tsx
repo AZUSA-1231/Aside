@@ -513,3 +513,62 @@ it('R1-04a: the hidden-call notice is cleared when switching conversations', asy
   });
   expect(container.textContent).not.toContain('older tool calls not shown');
 });
+
+it('R1-06a: a restored artifact shows the same facts as the live card and can be revealed', async () => {
+  await expand();
+  const output = 'D:/Documents/Aside/report.docx';
+  await act(async () => {
+    emit({
+      type: 'history_restored',
+      messages: [
+        {
+          id: 'a1', role: 'assistant', text: 'Done', status: 'complete', timestamp: 1,
+          tools: [{
+            call_id: 'c1', tool: 'workspace.write_docx', status: 'succeeded', source: 'builtin', text: 'created', truncated: false,
+            artifact: {
+              output_absolute_path: output,
+              operation: 'transform',
+              bytes: 2048,
+              structure: { paragraphs: 3, tables: 1 },
+              verification: { status: 'verified' },
+              source_path: 'D:/src/report.docx',
+              source_fidelity_warnings: ['list_type_lost'],
+            },
+          }],
+        },
+      ],
+    });
+  });
+
+  const artifact = container.querySelector('.restored-tool-artifact')!;
+  expect(artifact).toBeTruthy();
+  // The operation, reopen result and source warning come from the same
+  // projection the live card uses.
+  expect(artifact.textContent).toContain('Transformed');
+  expect(artifact.textContent).toContain('report.docx');
+  expect(artifact.textContent).toContain('reopened: verified');
+  expect(artifact.textContent).toContain('list_type_lost');
+  await act(async () => {
+    container.querySelector<HTMLButtonElement>('.restored-tool-artifact .runtime-chip-action')!.click();
+  });
+  expect(nativeClient.revealPath).toHaveBeenCalledWith(output);
+});
+
+it('R1-06a: a restored call with no provable artifact offers no reveal button', async () => {
+  await expand();
+  await act(async () => {
+    emit({
+      type: 'history_restored',
+      messages: [
+        {
+          id: 'a1', role: 'assistant', text: '', status: 'complete', timestamp: 1,
+          tools: [
+            { call_id: 'c1', tool: 'workspace.write', status: 'succeeded', source: 'builtin', text: 'written', truncated: false },
+            { call_id: 'c2', tool: 'workspace.write', status: 'failed', source: 'builtin', text: 'nope', truncated: false },
+          ],
+        },
+      ],
+    });
+  });
+  expect(container.querySelectorAll('.restored-tool-artifact')).toHaveLength(0);
+});
